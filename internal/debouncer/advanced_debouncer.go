@@ -41,6 +41,9 @@ type AdvancedDebouncer struct {
 
 	// Manual sync timeout
 	manualSyncTimeout time.Duration
+
+	// Shutdown handling
+	done chan struct{}
 }
 
 type manualSyncRequest struct {
@@ -64,6 +67,9 @@ type AdvancedDebouncerConfig struct {
 	ChurnThreshold     int           `json:"churn_threshold"`
 	ChurnWindow        time.Duration `json:"churn_window"`
 	DecayResetDuration time.Duration `json:"decay_reset_duration"`
+
+	// Manual sync settings
+	ManualSyncTimeout time.Duration `json:"manual_sync_timeout"`
 }
 
 // DefaultAdvancedConfig returns a default configuration for the advanced debouncer
@@ -76,6 +82,7 @@ func DefaultAdvancedConfig() AdvancedDebouncerConfig {
 		ChurnThreshold:     10,
 		ChurnWindow:        1 * time.Minute,
 		DecayResetDuration: 5 * time.Minute,
+		ManualSyncTimeout:  10 * time.Second,
 	}
 }
 
@@ -99,6 +106,9 @@ func NewAdvanced(config AdvancedDebouncerConfig) *AdvancedDebouncer {
 	if config.DecayResetDuration <= 0 {
 		config.DecayResetDuration = DefaultAdvancedConfig().DecayResetDuration
 	}
+	if config.ManualSyncTimeout <= 0 {
+		config.ManualSyncTimeout = DefaultAdvancedConfig().ManualSyncTimeout
+	}
 
 	return &AdvancedDebouncer{
 		baseDelay:          config.BaseDelay,
@@ -113,8 +123,9 @@ func NewAdvanced(config AdvancedDebouncerConfig) *AdvancedDebouncer {
 		manualSyncQueue:    make(chan manualSyncRequest, 100),
 		activityHistory:    make([]time.Time, 0),
 		lastActivityTime:   time.Now(),
-		manualSyncTimeout:  10 * time.Second,
+		manualSyncTimeout:  config.ManualSyncTimeout,
 		maxActivityHistory: 1000, // Cap to prevent unbounded growth
+		done:               make(chan struct{}),
 	}
 }
 
@@ -147,7 +158,13 @@ func (d *AdvancedDebouncer) Add(key string, fn func()) {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 
-		// Execute the captured callback
+		// Execute the captured callback with panic recovery
+		defer func() {
+			if r := recover(); r != nil {
+				// Log panic if needed, but don't crash
+				fmt.Printf("Warning: panic in debounced callback for key %s: %v\n", key, r)
+			}
+		}()
 		capturedFn()
 
 		// Clean up
@@ -212,8 +229,18 @@ func (d *AdvancedDebouncer) TriggerManualSync(key string, fn func()) error {
 
 // processManualSyncQueue processes manual sync requests in a separate goroutine
 func (d *AdvancedDebouncer) processManualSyncQueue() {
-	for request := range d.manualSyncQueue {
-		d.handleManualSync(request)
+	for {
+		select {
+		case <-d.done:
+			// Shutdown signal received, exit gracefully
+			return
+		case request, ok := <-d.manualSyncQueue:
+			if !ok {
+				// Queue closed, exit gracefully
+				return
+			}
+			d.handleManualSync(request)
+		}
 	}
 }
 
@@ -427,13 +454,32 @@ func (d *AdvancedDebouncer) GetStats() map[string]interface{} {
 	}
 }
 
-// Stop stops the debouncer and cleans up resources
+// Stop stops the debouncer and cleans up resources with graceful shutdown
 func (d *AdvancedDebouncer) Stop() {
 	d.CancelAll()
+
+	// Signal shutdown to queue processor
+	close(d.done)
+
+	// Close the queue to unblock any remaining operations
 	close(d.manualSyncQueue)
+
+	// Give a brief moment for clean shutdown, then log warning if needed
+	time.Sleep(100 * time.Millisecond)
+
+	// The actual goroutine should exit quickly due to the done signal and queue closure
+	// Any remaining operations will naturally complete or timeout
 }
 
-// Start starts the manual sync queue processor
+// Start starts the manual sync queue processor.
+//
+// This method launches a goroutine to process manual sync requests.
+// The goroutine starts immediately and runs asynchronously, so manual sync
+// operations can be triggered right after calling Start().
+//
+// Note: The manual sync queue processor is designed to be robust and will
+// handle requests even if called immediately after Start(). The queue has
+// a buffer of 100 items to handle rapid successive requests.
 func (d *AdvancedDebouncer) Start() {
 	go d.processManualSyncQueue()
 }

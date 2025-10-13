@@ -95,6 +95,9 @@ type BackoffSettings struct {
 
 	// Time in seconds of inactivity to reset backoff to normal
 	DecayResetSeconds int `json:"decay_reset_seconds"`
+
+	// Manual sync timeout in seconds
+	ManualSyncTimeoutSeconds int `json:"manual_sync_timeout_seconds,omitempty"`
 }
 
 // SyncSettings controls synchronization behavior
@@ -198,12 +201,13 @@ func DefaultConfig() *SyncConfig {
 			AutoPush:            true,
 			AutoPull:            true,
 			Backoff: &BackoffSettings{
-				Enabled:            true,
-				MaxDelaySeconds:    300, // 5 minutes
-				Multiplier:         2.0,
-				ChurnThreshold:     10,
-				ChurnWindowSeconds: 60,  // 1 minute
-				DecayResetSeconds:  300, // 5 minutes
+				Enabled:                 true,
+				MaxDelaySeconds:         300, // 5 minutes
+				Multiplier:              2.0,
+				ChurnThreshold:          10,
+				ChurnWindowSeconds:      60,  // 1 minute
+				DecayResetSeconds:       300, // 5 minutes
+				ManualSyncTimeoutSeconds: 10,  // 10 seconds
 			},
 		},
 		Notifications: NotificationConfig{
@@ -315,23 +319,31 @@ func (c *SyncConfig) Validate() error {
 
 	// Validate backoff settings if provided
 	if c.Sync.Backoff != nil {
-		if c.Sync.Backoff.MaxDelaySeconds <= 0 {
-			return fmt.Errorf("backoff max delay must be positive")
+		// Only validate detailed backoff parameters if backoff is enabled
+		if c.Sync.Backoff.Enabled {
+			if c.Sync.Backoff.MaxDelaySeconds <= 0 {
+				return fmt.Errorf("backoff max delay must be positive")
+			}
+			if c.Sync.Backoff.MaxDelaySeconds < c.Sync.DebounceSeconds {
+				return fmt.Errorf("backoff max delay must be >= debounce delay")
+			}
+			if c.Sync.Backoff.Multiplier <= 1.0 {
+				return fmt.Errorf("backoff multiplier must be > 1.0")
+			}
+			if c.Sync.Backoff.ChurnThreshold <= 0 {
+				return fmt.Errorf("backoff churn threshold must be positive")
+			}
+			if c.Sync.Backoff.ChurnWindowSeconds <= 0 {
+				return fmt.Errorf("backoff churn window must be positive")
+			}
+			if c.Sync.Backoff.DecayResetSeconds <= 0 {
+				return fmt.Errorf("backoff decay reset must be positive")
+			}
 		}
-		if c.Sync.Backoff.MaxDelaySeconds < c.Sync.DebounceSeconds {
-			return fmt.Errorf("backoff max delay must be >= debounce delay")
-		}
-		if c.Sync.Backoff.Multiplier <= 1.0 {
-			return fmt.Errorf("backoff multiplier must be > 1.0")
-		}
-		if c.Sync.Backoff.ChurnThreshold <= 0 {
-			return fmt.Errorf("backoff churn threshold must be positive")
-		}
-		if c.Sync.Backoff.ChurnWindowSeconds <= 0 {
-			return fmt.Errorf("backoff churn window must be positive")
-		}
-		if c.Sync.Backoff.DecayResetSeconds <= 0 {
-			return fmt.Errorf("backoff decay reset must be positive")
+
+		// Always validate manual sync timeout if specified
+		if c.Sync.Backoff.ManualSyncTimeoutSeconds < 0 {
+			return fmt.Errorf("backoff manual sync timeout must be non-negative")
 		}
 	}
 
@@ -375,6 +387,11 @@ func (c *SyncConfig) ToSyncServiceConfig() SyncServiceConfig {
 
 	// Add backoff configuration if provided
 	if c.Sync.Backoff != nil {
+		manualSyncTimeout := 10 * time.Second // default
+		if c.Sync.Backoff.ManualSyncTimeoutSeconds > 0 {
+			manualSyncTimeout = time.Duration(c.Sync.Backoff.ManualSyncTimeoutSeconds) * time.Second
+		}
+
 		config.Backoff = &debouncer.AdvancedDebouncerConfig{
 			BaseDelay:          config.DebounceDelay,
 			MaxDelay:           time.Duration(c.Sync.Backoff.MaxDelaySeconds) * time.Second,
@@ -383,6 +400,7 @@ func (c *SyncConfig) ToSyncServiceConfig() SyncServiceConfig {
 			ChurnThreshold:     c.Sync.Backoff.ChurnThreshold,
 			ChurnWindow:        time.Duration(c.Sync.Backoff.ChurnWindowSeconds) * time.Second,
 			DecayResetDuration: time.Duration(c.Sync.Backoff.DecayResetSeconds) * time.Second,
+			ManualSyncTimeout:  manualSyncTimeout,
 		}
 	}
 
