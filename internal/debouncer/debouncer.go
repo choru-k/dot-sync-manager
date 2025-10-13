@@ -31,20 +31,25 @@ func (d *Debouncer) Add(key string, fn func()) {
 	// Cancel existing timer for this key if it exists
 	if timer, exists := d.timers[key]; exists {
 		timer.Stop()
+		// Clean up immediately after stopping to prevent races
+		delete(d.timers, key)
+		delete(d.callback, key)
 	}
 
-	// Store the callback
+	// Store the callback in map for tracking
 	d.callback[key] = fn
 
-	// Create new timer
+	// Capture the callback at timer creation to avoid race conditions
+	// where a new Add call overwrites d.callback[key] while an old timer is firing
+	capturedFn := fn
+
+	// Create new timer with captured function
 	d.timers[key] = time.AfterFunc(d.delay, func() {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 
-		// Execute callback if it still exists
-		if callback, exists := d.callback[key]; exists {
-			callback()
-		}
+		// Execute the captured callback (not from map to avoid races)
+		capturedFn()
 
 		// Clean up
 		delete(d.timers, key)
