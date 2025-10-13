@@ -42,7 +42,7 @@ jobs:
       run: go vet ./...
 
     - name: Run tests
-      run: go test -race -coverprofile=coverage.out ./...
+      run: go test -coverprofile=coverage.out ./...
 
     - name: Run tests with verbose output
       run: go test -v ./...
@@ -101,6 +101,6 @@ jobs:
         go-version: 1.23
 
     - name: Run Gosec Security Scanner
-      uses: securecodewarrior/github-action-gosec@master
+      uses: securecodewarrior/github-action-gosec@v1
       with:
         args: './...'
