@@ -75,7 +75,7 @@ jobs:
       run: go mod download
 
     - name: Build
-      run: go build -v -o bin/dotfile-sync-manager ./cmd/dotfile-sync-manager
+      run: go build -v -o bin/dotfile-sync-manager ./cmd/dotfile-sync-manager/main.go
 
     - name: Upload build artifact
       uses: actions/upload-artifact@v4
