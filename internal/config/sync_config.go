@@ -1,0 +1,354 @@
+package config
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
+)
+
+// SyncConfig represents the complete configuration for the dotfile sync manager
+type SyncConfig struct {
+	// Version of the configuration file format
+	Version string `json:"version"`
+
+	// Machine identification
+	Machine MachineConfig `json:"machine"`
+
+	// Git configuration
+	Git GitConfig `json:"git"`
+
+	// Sync settings
+	Sync SyncSettings `json:"sync"`
+
+	// Notification settings
+	Notifications NotificationConfig `json:"notifications"`
+
+	// Conflict resolution settings
+	ConflictResolution ConflictConfig `json:"conflict_resolution"`
+
+	// File mappings
+	Mappings map[string]string `json:"mappings"`
+
+	// UI settings
+	UI UIConfig `json:"ui"`
+
+	// Advanced settings
+	Advanced AdvancedConfig `json:"advanced"`
+}
+
+// MachineConfig holds machine-specific settings
+type MachineConfig struct {
+	// Name of this machine (e.g., "work-laptop", "personal-mac")
+	Name string `json:"name"`
+}
+
+// GitConfig extends the gitmanager.Config with additional fields
+type GitConfig struct {
+	// Repository path (absolute path to dotfiles directory)
+	RepoPath string `json:"repo_path"`
+	
+	// Remote repository URL
+	RemoteURL string `json:"remote_url"`
+	
+	// Remote name (usually "origin")
+	RemoteName string `json:"remote_name"`
+	
+	// Branch name (usually "main" or "master")
+	Branch string `json:"branch"`
+	
+	// Author information for commits
+	AuthorName  string `json:"author_name"`
+	AuthorEmail string `json:"author_email"`
+	
+	// Authentication settings
+	AuthType gitmanager.AuthStrategy `json:"auth_type"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+	SSHKeyPath string `json:"ssh_key_path,omitempty"`
+	SSHKeyPassphrase string `json:"ssh_key_passphrase,omitempty"`
+	KnownHostsPath string `json:"known_hosts_path,omitempty"`
+}
+
+// SyncSettings controls synchronization behavior
+type SyncSettings struct {
+	// Enable automatic synchronization
+	AutoSyncEnabled bool `json:"auto_sync_enabled"`
+	
+	// Pull interval in seconds
+	PullIntervalSeconds int `json:"pull_interval_seconds"`
+	
+	// Debounce delay in seconds (wait after last change before syncing)
+	DebounceSeconds int `json:"debounce_seconds"`
+	
+	// Enable automatic commits
+	AutoCommit bool `json:"auto_commit"`
+	
+	// Enable automatic pushes
+	AutoPush bool `json:"auto_push"`
+	
+	// Enable automatic pulls
+	AutoPull bool `json:"auto_pull"`
+}
+
+// NotificationConfig controls desktop notifications
+type NotificationConfig struct {
+	// Enable notifications
+	Enabled bool `json:"enabled"`
+	
+	// Show success notifications
+	ShowSuccess bool `json:"show_success"`
+	
+	// Show pull notifications
+	ShowPulls bool `json:"show_pulls"`
+	
+	// Play sound on conflicts
+	PlaySoundOnConflict bool `json:"play_sound_on_conflict"`
+}
+
+// ConflictConfig controls conflict resolution behavior
+type ConflictConfig struct {
+	// Strategy for resolving conflicts ("manual", "auto_keep_local", "auto_keep_remote")
+	Strategy string `json:"strategy"`
+	
+	// Backup directory for conflict files
+	BackupDir string `json:"backup_dir"`
+	
+	// How many days to keep backup files
+	KeepBackupsDays int `json:"keep_backups_days"`
+}
+
+// UIConfig controls user interface settings
+type UIConfig struct {
+	// Start application at system boot
+	StartAtBoot bool `json:"start_at_boot"`
+	
+	// Minimize to system tray
+	MinimizeToTray bool `json:"minimize_to_tray"`
+	
+	// Theme ("auto", "light", "dark")
+	Theme string `json:"theme"`
+}
+
+// AdvancedConfig holds advanced technical settings
+type AdvancedConfig struct {
+	// Enable debug logging
+	DebugLogging bool `json:"debug_logging"`
+	
+	// Log file path
+	LogFile string `json:"log_file"`
+	
+	// Maximum log file size in MB
+	MaxLogSizeMB int `json:"max_log_size_mb"`
+}
+
+// DefaultConfig returns a default configuration
+func DefaultConfig() *SyncConfig {
+	homeDir, _ := os.UserHomeDir()
+	
+	return &SyncConfig{
+		Version: "1.0",
+		Machine: MachineConfig{
+			Name: getDefaultMachineName(),
+		},
+		Git: GitConfig{
+			RepoPath:    filepath.Join(homeDir, "dotfiles"),
+			RemoteURL:   "",
+			RemoteName:  "origin",
+			Branch:      "main",
+			AuthorName:  getGitConfig("user.name"),
+			AuthorEmail: getGitConfig("user.email"),
+			AuthType:    gitmanager.AuthStrategySSH,
+		},
+		Sync: SyncSettings{
+			AutoSyncEnabled:     true,
+			PullIntervalSeconds: 300, // 5 minutes
+			DebounceSeconds:     30,  // 30 seconds
+			AutoCommit:          true,
+			AutoPush:            true,
+			AutoPull:            true,
+		},
+		Notifications: NotificationConfig{
+			Enabled:              true,
+			ShowSuccess:          false,
+			ShowPulls:            true,
+			PlaySoundOnConflict:  false,
+		},
+		ConflictResolution: ConflictConfig{
+			Strategy:         "manual",
+			BackupDir:        filepath.Join(homeDir, "dotfiles", ".backup"),
+			KeepBackupsDays:  7,
+		},
+		Mappings: make(map[string]string),
+		UI: UIConfig{
+			StartAtBoot:    false,
+			MinimizeToTray: true,
+			Theme:          "auto",
+		},
+		Advanced: AdvancedConfig{
+			DebugLogging:  false,
+			LogFile:       filepath.Join(homeDir, ".dotfile-sync.log"),
+			MaxLogSizeMB:  10,
+		},
+	}
+}
+
+// LoadFromFile loads configuration from a JSON file
+func LoadFromFile(filename string) (*SyncConfig, error) {
+	config := DefaultConfig()
+	
+	// Check if file exists
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		// Return default config if file doesn't exist
+		return config, nil
+	}
+
+	// Read file
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, fmt.Errorf("config: failed to read config file: %w", err)
+	}
+
+	// Parse JSON
+	if err := json.Unmarshal(data, config); err != nil {
+		return nil, fmt.Errorf("config: failed to parse config file: %w", err)
+	}
+
+	// Validate configuration
+	if err := config.Validate(); err != nil {
+		return nil, fmt.Errorf("config: invalid configuration: %w", err)
+	}
+
+	return config, nil
+}
+
+// SaveToFile saves configuration to a JSON file
+func (c *SyncConfig) SaveToFile(filename string) error {
+	// Validate before saving
+	if err := c.Validate(); err != nil {
+		return fmt.Errorf("config: invalid configuration: %w", err)
+	}
+
+	// Create directory if it doesn't exist
+	dir := filepath.Dir(filename)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("config: failed to create config directory: %w", err)
+	}
+
+	// Marshal to JSON with indentation
+	data, err := json.MarshalIndent(c, "", "  ")
+	if err != nil {
+		return fmt.Errorf("config: failed to marshal config: %w", err)
+	}
+
+	// Write file
+	if err := os.WriteFile(filename, data, 0644); err != nil {
+		return fmt.Errorf("config: failed to write config file: %w", err)
+	}
+
+	return nil
+}
+
+// Validate checks if the configuration is valid
+func (c *SyncConfig) Validate() error {
+	if c.Machine.Name == "" {
+		return fmt.Errorf("machine name is required")
+	}
+
+	if c.Git.RepoPath == "" {
+		return fmt.Errorf("git repo path is required")
+	}
+
+	if !filepath.IsAbs(c.Git.RepoPath) {
+		return fmt.Errorf("git repo path must be absolute")
+	}
+
+	if c.Git.AuthorName == "" || c.Git.AuthorEmail == "" {
+		return fmt.Errorf("git author name and email are required")
+	}
+
+	if c.Sync.PullIntervalSeconds <= 0 {
+		return fmt.Errorf("pull interval must be positive")
+	}
+
+	if c.Sync.DebounceSeconds <= 0 {
+		return fmt.Errorf("debounce delay must be positive")
+	}
+
+	return nil
+}
+
+// ToGitManagerConfig converts to gitmanager.Config
+func (c *SyncConfig) ToGitManagerConfig() gitmanager.Config {
+	return gitmanager.Config{
+		RepoPath:           c.Git.RepoPath,
+		RemoteURL:          c.Git.RemoteURL,
+		RemoteName:         c.Git.RemoteName,
+		AuthorName:         c.Git.AuthorName,
+		AuthorEmail:        c.Git.AuthorEmail,
+		AuthType:           c.Git.AuthType,
+		Username:           c.Git.Username,
+		Password:           c.Git.Password,
+		SSHKeyPath:         c.Git.SSHKeyPath,
+		SSHKeyPassphrase:   c.Git.SSHKeyPassphrase,
+		KnownHostsPath:     c.Git.KnownHostsPath,
+	}
+}
+
+// ToSyncServiceConfig converts to sync.Config
+func (c *SyncConfig) ToSyncServiceConfig() struct {
+	RepoPath        string
+	DebounceDelay   time.Duration
+	AutoSyncEnabled bool
+	IgnoreFile      string
+} {
+	return struct {
+		RepoPath        string
+		DebounceDelay   time.Duration
+		AutoSyncEnabled bool
+		IgnoreFile      string
+	}{
+		RepoPath:        c.Git.RepoPath,
+		DebounceDelay:   time.Duration(c.Sync.DebounceSeconds) * time.Second,
+		AutoSyncEnabled: c.Sync.AutoSyncEnabled,
+		IgnoreFile:      ".syncignore",
+	}
+}
+
+// Helper functions
+
+func getDefaultMachineName() string {
+	if hostname, err := os.Hostname(); err == nil {
+		return hostname
+	}
+	return "unknown-machine"
+}
+
+func getGitConfig(key string) string {
+	// Try to get git config from system
+	cmd := exec.Command("git", "config", "--global", key)
+	output, err := cmd.Output()
+	if err != nil {
+		// Fallback to environment variables or defaults
+		if key == "user.name" {
+			if username := os.Getenv("USER"); username != "" {
+				return username
+			}
+			return "Dotfile Sync User"
+		}
+		if key == "user.email" {
+			if hostname, _ := os.Hostname(); hostname != "" {
+				return fmt.Sprintf("user@%s", strings.ToLower(hostname))
+			}
+			return "user@localhost"
+		}
+		return ""
+	}
+	
+	return strings.TrimSpace(string(output))
+}
