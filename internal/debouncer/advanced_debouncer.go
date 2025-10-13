@@ -1,10 +1,22 @@
 package debouncer
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"sync"
 	"time"
+)
+
+const (
+	// DefaultManualSyncQueueSize is the default buffer size for the manual sync queue
+	DefaultManualSyncQueueSize = 100
+
+	// DefaultMaxActivityHistory is the default maximum number of activity entries to track
+	DefaultMaxActivityHistory = 1000
+
+	// DefaultShutdownTimeout is the default timeout for graceful shutdown
+	DefaultShutdownTimeout = 100 * time.Millisecond
 )
 
 // AdvancedDebouncer provides configurable debounce with exponential backoff
@@ -120,11 +132,11 @@ func NewAdvanced(config AdvancedDebouncerConfig) *AdvancedDebouncer {
 		decayResetDuration: config.DecayResetDuration,
 		timers:             make(map[string]*time.Timer),
 		callback:           make(map[string]func()),
-		manualSyncQueue:    make(chan manualSyncRequest, 100),
+		manualSyncQueue:    make(chan manualSyncRequest, DefaultManualSyncQueueSize),
 		activityHistory:    make([]time.Time, 0),
 		lastActivityTime:   time.Now(),
 		manualSyncTimeout:  config.ManualSyncTimeout,
-		maxActivityHistory: 1000, // Cap to prevent unbounded growth
+		maxActivityHistory: DefaultMaxActivityHistory, // Cap to prevent unbounded growth
 		done:               make(chan struct{}),
 	}
 }
@@ -403,6 +415,39 @@ func (d *AdvancedDebouncer) GetActivityCount() int {
 	return len(d.activityHistory)
 }
 
+// TriggerManualSyncWithContext executes a manual sync with context support for cancellation
+func (d *AdvancedDebouncer) TriggerManualSyncWithContext(ctx context.Context, key string, fn func()) error {
+	result := make(chan error, 1)
+
+	request := manualSyncRequest{
+		fn:        fn,
+		key:       key,
+		immediate: true,
+		result:    result,
+	}
+
+	// Send request to manual sync queue
+	select {
+	case d.manualSyncQueue <- request:
+		// Request queued successfully
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		// Queue is full, execute directly
+		go d.handleManualSync(request)
+	}
+
+	// Wait for result, timeout, or context cancellation
+	select {
+	case err := <-result:
+		return err
+	case <-time.After(d.manualSyncTimeout):
+		return fmt.Errorf("manual sync timeout after %v", d.manualSyncTimeout)
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
 // SetManualSyncTimeout sets the timeout for manual sync operations
 func (d *AdvancedDebouncer) SetManualSyncTimeout(timeout time.Duration) {
 	d.mu.Lock()
@@ -464,8 +509,8 @@ func (d *AdvancedDebouncer) Stop() {
 	// Close the queue to unblock any remaining operations
 	close(d.manualSyncQueue)
 
-	// Give a brief moment for clean shutdown, then log warning if needed
-	time.Sleep(100 * time.Millisecond)
+	// Give a brief moment for clean shutdown
+	time.Sleep(DefaultShutdownTimeout)
 
 	// The actual goroutine should exit quickly due to the done signal and queue closure
 	// Any remaining operations will naturally complete or timeout
