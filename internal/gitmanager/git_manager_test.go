@@ -2,6 +2,7 @@ package gitmanager
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -161,6 +162,78 @@ func TestPullWithStash(t *testing.T) {
 
 	if _, err := os.Stat(fileC); err != nil {
 		t.Fatalf("expected fileC from remote: %v", err)
+	}
+}
+
+func TestPullWithStashConflict(t *testing.T) {
+	ctx := context.Background()
+	remotePath, _ := setupRemote(t)
+
+	tmp := t.TempDir()
+
+	managerA := mustManager(t, ctx, Config{
+		RepoPath:    filepath.Join(tmp, "repoA"),
+		RemoteURL:   remotePath,
+		AuthorName:  "Bot A",
+		AuthorEmail: "a@example.com",
+		AuthType:    AuthStrategyNone,
+	})
+
+	managerB := mustManager(t, ctx, Config{
+		RepoPath:    filepath.Join(tmp, "repoB"),
+		RemoteURL:   remotePath,
+		AuthorName:  "Bot B",
+		AuthorEmail: "b@example.com",
+		AuthType:    AuthStrategyNone,
+	})
+
+	fileA := filepath.Join(managerA.cfg.RepoPath, "README.md")
+
+	// B pulls latest and modifies fileA locally (uncommitted).
+	if err := managerB.PullWithStash(ctx); err != nil {
+		t.Fatalf("managerB initial pull: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(managerB.cfg.RepoPath, "README.md"), []byte("local edit\n"), 0o644); err != nil {
+		t.Fatalf("managerB local edit: %v", err)
+	}
+
+	// A modifies the same file and pushes.
+	if err := os.WriteFile(fileA, []byte("remote edit\n"), 0o644); err != nil {
+		t.Fatalf("managerA remote edit: %v", err)
+	}
+	if _, err := managerA.StageCommitAndPush(ctx, time.Now()); err != nil {
+		t.Fatalf("managerA remote commit: %v", err)
+	}
+
+	err := managerB.PullWithStash(ctx)
+	var conflictErr *ConflictError
+	if !errors.As(err, &conflictErr) {
+		t.Fatalf("expected conflict error, got: %v", err)
+	}
+
+	if len(conflictErr.Files) != 1 || conflictErr.Files[0] != "README.md" {
+		t.Fatalf("unexpected conflict files: %+v", conflictErr.Files)
+	}
+	if conflictErr.ConflictDir == "" {
+		t.Fatalf("expected conflict dir to be populated")
+	}
+
+	remoteContent, err := os.ReadFile(filepath.Join(managerB.cfg.RepoPath, "README.md"))
+	if err != nil {
+		t.Fatalf("read remote file: %v", err)
+	}
+	if string(remoteContent) != "remote edit\n" {
+		t.Fatalf("working tree should retain remote version, got: %q", remoteContent)
+	}
+
+	localConflictPath := filepath.Join(conflictErr.ConflictDir, "README.md.local")
+	data, err := os.ReadFile(localConflictPath)
+	if err != nil {
+		t.Fatalf("read local conflict artifact: %v", err)
+	}
+	if string(data) != "local edit\n" {
+		t.Fatalf("expected local conflict artifact to contain local edit, got: %q", data)
 	}
 }
 
