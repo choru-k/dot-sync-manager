@@ -3,6 +3,7 @@ module github.com/choru-k/dot-sync-manager
 go 1.23.6
 
 require (
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-git/go-git/v5 v5.16.3
 	github.com/skeema/knownhosts v1.3.1
 	golang.org/x/crypto v0.37.0
