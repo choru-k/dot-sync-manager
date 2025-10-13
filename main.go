@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
@@ -94,11 +93,14 @@ func NewApplication(cfg *config.SyncConfig) (*Application, error) {
 	}
 
 	// Create sync service configuration
+	syncServiceConfig := cfg.ToSyncServiceConfig()
+
 	syncConfig := &sync.Config{
-		RepoPath:        cfg.Git.RepoPath,
-		DebounceDelay:   time.Duration(cfg.Sync.DebounceSeconds) * time.Second,
-		AutoSyncEnabled: cfg.Sync.AutoSyncEnabled,
-		IgnoreFile:      ".syncignore",
+		RepoPath:        syncServiceConfig.RepoPath,
+		DebounceDelay:   syncServiceConfig.DebounceDelay,
+		AutoSyncEnabled: syncServiceConfig.AutoSyncEnabled,
+		IgnoreFile:      syncServiceConfig.IgnoreFile,
+		Backoff:         syncServiceConfig.Backoff,
 	}
 
 	// Create sync service

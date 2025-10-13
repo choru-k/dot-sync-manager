@@ -1,0 +1,439 @@
+package debouncer
+
+import (
+	"fmt"
+	"math"
+	"sync"
+	"time"
+)
+
+// AdvancedDebouncer provides configurable debounce with exponential backoff
+// and rapid file churn detection
+type AdvancedDebouncer struct {
+	// Basic debounce settings
+	baseDelay    time.Duration
+	currentDelay time.Duration
+	maxDelay     time.Duration
+	backoffMult  float64
+
+	// Churn detection settings
+	churnThreshold     int           // Number of changes to trigger churn mode
+	churnWindow        time.Duration // Time window to detect churn
+	decayResetDuration time.Duration // Time to return to normal delay
+
+	// State
+	timers   map[string]*time.Timer
+	mu       sync.RWMutex
+	callback map[string]func()
+
+	// Activity tracking for churn detection
+	activityHistory    []time.Time
+	activityMu         sync.RWMutex
+	maxActivityHistory int
+
+	// Backoff state
+	backoffCount     int
+	lastActivityTime time.Time
+
+	// Manual sync handling
+	manualSyncQueue chan manualSyncRequest
+	manualSyncMu    sync.Mutex
+
+	// Manual sync timeout
+	manualSyncTimeout time.Duration
+}
+
+type manualSyncRequest struct {
+	fn        func()
+	key       string
+	immediate bool
+	result    chan error
+}
+
+// AdvancedDebouncerConfig holds configuration for the advanced debouncer
+type AdvancedDebouncerConfig struct {
+	// Basic debounce settings
+	BaseDelay time.Duration `json:"base_delay"`
+	MaxDelay  time.Duration `json:"max_delay"`
+
+	// Backoff settings
+	BackoffEnabled    bool    `json:"backoff_enabled"`
+	BackoffMultiplier float64 `json:"backoff_multiplier"`
+
+	// Churn detection settings
+	ChurnThreshold     int           `json:"churn_threshold"`
+	ChurnWindow        time.Duration `json:"churn_window"`
+	DecayResetDuration time.Duration `json:"decay_reset_duration"`
+}
+
+// DefaultAdvancedConfig returns a default configuration for the advanced debouncer
+func DefaultAdvancedConfig() AdvancedDebouncerConfig {
+	return AdvancedDebouncerConfig{
+		BaseDelay:          30 * time.Second,
+		MaxDelay:           5 * time.Minute,
+		BackoffEnabled:     true,
+		BackoffMultiplier:  2.0,
+		ChurnThreshold:     10,
+		ChurnWindow:        1 * time.Minute,
+		DecayResetDuration: 5 * time.Minute,
+	}
+}
+
+// NewAdvanced creates a new advanced debouncer with the specified configuration
+func NewAdvanced(config AdvancedDebouncerConfig) *AdvancedDebouncer {
+	if config.BaseDelay <= 0 {
+		config.BaseDelay = DefaultAdvancedConfig().BaseDelay
+	}
+	if config.MaxDelay <= 0 {
+		config.MaxDelay = DefaultAdvancedConfig().MaxDelay
+	}
+	if config.BackoffMultiplier <= 1.0 {
+		config.BackoffMultiplier = DefaultAdvancedConfig().BackoffMultiplier
+	}
+	if config.ChurnThreshold <= 0 {
+		config.ChurnThreshold = DefaultAdvancedConfig().ChurnThreshold
+	}
+	if config.ChurnWindow <= 0 {
+		config.ChurnWindow = DefaultAdvancedConfig().ChurnWindow
+	}
+	if config.DecayResetDuration <= 0 {
+		config.DecayResetDuration = DefaultAdvancedConfig().DecayResetDuration
+	}
+
+	return &AdvancedDebouncer{
+		baseDelay:          config.BaseDelay,
+		currentDelay:       config.BaseDelay,
+		maxDelay:           config.MaxDelay,
+		backoffMult:        config.BackoffMultiplier,
+		churnThreshold:     config.ChurnThreshold,
+		churnWindow:        config.ChurnWindow,
+		decayResetDuration: config.DecayResetDuration,
+		timers:             make(map[string]*time.Timer),
+		callback:           make(map[string]func()),
+		manualSyncQueue:    make(chan manualSyncRequest, 100),
+		activityHistory:    make([]time.Time, 0),
+		lastActivityTime:   time.Now(),
+		manualSyncTimeout:  10 * time.Second,
+		maxActivityHistory: 1000, // Cap to prevent unbounded growth
+	}
+}
+
+// Add adds a function to be debounced with advanced backoff logic
+func (d *AdvancedDebouncer) Add(key string, fn func()) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	// Cancel existing timer for this key if it exists
+	if timer, exists := d.timers[key]; exists {
+		timer.Stop()
+		delete(d.timers, key)
+		delete(d.callback, key)
+	}
+
+	// Record activity for churn detection
+	d.recordActivity()
+
+	// Calculate current delay with backoff
+	delay := d.calculateDelay()
+
+	// Store the callback
+	d.callback[key] = fn
+
+	// Capture the callback to avoid race conditions
+	capturedFn := fn
+
+	// Create new timer with calculated delay
+	d.timers[key] = time.AfterFunc(delay, func() {
+		d.mu.Lock()
+		defer d.mu.Unlock()
+
+		// Execute the captured callback
+		capturedFn()
+
+		// Clean up
+		delete(d.timers, key)
+		delete(d.callback, key)
+
+		// Reset backoff count after successful execution
+		d.backoffCount = 0
+		d.currentDelay = d.baseDelay
+	})
+}
+
+// AddImmediate executes a function immediately, bypassing debounce
+// Useful for manual sync triggers
+func (d *AdvancedDebouncer) AddImmediate(key string, fn func()) {
+	d.manualSyncMu.Lock()
+	defer d.manualSyncMu.Unlock()
+
+	// Cancel any existing debounced operation for this key
+	d.Cancel(key)
+
+	// Execute immediately in a separate goroutine to avoid blocking
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				// Log panic if needed, but don't crash
+				fmt.Printf("Warning: panic in AddImmediate for key %s: %v\n", key, r)
+			}
+		}()
+		fn()
+	}()
+}
+
+// TriggerManualSync executes a manual sync with proper queue handling
+func (d *AdvancedDebouncer) TriggerManualSync(key string, fn func()) error {
+	result := make(chan error, 1)
+
+	request := manualSyncRequest{
+		fn:        fn,
+		key:       key,
+		immediate: true,
+		result:    result,
+	}
+
+	// Send request to manual sync queue
+	select {
+	case d.manualSyncQueue <- request:
+		// Request queued successfully
+	default:
+		// Queue is full, execute directly
+		go d.handleManualSync(request)
+	}
+
+	// Wait for result or timeout
+	select {
+	case err := <-result:
+		return err
+	case <-time.After(d.manualSyncTimeout):
+		return fmt.Errorf("manual sync timeout after %v", d.manualSyncTimeout)
+	}
+}
+
+// processManualSyncQueue processes manual sync requests in a separate goroutine
+func (d *AdvancedDebouncer) processManualSyncQueue() {
+	for request := range d.manualSyncQueue {
+		d.handleManualSync(request)
+	}
+}
+
+// handleManualSync processes a single manual sync request
+func (d *AdvancedDebouncer) handleManualSync(request manualSyncRequest) {
+	defer func() {
+		if r := recover(); r != nil {
+			if request.result != nil {
+				request.result <- fmt.Errorf("panic during manual sync: %v", r)
+			}
+		}
+	}()
+
+	// Cancel any existing debounced operation for this key
+	d.Cancel(request.key)
+
+	// Execute the function
+	if request.immediate {
+		// Execute immediately
+		request.fn()
+		if request.result != nil {
+			request.result <- nil
+		}
+	} else {
+		// Execute with normal debounce logic
+		d.Add(request.key, request.fn)
+		if request.result != nil {
+			request.result <- nil
+		}
+	}
+}
+
+// recordActivity records a timestamp for churn detection
+func (d *AdvancedDebouncer) recordActivity() {
+	d.activityMu.Lock()
+	defer d.activityMu.Unlock()
+
+	now := time.Now()
+	d.activityHistory = append(d.activityHistory, now)
+	d.lastActivityTime = now
+
+	// Clean old activity history outside the churn window
+	cutoff := now.Add(-d.churnWindow)
+	for len(d.activityHistory) > 0 && d.activityHistory[0].Before(cutoff) {
+		d.activityHistory = d.activityHistory[1:]
+	}
+
+	// Prevent unbounded growth by capping the history size
+	if len(d.activityHistory) > d.maxActivityHistory {
+		// Remove oldest entries to maintain the cap
+		excess := len(d.activityHistory) - d.maxActivityHistory
+		d.activityHistory = d.activityHistory[excess:]
+	}
+}
+
+// isChurnDetected checks if rapid file churn is detected
+func (d *AdvancedDebouncer) isChurnDetected() bool {
+	d.activityMu.RLock()
+	defer d.activityMu.RUnlock()
+
+	return len(d.activityHistory) >= d.churnThreshold
+}
+
+// calculateDelay calculates the appropriate delay based on current conditions
+// NOTE: This method must be called while holding d.mu lock to ensure thread safety
+func (d *AdvancedDebouncer) calculateDelay() time.Duration {
+	// Check if we need to reset backoff due to inactivity
+	if time.Since(d.lastActivityTime) > d.decayResetDuration {
+		d.backoffCount = 0
+		d.currentDelay = d.baseDelay
+		return d.baseDelay
+	}
+
+	// If churn is detected and backoff is enabled, apply exponential backoff
+	if d.isChurnDetected() && d.backoffMult > 1.0 {
+		d.backoffCount++
+
+		// Calculate exponential backoff delay
+		backoffDelay := time.Duration(float64(d.baseDelay) *
+			math.Pow(d.backoffMult, float64(d.backoffCount)))
+
+		// Cap at max delay
+		if backoffDelay > d.maxDelay {
+			backoffDelay = d.maxDelay
+		}
+
+		d.currentDelay = backoffDelay
+		return backoffDelay
+	}
+
+	// No churn detected, use base delay
+	d.currentDelay = d.baseDelay
+	return d.baseDelay
+}
+
+// Cancel cancels a pending debounced function for the given key
+func (d *AdvancedDebouncer) Cancel(key string) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if timer, exists := d.timers[key]; exists {
+		timer.Stop()
+		delete(d.timers, key)
+		delete(d.callback, key)
+	}
+}
+
+// CancelAll cancels all pending debounced functions
+func (d *AdvancedDebouncer) CancelAll() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	for key, timer := range d.timers {
+		timer.Stop()
+		delete(d.timers, key)
+		delete(d.callback, key)
+	}
+}
+
+// Pending returns the number of pending debounced functions
+func (d *AdvancedDebouncer) Pending() int {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return len(d.timers)
+}
+
+// GetDelay returns the current effective delay
+func (d *AdvancedDebouncer) GetDelay() time.Duration {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.currentDelay
+}
+
+// GetBaseDelay returns the base delay
+func (d *AdvancedDebouncer) GetBaseDelay() time.Duration {
+	return d.baseDelay
+}
+
+// GetMaxDelay returns the maximum delay
+func (d *AdvancedDebouncer) GetMaxDelay() time.Duration {
+	return d.maxDelay
+}
+
+// GetBackoffCount returns the current backoff count
+func (d *AdvancedDebouncer) GetBackoffCount() int {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.backoffCount
+}
+
+// IsChurnMode returns true if churn is currently detected
+func (d *AdvancedDebouncer) IsChurnMode() bool {
+	return d.isChurnDetected()
+}
+
+// GetActivityCount returns the number of activities in the current window
+func (d *AdvancedDebouncer) GetActivityCount() int {
+	d.activityMu.RLock()
+	defer d.activityMu.RUnlock()
+	return len(d.activityHistory)
+}
+
+// SetManualSyncTimeout sets the timeout for manual sync operations
+func (d *AdvancedDebouncer) SetManualSyncTimeout(timeout time.Duration) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.manualSyncTimeout = timeout
+}
+
+// SetMaxActivityHistory sets the maximum number of activity entries to track
+func (d *AdvancedDebouncer) SetMaxActivityHistory(max int) {
+	d.activityMu.Lock()
+	defer d.activityMu.Unlock()
+	d.maxActivityHistory = max
+
+	// Trim existing history if needed
+	if len(d.activityHistory) > max {
+		excess := len(d.activityHistory) - max
+		d.activityHistory = d.activityHistory[excess:]
+	}
+}
+
+// GetManualSyncTimeout returns the current manual sync timeout
+func (d *AdvancedDebouncer) GetManualSyncTimeout() time.Duration {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.manualSyncTimeout
+}
+
+// GetStats returns detailed statistics about the debouncer state
+func (d *AdvancedDebouncer) GetStats() map[string]interface{} {
+	d.mu.RLock()
+	d.activityMu.RLock()
+	defer d.mu.RUnlock()
+	defer d.activityMu.RUnlock()
+
+	return map[string]interface{}{
+		"pending":             len(d.timers),
+		"base_delay":          d.baseDelay.String(),
+		"current_delay":       d.currentDelay.String(),
+		"max_delay":           d.maxDelay.String(),
+		"backoff_count":       d.backoffCount,
+		"backoff_multiplier":  d.backoffMult,
+		"is_churn_mode":       d.isChurnDetected(),
+		"activity_count":      len(d.activityHistory),
+		"churn_threshold":     d.churnThreshold,
+		"churn_window":        d.churnWindow.String(),
+		"last_activity":       d.lastActivityTime.Format(time.RFC3339),
+		"time_since_activity": time.Since(d.lastActivityTime).String(),
+		"manual_sync_timeout": d.manualSyncTimeout.String(),
+	}
+}
+
+// Stop stops the debouncer and cleans up resources
+func (d *AdvancedDebouncer) Stop() {
+	d.CancelAll()
+	close(d.manualSyncQueue)
+}
+
+// Start starts the manual sync queue processor
+func (d *AdvancedDebouncer) Start() {
+	go d.processManualSyncQueue()
+}

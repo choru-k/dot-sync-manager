@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/choru-k/dot-sync-manager/internal/debouncer"
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
 )
 
@@ -75,25 +76,49 @@ type GitConfig struct {
 	KnownHostsPath string `json:"known_hosts_path,omitempty"`
 }
 
+// BackoffSettings controls advanced debouncer behavior
+type BackoffSettings struct {
+	// Enable exponential backoff during rapid file changes
+	Enabled bool `json:"enabled"`
+
+	// Maximum debounce delay in seconds
+	MaxDelaySeconds int `json:"max_delay_seconds"`
+
+	// Backoff multiplier (multiplies delay for each successive change)
+	Multiplier float64 `json:"multiplier"`
+
+	// Number of changes in time window to trigger churn mode
+	ChurnThreshold int `json:"churn_threshold"`
+
+	// Time window in seconds to detect churn
+	ChurnWindowSeconds int `json:"churn_window_seconds"`
+
+	// Time in seconds of inactivity to reset backoff to normal
+	DecayResetSeconds int `json:"decay_reset_seconds"`
+}
+
 // SyncSettings controls synchronization behavior
 type SyncSettings struct {
 	// Enable automatic synchronization
 	AutoSyncEnabled bool `json:"auto_sync_enabled"`
-	
+
 	// Pull interval in seconds
 	PullIntervalSeconds int `json:"pull_interval_seconds"`
-	
+
 	// Debounce delay in seconds (wait after last change before syncing)
 	DebounceSeconds int `json:"debounce_seconds"`
-	
+
 	// Enable automatic commits
 	AutoCommit bool `json:"auto_commit"`
-	
+
 	// Enable automatic pushes
 	AutoPush bool `json:"auto_push"`
-	
+
 	// Enable automatic pulls
 	AutoPull bool `json:"auto_pull"`
+
+	// Advanced debouncer settings
+	Backoff *BackoffSettings `json:"backoff,omitempty"`
 }
 
 // NotificationConfig controls desktop notifications
@@ -172,6 +197,14 @@ func DefaultConfig() *SyncConfig {
 			AutoCommit:          true,
 			AutoPush:            true,
 			AutoPull:            true,
+			Backoff: &BackoffSettings{
+				Enabled:            true,
+				MaxDelaySeconds:    300, // 5 minutes
+				Multiplier:         2.0,
+				ChurnThreshold:     10,
+				ChurnWindowSeconds: 60,  // 1 minute
+				DecayResetSeconds:  300, // 5 minutes
+			},
 		},
 		Notifications: NotificationConfig{
 			Enabled:              true,
@@ -280,6 +313,28 @@ func (c *SyncConfig) Validate() error {
 		return fmt.Errorf("debounce delay must be positive")
 	}
 
+	// Validate backoff settings if provided
+	if c.Sync.Backoff != nil {
+		if c.Sync.Backoff.MaxDelaySeconds <= 0 {
+			return fmt.Errorf("backoff max delay must be positive")
+		}
+		if c.Sync.Backoff.MaxDelaySeconds < c.Sync.DebounceSeconds {
+			return fmt.Errorf("backoff max delay must be >= debounce delay")
+		}
+		if c.Sync.Backoff.Multiplier <= 1.0 {
+			return fmt.Errorf("backoff multiplier must be > 1.0")
+		}
+		if c.Sync.Backoff.ChurnThreshold <= 0 {
+			return fmt.Errorf("backoff churn threshold must be positive")
+		}
+		if c.Sync.Backoff.ChurnWindowSeconds <= 0 {
+			return fmt.Errorf("backoff churn window must be positive")
+		}
+		if c.Sync.Backoff.DecayResetSeconds <= 0 {
+			return fmt.Errorf("backoff decay reset must be positive")
+		}
+	}
+
 	return nil
 }
 
@@ -300,24 +355,38 @@ func (c *SyncConfig) ToGitManagerConfig() gitmanager.Config {
 	}
 }
 
-// ToSyncServiceConfig converts to sync.Config
-func (c *SyncConfig) ToSyncServiceConfig() struct {
+// SyncServiceConfig represents the configuration for the sync service
+type SyncServiceConfig struct {
 	RepoPath        string
 	DebounceDelay   time.Duration
 	AutoSyncEnabled bool
 	IgnoreFile      string
-} {
-	return struct {
-		RepoPath        string
-		DebounceDelay   time.Duration
-		AutoSyncEnabled bool
-		IgnoreFile      string
-	}{
+	Backoff         *debouncer.AdvancedDebouncerConfig
+}
+
+// ToSyncServiceConfig converts to sync.Config
+func (c *SyncConfig) ToSyncServiceConfig() SyncServiceConfig {
+	config := SyncServiceConfig{
 		RepoPath:        c.Git.RepoPath,
 		DebounceDelay:   time.Duration(c.Sync.DebounceSeconds) * time.Second,
 		AutoSyncEnabled: c.Sync.AutoSyncEnabled,
 		IgnoreFile:      ".syncignore",
 	}
+
+	// Add backoff configuration if provided
+	if c.Sync.Backoff != nil {
+		config.Backoff = &debouncer.AdvancedDebouncerConfig{
+			BaseDelay:          config.DebounceDelay,
+			MaxDelay:           time.Duration(c.Sync.Backoff.MaxDelaySeconds) * time.Second,
+			BackoffEnabled:     c.Sync.Backoff.Enabled,
+			BackoffMultiplier:  c.Sync.Backoff.Multiplier,
+			ChurnThreshold:     c.Sync.Backoff.ChurnThreshold,
+			ChurnWindow:        time.Duration(c.Sync.Backoff.ChurnWindowSeconds) * time.Second,
+			DecayResetDuration: time.Duration(c.Sync.Backoff.DecayResetSeconds) * time.Second,
+		}
+	}
+
+	return config
 }
 
 // Helper functions
