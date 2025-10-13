@@ -2,7 +2,7 @@
 
 ## Phase 1: Core Sync (Weeks 1-2)
 - [x] [Build go-git based commit/push/pull workflow per PRD Feature 1, including auth handling and repo bootstrapping.](https://github.com/choru-k/dot-sync-manager/issues/1)
-- [ ] [Implement fsnotify watchers for dotfiles repository with debounce logic tuned to PRD latency goals.](https://github.com/choru-k/dot-sync-manager/issues/2)
+- [x] [Implement fsnotify watchers for dotfiles repository with debounce logic tuned to PRD latency goals, including the inactivity guard that only triggers auto-commit when the repo has been quiet for the configured period.](https://github.com/choru-k/dot-sync-manager/issues/2) - **Completed** in PR #27 with full fsnotify integration, thread-safe debouncer, and gitignore-style pattern matching.
 - [ ] [Deliver configurable debounce/backoff engine covering rapid file churn and manual sync triggers.](https://github.com/choru-k/dot-sync-manager/issues/3)
 - [ ] [Create initial `.sync-config.json` loader with validation and defaults described in PRD §5.](https://github.com/choru-k/dot-sync-manager/issues/4)
 - [ ] [Implement CLI commands (`init`, `add`, `start`, `stop`) matching behaviors in PRD §6.](https://github.com/choru-k/dot-sync-manager/issues/5)

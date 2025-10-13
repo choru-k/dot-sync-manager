@@ -178,6 +178,7 @@ Developers who work across multiple machines and want to maintain consistent dev
   - Create commit with timestamp: `"Auto-sync: 2025-10-13 14:30:22"`
   - Include list of changed files in commit message
   - Push to remote repository
+- **Inactivity Guard:** The sync service runs commit/push inside a repository-wide debounce keyed by the repo path. Every fsnotify event resets the timer, guaranteeing at least 30 seconds of quiescence before committing. When the timer fires, it re-checks `git status`; skip the run if nothing changed so we never stage half-written files that are still being edited.
 
 **Auto-Pull:**
 - Pull from remote every 5 minutes (configurable)
