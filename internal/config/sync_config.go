@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net/mail"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,14 @@ import (
 
 	"github.com/choru-k/dot-sync-manager/internal/debouncer"
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
+	"github.com/choru-k/dot-sync-manager/internal/util"
+)
+
+// Validation constants
+const (
+	minPullIntervalSeconds = 60
+	maxBackupRetentionDays = 365
+	maxLogSizeMB           = 1000
 )
 
 // SyncConfig represents the complete configuration for the dotfile sync manager
@@ -41,6 +50,9 @@ type SyncConfig struct {
 
 	// Advanced settings
 	Advanced AdvancedConfig `json:"advanced"`
+
+	// ConfigPath stores the path from which this config was loaded (not persisted to JSON)
+	ConfigPath string `json:"-"`
 }
 
 // MachineConfig holds machine-specific settings
@@ -239,6 +251,13 @@ func DefaultConfig() *SyncConfig {
 func LoadFromFile(filename string) (*SyncConfig, error) {
 	config := DefaultConfig()
 
+	// Store the config path (resolve to absolute path)
+	absPath, err := filepath.Abs(filename)
+	if err != nil {
+		return nil, fmt.Errorf("config: failed to resolve absolute path for %s: %w", filename, err)
+	}
+	config.ConfigPath = absPath
+
 	// Check if file exists
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		// Return default config if file doesn't exist
@@ -256,6 +275,11 @@ func LoadFromFile(filename string) (*SyncConfig, error) {
 		return nil, fmt.Errorf("config: failed to parse config file: %w", err)
 	}
 
+	// Expand all user-provided paths for consistency
+	if err := config.expandPaths(); err != nil {
+		return nil, fmt.Errorf("config: failed to expand paths: %w", err)
+	}
+
 	// Validate configuration
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("config: invalid configuration: %w", err)
@@ -264,8 +288,127 @@ func LoadFromFile(filename string) (*SyncConfig, error) {
 	return config, nil
 }
 
+// FindConfigFile finds the configuration file using the following priority:
+// 1. Path provided explicitly (if exists)
+// 2. ~/dotfiles/.sync-config.json (PRD location)
+// 3. ~/.dotfile-sync.json (legacy location)
+// Returns the path to the config file and whether it exists
+func FindConfigFile(explicitPath string) (string, bool, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", false, fmt.Errorf("config: failed to get home directory: %w", err)
+	}
+
+	// If explicit path provided, use it
+	if explicitPath != "" {
+		path, err := util.ExpandPath(explicitPath)
+		if err != nil {
+			return "", false, fmt.Errorf("config: failed to expand explicit path: %w", err)
+		}
+		if _, err := os.Stat(path); err == nil {
+			return path, true, nil
+		} else if !os.IsNotExist(err) {
+			return "", false, fmt.Errorf("config: error accessing config file %s: %w", path, err)
+		}
+		// Explicit path doesn't exist, return it anyway (caller can decide what to do)
+		return path, false, nil
+	}
+
+	// Check standard locations in order of priority
+	prdPath := filepath.Join(homeDir, "dotfiles", ".sync-config.json")
+	searchPaths := []string{
+		prdPath,                                       // PRD location
+		filepath.Join(homeDir, ".dotfile-sync.json"), // Legacy location
+	}
+
+	for _, path := range searchPaths {
+		if _, err := os.Stat(path); err == nil {
+			return path, true, nil
+		} else if !os.IsNotExist(err) {
+			return "", false, fmt.Errorf("config: error accessing config location %s: %w", path, err)
+		}
+	}
+
+	// No config file found, return the PRD location as the default
+	return prdPath, false, nil
+}
+
+// LoadFromDefaultLocation loads configuration from the default location
+// It searches for config files in the standard locations and returns a default config if none found
+func LoadFromDefaultLocation() (*SyncConfig, error) {
+	configPath, exists, err := FindConfigFile("")
+	if err != nil {
+		return nil, err
+	}
+
+	if exists {
+		return LoadFromFile(configPath)
+	}
+
+	// Return default config if no file found, store the expected path
+	cfg := DefaultConfig()
+	cfg.ConfigPath = configPath
+	return cfg, nil
+}
+
+// expandPaths normalizes all user-provided paths to absolute paths
+func (c *SyncConfig) expandPaths() error {
+	// Helper to expand a single path field
+	expand := func(path *string, fieldName string) error {
+		if *path == "" {
+			return nil
+		}
+		expanded, err := util.ExpandPath(*path)
+		if err != nil {
+			return fmt.Errorf("failed to expand %s: %w", fieldName, err)
+		}
+		*path = expanded
+		return nil
+	}
+
+	// Expand Git-related paths
+	if err := expand(&c.Git.RepoPath, "git.repo_path"); err != nil {
+		return err
+	}
+	if err := expand(&c.Git.SSHKeyPath, "git.ssh_key_path"); err != nil {
+		return err
+	}
+	if err := expand(&c.Git.KnownHostsPath, "git.known_hosts_path"); err != nil {
+		return err
+	}
+
+	// Expand conflict resolution paths
+	if err := expand(&c.ConflictResolution.BackupDir, "conflict_resolution.backup_dir"); err != nil {
+		return err
+	}
+
+	// Expand advanced paths
+	if err := expand(&c.Advanced.LogFile, "advanced.log_file"); err != nil {
+		return err
+	}
+
+	// Expand mapping targets
+	for key, target := range c.Mappings {
+		if target == "" {
+			continue
+		}
+		expanded, err := util.ExpandPath(target)
+		if err != nil {
+			return fmt.Errorf("failed to expand mapping target for '%s': %w", key, err)
+		}
+		c.Mappings[key] = expanded
+	}
+
+	return nil
+}
+
 // SaveToFile saves configuration to a JSON file
 func (c *SyncConfig) SaveToFile(filename string) error {
+	// Expand paths before validation and saving
+	if err := c.expandPaths(); err != nil {
+		return fmt.Errorf("config: failed to expand paths: %w", err)
+	}
+
 	// Validate before saving
 	if err := c.Validate(); err != nil {
 		return fmt.Errorf("config: invalid configuration: %w", err)
@@ -275,6 +418,10 @@ func (c *SyncConfig) SaveToFile(filename string) error {
 	dir := filepath.Dir(filename)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("config: failed to create config directory: %w", err)
+	}
+
+	if c.Git.Password != "" || c.Git.SSHKeyPassphrase != "" {
+		fmt.Fprintln(os.Stderr, "⚠️  Warning: configuration contains plaintext credentials; ensure this file remains private")
 	}
 
 	// Marshal to JSON with indentation
@@ -291,12 +438,35 @@ func (c *SyncConfig) SaveToFile(filename string) error {
 	return nil
 }
 
+// GetConfigPath returns the path from which this config was loaded.
+// This path is always set during loading by LoadFromFile or LoadFromDefaultLocation.
+func (c *SyncConfig) GetConfigPath() string {
+	return c.ConfigPath
+}
+
+// validateInclusion checks if a value is in a list of allowed options
+func validateInclusion(value string, options []string, fieldName string) error {
+	for _, opt := range options {
+		if value == opt {
+			return nil
+		}
+	}
+	return fmt.Errorf("invalid %s: %s (must be one of: %v)", fieldName, value, options)
+}
+
 // Validate checks if the configuration is valid
 func (c *SyncConfig) Validate() error {
+	// Validate version
+	if c.Version == "" {
+		return fmt.Errorf("configuration version is required")
+	}
+
+	// Validate machine configuration
 	if c.Machine.Name == "" {
 		return fmt.Errorf("machine name is required")
 	}
 
+	// Validate git configuration
 	if c.Git.RepoPath == "" {
 		return fmt.Errorf("git repo path is required")
 	}
@@ -309,12 +479,79 @@ func (c *SyncConfig) Validate() error {
 		return fmt.Errorf("git author name and email are required")
 	}
 
+	// Validate git email format using RFC 5322 compliant parsing
+	if _, err := mail.ParseAddress(c.Git.AuthorEmail); err != nil {
+		return fmt.Errorf("git author email must be a valid email address: %w", err)
+	}
+
+	// Validate sync settings
 	if c.Sync.PullIntervalSeconds <= 0 {
 		return fmt.Errorf("pull interval must be positive")
 	}
 
+	if c.Sync.PullIntervalSeconds < minPullIntervalSeconds {
+		return fmt.Errorf("pull interval must be at least %d seconds", minPullIntervalSeconds)
+	}
+
 	if c.Sync.DebounceSeconds <= 0 {
 		return fmt.Errorf("debounce delay must be positive")
+	}
+
+	if c.Sync.DebounceSeconds > c.Sync.PullIntervalSeconds {
+		return fmt.Errorf("debounce delay must not exceed pull interval")
+	}
+
+	// Notification settings validated elsewhere if needed
+
+	// Validate conflict resolution settings
+	if c.ConflictResolution.Strategy == "" {
+		return fmt.Errorf("conflict resolution strategy is required")
+	}
+
+	if err := validateInclusion(c.ConflictResolution.Strategy, []string{"manual", "auto_keep_local", "auto_keep_remote"}, "conflict resolution strategy"); err != nil {
+		return err
+	}
+
+	if c.ConflictResolution.KeepBackupsDays < 0 {
+		return fmt.Errorf("backup retention days must be non-negative")
+	}
+
+	if c.ConflictResolution.KeepBackupsDays > maxBackupRetentionDays {
+		return fmt.Errorf("backup retention days must not exceed %d", maxBackupRetentionDays)
+	}
+
+	// Validate UI settings
+	if c.UI.Theme == "" {
+		return fmt.Errorf("UI theme is required")
+	}
+
+	if err := validateInclusion(c.UI.Theme, []string{"auto", "light", "dark"}, "UI theme"); err != nil {
+		return err
+	}
+
+	// Validate advanced settings
+	if c.Advanced.MaxLogSizeMB <= 0 {
+		return fmt.Errorf("maximum log size must be positive")
+	}
+
+	if c.Advanced.MaxLogSizeMB > maxLogSizeMB {
+		return fmt.Errorf("maximum log size must not exceed %d MB", maxLogSizeMB)
+	}
+
+	// Validate file mappings (paths are already expanded by expandPaths)
+	if c.Mappings != nil {
+		for source, target := range c.Mappings {
+			if source == "" {
+				return fmt.Errorf("mapping source cannot be empty")
+			}
+			if target == "" {
+				return fmt.Errorf("mapping target for '%s' cannot be empty", source)
+			}
+			// Target paths should already be absolute after expandPaths()
+			if !filepath.IsAbs(target) {
+				return fmt.Errorf("mapping target for '%s' must be an absolute path, but got '%s'", source, target)
+			}
+		}
 	}
 
 	// Validate backoff settings if provided
@@ -341,9 +578,10 @@ func (c *SyncConfig) Validate() error {
 			}
 		}
 
-		// Always validate manual sync timeout if specified
+		// If manual sync timeout is not set (or is 0), a default of 10 seconds is used.
+		// A negative value is invalid.
 		if c.Sync.Backoff.ManualSyncTimeoutSeconds < 0 {
-			return fmt.Errorf("backoff manual sync timeout must be non-negative")
+			return fmt.Errorf("backoff manual sync timeout cannot be negative")
 		}
 	}
 

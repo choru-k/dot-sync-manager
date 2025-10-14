@@ -193,9 +193,21 @@ See `AGENTS.md` for complete workflow rules and details.
 
 ## Important Notes
 
+### General
 - Always use absolute paths in configuration (`git.repo_path`)
 - The `.git` directory is always excluded from watching
 - Auto-commits include timestamp and list of changed files
 - Git operations use go-git library (not shell commands)
 - SSH authentication requires proper known_hosts setup
-- Main entry point is `main.go`, but there's also `cmd/dotfile-sync-manager/main.go` (example/alternative)
+- Binary is named `dot-sync-manager` but invoked as `dsm`
+
+### Code Quality Standards
+
+**See `CODING_RULES.md` and `.gemini/styleguide.md` for comprehensive coding standards.**
+
+Quick Reference:
+- **Path Handling**: Expand all user paths via `expandPaths()` method; use `path[2:]` for `~/` prefix
+- **Error Handling**: Path expansion must return errors; wrap errors with context
+- **Validation**: Never mutate state in `Validate()`; separate normalize → validate → use
+- **Testing**: Use `t.Cleanup` not `defer`; check all error returns in tests
+- **Code Organization**: Extract magic numbers to constants; use helper functions for duplication

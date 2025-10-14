@@ -30,6 +30,40 @@ This guide defines how we track work for the Dotfile Sync Manager (DSM) project 
 - Use the Phase filter to validate progress against the PRD timeline and surface dependencies.
 - Keep no more than ten items in `In Progress`; negotiate hand-offs or park items back to `Todo`.
 
+## Code Quality Standards
+
+Before submitting code for review:
+
+### Required Reading
+- **CODING_RULES.md** - Quick reference with 18 essential rules
+- **.gemini/styleguide.md** - Detailed guide with examples
+- **CLAUDE.md** - Project-specific patterns and conventions
+
+### Pre-Commit Checklist
+- [ ] All user-provided paths expanded via `expandPaths()` method
+- [ ] Path expansion functions return errors (never silently fail)
+- [ ] Tilde expansion uses `path[2:]` for `~/` prefix
+- [ ] Validation methods only check state (never mutate)
+- [ ] Error messages use "must" not "should"
+- [ ] Magic numbers extracted to named constants
+- [ ] Helper functions reduce code duplication
+- [ ] Tests use `t.Cleanup` instead of `defer`
+- [ ] All error returns checked in tests
+
+### Review Process
+1. Run tests: `go test ./...`
+2. Run linter: `golangci-lint run` (if available)
+3. Self-review against coding rules checklist
+4. Request Gemini review: `/gemini review` in PR comments
+5. Address feedback promptly with separate fix commits
+
+### When Receiving Feedback
+- Each review issue should be addressed in a separate commit
+- Use descriptive commit messages referencing review IDs
+- Group related fixes (e.g., all "magic numbers" fixes in one commit)
+- Update tests to reflect architectural changes
+- Re-run full test suite after all fixes
+
 ## Escalations
 - Flag scope changes, timeline risk, or missing requirements by creating a new issue labeled `needs clarification` and tagging the product owner.
 - Document unresolved questions in the issue and link to the relevant PRD section.
