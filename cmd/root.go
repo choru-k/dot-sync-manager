@@ -48,7 +48,10 @@ func getConfig() (*config.SyncConfig, error) {
 	} else {
 		cfg, err = config.LoadFromDefaultLocation()
 		if err != nil {
-			homeDir, _ := os.UserHomeDir()
+			homeDir, homeErr := os.UserHomeDir()
+			if homeErr != nil {
+				return nil, fmt.Errorf("failed to load configuration: %w (unable to determine home directory: %v)", err, homeErr)
+			}
 			prdPath := filepath.Join(homeDir, "dotfiles", ".sync-config.json")
 			legacyPath := filepath.Join(homeDir, ".dotfile-sync.json")
 			return nil, fmt.Errorf("failed to load configuration: %w\n\nExpected config at:\n  - %s (PRD location)\n  - %s (legacy location)\n\nRun 'dsm init' to create a new configuration", err, prdPath, legacyPath)

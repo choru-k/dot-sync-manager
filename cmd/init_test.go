@@ -7,10 +7,7 @@ import (
 )
 
 func TestGetMachineName(t *testing.T) {
-	name, err := getMachineName()
-	if err != nil {
-		t.Fatalf("getMachineName() returned error: %v", err)
-	}
+	name := getMachineName()
 
 	if name == "" {
 		t.Error("Expected non-empty machine name")
@@ -23,6 +20,60 @@ func TestGetMachineName(t *testing.T) {
 			t.Error("Expected valid hostname")
 		}
 	}
+}
+
+func TestPromptForNonEmpty(t *testing.T) {
+	t.Run("accepts non-empty input on first try", func(t *testing.T) {
+		oldStdin := os.Stdin
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatalf("Failed to create pipe: %v", err)
+		}
+		os.Stdin = r
+		t.Cleanup(func() {
+			os.Stdin = oldStdin
+			r.Close()
+		})
+
+		go func() {
+			defer w.Close()
+			w.Write([]byte("valid-input\n"))
+		}()
+
+		result, err := promptForNonEmpty("Test prompt: ", "test field")
+		if err != nil {
+			t.Fatalf("promptForNonEmpty() unexpected error: %v", err)
+		}
+		if result != "valid-input" {
+			t.Errorf("Expected 'valid-input', got %q", result)
+		}
+	})
+
+	t.Run("trims whitespace", func(t *testing.T) {
+		oldStdin := os.Stdin
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatalf("Failed to create pipe: %v", err)
+		}
+		os.Stdin = r
+		t.Cleanup(func() {
+			os.Stdin = oldStdin
+			r.Close()
+		})
+
+		go func() {
+			defer w.Close()
+			w.Write([]byte("  valid-input  \n"))
+		}()
+
+		result, err := promptForNonEmpty("Test prompt: ", "test field")
+		if err != nil {
+			t.Fatalf("promptForNonEmpty() unexpected error: %v", err)
+		}
+		if result != "valid-input" {
+			t.Errorf("Expected 'valid-input', got %q", result)
+		}
+	})
 }
 
 func TestPromptForInput(t *testing.T) {

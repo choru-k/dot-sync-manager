@@ -22,6 +22,44 @@ var (
 	force       bool
 )
 
+// Default .syncignore content
+const defaultSyncIgnoreContent = `# Sensitive authentication files
+.ssh/id_rsa
+.ssh/id_rsa.pub
+.ssh/id_ed25519
+.ssh/id_ed25519.pub
+*.pem
+*.key
+
+# Cloud credentials
+.aws/credentials
+.aws/config
+.gcp/credentials
+.azure/credentials
+
+# GPG keys
+.gnupg/private-keys-v1.d/
+.gnupg/*.key
+
+# Other sensitive
+.env
+.env.local
+secrets/
+
+# Temporary files
+*.tmp
+*.log
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Cache directories
+.cache/
+cache/
+node_modules/
+`
+
 // initCmd represents the init command
 var initCmd = &cobra.Command{
 	Use:   "init [git-url]",
@@ -52,6 +90,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Expand repo path
+	var err error
 	expandedRepoPath, err := util.ExpandPath(repoPath)
 	if err != nil {
 		return fmt.Errorf("failed to expand repo path: %w", err)
@@ -59,7 +98,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	repoPath = expandedRepoPath
 
 	// Check if directory already exists
-	if _, err := os.Stat(repoPath); err == nil {
+	if _, statErr := os.Stat(repoPath); statErr == nil {
 		if !force {
 			return fmt.Errorf("directory %s already exists\n\nOptions:\n  - Use --force to reinitialize\n  - Use a different --path\n  - Remove the existing directory first", repoPath)
 		}
@@ -69,34 +108,19 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get machine name
-	machineName, err := getMachineName()
-	if err != nil {
-		return fmt.Errorf("failed to get machine name: %w", err)
-	}
+	machineName := getMachineName()
 
 	// Get Git author info if not provided
 	if authorName == "" {
-		for {
-			authorName, err = promptForInput("Enter your name: ", "")
-			if err != nil {
-				return fmt.Errorf("failed to read author name: %w", err)
-			}
-			if authorName != "" {
-				break
-			}
-			fmt.Println("Author name cannot be empty. Please try again.")
+		authorName, err = promptForNonEmpty("Enter your name: ", "author name")
+		if err != nil {
+			return err
 		}
 	}
 	if authorEmail == "" {
-		for {
-			authorEmail, err = promptForInput("Enter your email: ", "")
-			if err != nil {
-				return fmt.Errorf("failed to read author email: %w", err)
-			}
-			if authorEmail != "" {
-				break
-			}
-			fmt.Println("Author email cannot be empty. Please try again.")
+		authorEmail, err = promptForNonEmpty("Enter your email: ", "author email")
+		if err != nil {
+			return err
 		}
 	}
 
@@ -185,43 +209,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Create default .syncignore file
 	ignorePath := filepath.Join(repoPath, ".syncignore")
-	ignoreContent := `# Sensitive authentication files
-.ssh/id_rsa
-.ssh/id_rsa.pub
-.ssh/id_ed25519
-.ssh/id_ed25519.pub
-*.pem
-*.key
-
-# Cloud credentials
-.aws/credentials
-.aws/config
-.gcp/credentials
-.azure/credentials
-
-# GPG keys
-.gnupg/private-keys-v1.d/
-.gnupg/*.key
-
-# Other sensitive
-.env
-.env.local
-secrets/
-
-# Temporary files
-*.tmp
-*.log
-*.swp
-*~
-.DS_Store
-Thumbs.db
-
-# Cache directories
-.cache/
-cache/
-node_modules/
-`
-	if err := os.WriteFile(ignorePath, []byte(ignoreContent), 0644); err != nil {
+	if err := os.WriteFile(ignorePath, []byte(defaultSyncIgnoreContent), 0644); err != nil {
 		return fmt.Errorf("failed to create .syncignore file: %w", err)
 	}
 
@@ -245,11 +233,24 @@ node_modules/
 	return nil
 }
 
-func getMachineName() (string, error) {
+func getMachineName() string {
 	if hostname, err := os.Hostname(); err == nil {
-		return hostname, nil
+		return hostname
 	}
-	return "unknown-machine", nil
+	return "unknown-machine"
+}
+
+func promptForNonEmpty(prompt, fieldName string) (string, error) {
+	for {
+		value, err := promptForInput(prompt, "")
+		if err != nil {
+			return "", fmt.Errorf("failed to read %s: %w", fieldName, err)
+		}
+		if value != "" {
+			return value, nil
+		}
+		fmt.Printf("%s cannot be empty. Please try again.\n", strings.Title(fieldName))
+	}
 }
 
 func promptForInput(prompt, defaultValue string) (string, error) {
