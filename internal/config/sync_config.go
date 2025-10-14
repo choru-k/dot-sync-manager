@@ -53,27 +53,27 @@ type MachineConfig struct {
 type GitConfig struct {
 	// Repository path (absolute path to dotfiles directory)
 	RepoPath string `json:"repo_path"`
-	
+
 	// Remote repository URL
 	RemoteURL string `json:"remote_url"`
-	
+
 	// Remote name (usually "origin")
 	RemoteName string `json:"remote_name"`
-	
+
 	// Branch name (usually "main" or "master")
 	Branch string `json:"branch"`
-	
+
 	// Author information for commits
 	AuthorName  string `json:"author_name"`
 	AuthorEmail string `json:"author_email"`
-	
+
 	// Authentication settings
-	AuthType gitmanager.AuthStrategy `json:"auth_type"`
-	Username string `json:"username,omitempty"`
-	Password string `json:"password,omitempty"`
-	SSHKeyPath string `json:"ssh_key_path,omitempty"`
-	SSHKeyPassphrase string `json:"ssh_key_passphrase,omitempty"`
-	KnownHostsPath string `json:"known_hosts_path,omitempty"`
+	AuthType         gitmanager.AuthStrategy `json:"auth_type"`
+	Username         string                  `json:"username,omitempty"`
+	Password         string                  `json:"password,omitempty"`
+	SSHKeyPath       string                  `json:"ssh_key_path,omitempty"`
+	SSHKeyPassphrase string                  `json:"ssh_key_passphrase,omitempty"`
+	KnownHostsPath   string                  `json:"known_hosts_path,omitempty"`
 }
 
 // BackoffSettings controls advanced debouncer behavior
@@ -128,13 +128,13 @@ type SyncSettings struct {
 type NotificationConfig struct {
 	// Enable notifications
 	Enabled bool `json:"enabled"`
-	
+
 	// Show success notifications
 	ShowSuccess bool `json:"show_success"`
-	
+
 	// Show pull notifications
 	ShowPulls bool `json:"show_pulls"`
-	
+
 	// Play sound on conflicts
 	PlaySoundOnConflict bool `json:"play_sound_on_conflict"`
 }
@@ -143,10 +143,10 @@ type NotificationConfig struct {
 type ConflictConfig struct {
 	// Strategy for resolving conflicts ("manual", "auto_keep_local", "auto_keep_remote")
 	Strategy string `json:"strategy"`
-	
+
 	// Backup directory for conflict files
 	BackupDir string `json:"backup_dir"`
-	
+
 	// How many days to keep backup files
 	KeepBackupsDays int `json:"keep_backups_days"`
 }
@@ -155,10 +155,10 @@ type ConflictConfig struct {
 type UIConfig struct {
 	// Start application at system boot
 	StartAtBoot bool `json:"start_at_boot"`
-	
+
 	// Minimize to system tray
 	MinimizeToTray bool `json:"minimize_to_tray"`
-	
+
 	// Theme ("auto", "light", "dark")
 	Theme string `json:"theme"`
 }
@@ -167,10 +167,10 @@ type UIConfig struct {
 type AdvancedConfig struct {
 	// Enable debug logging
 	DebugLogging bool `json:"debug_logging"`
-	
+
 	// Log file path
 	LogFile string `json:"log_file"`
-	
+
 	// Maximum log file size in MB
 	MaxLogSizeMB int `json:"max_log_size_mb"`
 }
@@ -178,7 +178,7 @@ type AdvancedConfig struct {
 // DefaultConfig returns a default configuration
 func DefaultConfig() *SyncConfig {
 	homeDir, _ := os.UserHomeDir()
-	
+
 	return &SyncConfig{
 		Version: "1.0",
 		Machine: MachineConfig{
@@ -201,25 +201,25 @@ func DefaultConfig() *SyncConfig {
 			AutoPush:            true,
 			AutoPull:            true,
 			Backoff: &BackoffSettings{
-				Enabled:                 true,
-				MaxDelaySeconds:         300, // 5 minutes
-				Multiplier:              2.0,
-				ChurnThreshold:          10,
-				ChurnWindowSeconds:      60,  // 1 minute
-				DecayResetSeconds:       300, // 5 minutes
+				Enabled:                  true,
+				MaxDelaySeconds:          300, // 5 minutes
+				Multiplier:               2.0,
+				ChurnThreshold:           10,
+				ChurnWindowSeconds:       60,  // 1 minute
+				DecayResetSeconds:        300, // 5 minutes
 				ManualSyncTimeoutSeconds: 10,  // 10 seconds
 			},
 		},
 		Notifications: NotificationConfig{
-			Enabled:              true,
-			ShowSuccess:          false,
-			ShowPulls:            true,
-			PlaySoundOnConflict:  false,
+			Enabled:             true,
+			ShowSuccess:         false,
+			ShowPulls:           true,
+			PlaySoundOnConflict: false,
 		},
 		ConflictResolution: ConflictConfig{
-			Strategy:         "manual",
-			BackupDir:        filepath.Join(homeDir, "dotfiles", ".backup"),
-			KeepBackupsDays:  7,
+			Strategy:        "manual",
+			BackupDir:       filepath.Join(homeDir, "dotfiles", ".backup"),
+			KeepBackupsDays: 7,
 		},
 		Mappings: make(map[string]string),
 		UI: UIConfig{
@@ -228,9 +228,9 @@ func DefaultConfig() *SyncConfig {
 			Theme:          "auto",
 		},
 		Advanced: AdvancedConfig{
-			DebugLogging:  false,
-			LogFile:       filepath.Join(homeDir, ".dotfile-sync.log"),
-			MaxLogSizeMB:  10,
+			DebugLogging: false,
+			LogFile:      filepath.Join(homeDir, ".dotfile-sync.log"),
+			MaxLogSizeMB: 10,
 		},
 	}
 }
@@ -238,7 +238,7 @@ func DefaultConfig() *SyncConfig {
 // LoadFromFile loads configuration from a JSON file
 func LoadFromFile(filename string) (*SyncConfig, error) {
 	config := DefaultConfig()
-	
+
 	// Check if file exists
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		// Return default config if file doesn't exist
@@ -353,17 +353,17 @@ func (c *SyncConfig) Validate() error {
 // ToGitManagerConfig converts to gitmanager.Config
 func (c *SyncConfig) ToGitManagerConfig() gitmanager.Config {
 	return gitmanager.Config{
-		RepoPath:           c.Git.RepoPath,
-		RemoteURL:          c.Git.RemoteURL,
-		RemoteName:         c.Git.RemoteName,
-		AuthorName:         c.Git.AuthorName,
-		AuthorEmail:        c.Git.AuthorEmail,
-		AuthType:           c.Git.AuthType,
-		Username:           c.Git.Username,
-		Password:           c.Git.Password,
-		SSHKeyPath:         c.Git.SSHKeyPath,
-		SSHKeyPassphrase:   c.Git.SSHKeyPassphrase,
-		KnownHostsPath:     c.Git.KnownHostsPath,
+		RepoPath:         c.Git.RepoPath,
+		RemoteURL:        c.Git.RemoteURL,
+		RemoteName:       c.Git.RemoteName,
+		AuthorName:       c.Git.AuthorName,
+		AuthorEmail:      c.Git.AuthorEmail,
+		AuthType:         c.Git.AuthType,
+		Username:         c.Git.Username,
+		Password:         c.Git.Password,
+		SSHKeyPath:       c.Git.SSHKeyPath,
+		SSHKeyPassphrase: c.Git.SSHKeyPassphrase,
+		KnownHostsPath:   c.Git.KnownHostsPath,
 	}
 }
 
@@ -436,6 +436,6 @@ func getGitConfig(key string) string {
 		}
 		return ""
 	}
-	
+
 	return strings.TrimSpace(string(output))
 }

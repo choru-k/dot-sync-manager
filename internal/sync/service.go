@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/debouncer"
@@ -25,24 +26,26 @@ type DebouncerInterface interface {
 
 // SyncService handles file watching and automatic syncing
 type SyncService struct {
-	gitManager    *gitmanager.GitManager
-	watcher       *fsnotify.Watcher
-	debouncer     DebouncerInterface
-	ignoreParser  *ignore.Parser
-	config        *Config
+	gitManager   *gitmanager.GitManager
+	watcher      *fsnotify.Watcher
+	debouncer    DebouncerInterface
+	ignoreParser *ignore.Parser
+	config       *Config
 
 	// Advanced debouncer reference (if used)
 	advancedDebouncer *debouncer.AdvancedDebouncer
 
 	// State
-	running       bool
-	ctx           context.Context
-	cancel        context.CancelFunc
+	running bool
+	stopped bool
+	ctx     context.Context
+	cancel  context.CancelFunc
+	mu      sync.RWMutex
 
 	// Event callbacks
-	onSyncStart   func()
+	onSyncStart    func()
 	onSyncComplete func(files []string, err error)
-	onError       func(error)
+	onError        func(error)
 }
 
 // Config holds configuration for the sync service
@@ -104,14 +107,14 @@ func New(gitManager *gitmanager.GitManager, config *Config) (*SyncService, error
 	ctx, cancel := context.WithCancel(context.Background())
 
 	service := &SyncService{
-		gitManager:         gitManager,
-		watcher:            watcher,
-		debouncer:          debouncerImpl,
-		advancedDebouncer:  advancedDebouncer,
-		ignoreParser:       ignoreParser,
-		config:             config,
-		ctx:                ctx,
-		cancel:             cancel,
+		gitManager:        gitManager,
+		watcher:           watcher,
+		debouncer:         debouncerImpl,
+		advancedDebouncer: advancedDebouncer,
+		ignoreParser:      ignoreParser,
+		config:            config,
+		ctx:               ctx,
+		cancel:            cancel,
 	}
 
 	// Load ignore patterns
@@ -156,6 +159,10 @@ func (s *SyncService) Stop() {
 
 	s.cancel()
 	s.running = false
+
+	s.mu.Lock()
+	s.stopped = true
+	s.mu.Unlock()
 
 	// Cancel pending debounces
 	s.debouncer.CancelAll()
@@ -263,13 +270,18 @@ func (s *SyncService) handleEvent(event fsnotify.Event) {
 	})
 }
 
-// performSync executes the actual sync operation
+// performSync executes the actual sync operation (for auto-sync)
 func (s *SyncService) performSync() {
 	if !s.config.AutoSyncEnabled {
 		return
 	}
 
-	log.Println("sync: performing auto-sync")
+	s.performManualSync()
+}
+
+// performManualSync executes sync operation regardless of AutoSyncEnabled setting
+func (s *SyncService) performManualSync() {
+	log.Println("sync: performing manual sync")
 
 	if s.onSyncStart != nil {
 		s.onSyncStart()
@@ -283,15 +295,15 @@ func (s *SyncService) performSync() {
 	}
 
 	if err != nil {
-		log.Printf("sync: auto-sync failed: %v", err)
+		log.Printf("sync: manual sync failed: %v", err)
 		if s.onError != nil {
-			s.onError(fmt.Errorf("sync: auto-sync failed: %w", err))
+			s.onError(fmt.Errorf("sync: manual sync failed: %w", err))
 		}
 		return
 	}
 
 	if len(changedFiles) > 0 {
-		log.Printf("sync: synced %d files: %v", len(changedFiles), changedFiles)
+		log.Printf("sync: manually synced %d files: %v", len(changedFiles), changedFiles)
 	} else {
 		log.Println("sync: no changes to sync")
 	}
@@ -299,12 +311,20 @@ func (s *SyncService) performSync() {
 
 // ManualSync triggers an immediate sync without debouncing
 func (s *SyncService) ManualSync() error {
+	// Check if service is stopped
+	s.mu.RLock()
+	if s.stopped {
+		s.mu.RUnlock()
+		return fmt.Errorf("sync service is stopped")
+	}
+	s.mu.RUnlock()
+
 	log.Println("sync: performing manual sync")
 
 	// If using advanced debouncer, use its manual sync feature
 	if s.advancedDebouncer != nil {
 		err := s.advancedDebouncer.TriggerManualSync("manual_sync", func() {
-			s.performSync()
+			s.performManualSync()
 		})
 		if err != nil {
 			return fmt.Errorf("sync: manual sync failed: %w", err)
@@ -313,17 +333,7 @@ func (s *SyncService) ManualSync() error {
 	}
 
 	// Otherwise perform sync directly
-	changedFiles, err := s.gitManager.StageCommitAndPush(s.ctx, time.Now())
-	if err != nil {
-		return fmt.Errorf("sync: manual sync failed: %w", err)
-	}
-
-	if len(changedFiles) > 0 {
-		log.Printf("sync: manually synced %d files: %v", len(changedFiles), changedFiles)
-	} else {
-		log.Println("sync: no changes to sync")
-	}
-
+	s.performManualSync()
 	return nil
 }
 
@@ -348,7 +358,7 @@ func (s *SyncService) GetConfig() *Config {
 func (s *SyncService) ReloadIgnorePatterns() error {
 	ignoreFilePath := filepath.Join(s.config.RepoPath, s.config.IgnoreFile)
 	s.ignoreParser.Clear()
-	
+
 	if err := s.ignoreParser.LoadFromFile(ignoreFilePath); err != nil {
 		return fmt.Errorf("sync: failed to reload ignore patterns: %w", err)
 	}
@@ -360,12 +370,12 @@ func (s *SyncService) ReloadIgnorePatterns() error {
 // GetStats returns statistics about the sync service
 func (s *SyncService) GetStats() map[string]interface{} {
 	stats := map[string]interface{}{
-		"running":         s.running,
-		"repo_path":       s.config.RepoPath,
-		"debounce_delay":  s.config.DebounceDelay.String(),
-		"auto_sync":       s.config.AutoSyncEnabled,
-		"pending_debounces": s.debouncer.Pending(),
-		"ignore_patterns": len(s.ignoreParser.GetPatterns()),
+		"running":            s.running,
+		"repo_path":          s.config.RepoPath,
+		"debounce_delay":     s.config.DebounceDelay.String(),
+		"auto_sync":          s.config.AutoSyncEnabled,
+		"pending_debounces":  s.debouncer.Pending(),
+		"ignore_patterns":    len(s.ignoreParser.GetPatterns()),
 		"advanced_debouncer": s.advancedDebouncer != nil,
 	}
 

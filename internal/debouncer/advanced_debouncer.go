@@ -3,6 +3,7 @@ package debouncer
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"sync"
 	"time"
@@ -23,10 +24,11 @@ const (
 // and rapid file churn detection
 type AdvancedDebouncer struct {
 	// Basic debounce settings
-	baseDelay    time.Duration
-	currentDelay time.Duration
-	maxDelay     time.Duration
-	backoffMult  float64
+	baseDelay      time.Duration
+	currentDelay   time.Duration
+	maxDelay       time.Duration
+	backoffMult    float64
+	backoffEnabled bool
 
 	// Churn detection settings
 	churnThreshold     int           // Number of changes to trigger churn mode
@@ -127,6 +129,7 @@ func NewAdvanced(config AdvancedDebouncerConfig) *AdvancedDebouncer {
 		currentDelay:       config.BaseDelay,
 		maxDelay:           config.MaxDelay,
 		backoffMult:        config.BackoffMultiplier,
+		backoffEnabled:     config.BackoffEnabled,
 		churnThreshold:     config.ChurnThreshold,
 		churnWindow:        config.ChurnWindow,
 		decayResetDuration: config.DecayResetDuration,
@@ -174,7 +177,7 @@ func (d *AdvancedDebouncer) Add(key string, fn func()) {
 		defer func() {
 			if r := recover(); r != nil {
 				// Log panic if needed, but don't crash
-				fmt.Printf("Warning: panic in debounced callback for key %s: %v\n", key, r)
+				log.Printf("Warning: panic in debounced callback for key %s: %v", key, r)
 			}
 		}()
 		capturedFn()
@@ -203,7 +206,7 @@ func (d *AdvancedDebouncer) AddImmediate(key string, fn func()) {
 		defer func() {
 			if r := recover(); r != nil {
 				// Log panic if needed, but don't crash
-				fmt.Printf("Warning: panic in AddImmediate for key %s: %v\n", key, r)
+				log.Printf("Warning: panic in AddImmediate for key %s: %v", key, r)
 			}
 		}()
 		fn()
@@ -326,8 +329,17 @@ func (d *AdvancedDebouncer) calculateDelay() time.Duration {
 		return d.baseDelay
 	}
 
+	// Check for churn detection with minimal lock exposure
+	// Read activity data before acquiring the main lock to avoid nested locking
+	var activityCount int
+	func() {
+		d.activityMu.RLock()
+		defer d.activityMu.RUnlock()
+		activityCount = len(d.activityHistory)
+	}()
+
 	// If churn is detected and backoff is enabled, apply exponential backoff
-	if d.isChurnDetected() && d.backoffMult > 1.0 {
+	if activityCount >= d.churnThreshold && d.backoffEnabled && d.backoffMult > 1.0 {
 		d.backoffCount++
 
 		// Calculate exponential backoff delay
