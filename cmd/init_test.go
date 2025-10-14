@@ -32,12 +32,20 @@ func TestPromptForNonEmpty(t *testing.T) {
 		os.Stdin = r
 		t.Cleanup(func() {
 			os.Stdin = oldStdin
-			r.Close()
+			if err := r.Close(); err != nil {
+				t.Logf("failed to close pipe: %v", err)
+			}
 		})
 
 		go func() {
-			defer w.Close()
-			w.Write([]byte("valid-input\n"))
+			defer func() {
+				if err := w.Close(); err != nil {
+					t.Logf("failed to close pipe: %v", err)
+				}
+			}()
+			if _, err := w.Write([]byte("valid-input\n")); err != nil {
+				t.Errorf("failed to write to pipe: %v", err)
+			}
 		}()
 
 		result, err := promptForNonEmpty("Test prompt: ", "test field")
@@ -58,12 +66,20 @@ func TestPromptForNonEmpty(t *testing.T) {
 		os.Stdin = r
 		t.Cleanup(func() {
 			os.Stdin = oldStdin
-			r.Close()
+			if err := r.Close(); err != nil {
+				t.Logf("failed to close pipe: %v", err)
+			}
 		})
 
 		go func() {
-			defer w.Close()
-			w.Write([]byte("  valid-input  \n"))
+			defer func() {
+				if err := w.Close(); err != nil {
+					t.Logf("failed to close pipe: %v", err)
+				}
+			}()
+			if _, err := w.Write([]byte("  valid-input  \n")); err != nil {
+				t.Errorf("failed to write to pipe: %v", err)
+			}
 		}()
 
 		result, err := promptForNonEmpty("Test prompt: ", "test field")
@@ -114,13 +130,21 @@ func TestPromptForInput(t *testing.T) {
 			os.Stdin = r
 			t.Cleanup(func() {
 				os.Stdin = oldStdin
-				r.Close()
+				if err := r.Close(); err != nil {
+					t.Logf("failed to close pipe: %v", err)
+				}
 			})
 
 			// Write test input
 			go func() {
-				defer w.Close()
-				w.Write([]byte(tt.input))
+				defer func() {
+					if err := w.Close(); err != nil {
+						t.Logf("failed to close pipe: %v", err)
+					}
+				}()
+				if _, err := w.Write([]byte(tt.input)); err != nil {
+					t.Errorf("failed to write to pipe: %v", err)
+				}
 			}()
 
 			// Call function
@@ -142,8 +166,12 @@ func TestPromptForInputError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create pipe: %v", err)
 	}
-	r.Close()
-	w.Close()
+	if err := r.Close(); err != nil {
+		t.Logf("failed to close read pipe: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Logf("failed to close write pipe: %v", err)
+	}
 
 	oldStdin := os.Stdin
 	os.Stdin = r

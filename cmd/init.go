@@ -249,7 +249,9 @@ func promptForNonEmpty(prompt, fieldName string) (string, error) {
 		if value != "" {
 			return value, nil
 		}
-		fmt.Printf("%s cannot be empty. Please try again.\n", strings.Title(fieldName))
+		// Capitalize first letter for display
+		displayName := strings.ToUpper(fieldName[:1]) + fieldName[1:]
+		fmt.Printf("%s cannot be empty. Please try again.\n", displayName)
 	}
 }
 

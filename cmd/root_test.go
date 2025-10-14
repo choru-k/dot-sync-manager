@@ -81,7 +81,7 @@ func TestGetConfig(t *testing.T) {
 		}
 	})
 
-	t.Run("returns default config for nonexistent file", func(t *testing.T) {
+	t.Run("returns error for nonexistent explicit config file", func(t *testing.T) {
 		oldConfigFile := configFile
 		configFile = filepath.Join(tmpDir, "nonexistent.json")
 		t.Cleanup(func() {
@@ -89,16 +89,12 @@ func TestGetConfig(t *testing.T) {
 		})
 
 		cfg, err := getConfig()
-		// LoadFromFile returns default config if file doesn't exist (not an error)
-		if err != nil {
-			t.Errorf("Unexpected error for nonexistent config file: %v", err)
+		// With explicit config file, should fail fast if file doesn't exist
+		if err == nil {
+			t.Error("Expected error for nonexistent explicit config file, got nil")
 		}
-		if cfg == nil {
-			t.Error("Expected default config, got nil")
-		}
-		// Verify it's the default config
-		if cfg.Version != config.CurrentVersion {
-			t.Errorf("Expected default version, got %s", cfg.Version)
+		if cfg != nil {
+			t.Error("Expected nil config on error, got non-nil")
 		}
 	})
 

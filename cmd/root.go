@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
+	"github.com/choru-k/dot-sync-manager/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -41,9 +42,21 @@ func getConfig() (*config.SyncConfig, error) {
 	var err error
 
 	if configFile != "" {
+		// Expand path for tilde and other user path shortcuts
+		expandedPath, err := util.ExpandPath(configFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to expand config path %s: %w", configFile, err)
+		}
+		configFile = expandedPath
+
+		// When an explicit config file is given, it must exist
+		if _, err := os.Stat(configFile); os.IsNotExist(err) {
+			return nil, fmt.Errorf("configuration file not found at %s", configFile)
+		}
+
 		cfg, err = config.LoadFromFile(configFile)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load configuration from %s: %w\nHint: Check that the file exists and is valid JSON", configFile, err)
+			return nil, fmt.Errorf("failed to load configuration from %s: %w\nHint: Check that the file is valid JSON", configFile, err)
 		}
 	} else {
 		cfg, err = config.LoadFromDefaultLocation()
