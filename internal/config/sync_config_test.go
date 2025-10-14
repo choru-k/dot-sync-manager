@@ -234,21 +234,21 @@ func TestConfigLoadInvalidJSON(t *testing.T) {
 
 func TestConfigToGitManagerConfig(t *testing.T) {
 	config := DefaultConfig()
-	
+
 	gitConfig := config.ToGitManagerConfig()
-	
+
 	if gitConfig.RepoPath != config.Git.RepoPath {
 		t.Errorf("Expected repo path %s, got %s", config.Git.RepoPath, gitConfig.RepoPath)
 	}
-	
+
 	if gitConfig.RemoteURL != config.Git.RemoteURL {
 		t.Errorf("Expected remote URL %s, got %s", config.Git.RemoteURL, gitConfig.RemoteURL)
 	}
-	
+
 	if gitConfig.AuthorName != config.Git.AuthorName {
 		t.Errorf("Expected author name %s, got %s", config.Git.AuthorName, gitConfig.AuthorName)
 	}
-	
+
 	if gitConfig.AuthType != config.Git.AuthType {
 		t.Errorf("Expected auth type %s, got %s", config.Git.AuthType, gitConfig.AuthType)
 	}
@@ -256,22 +256,22 @@ func TestConfigToGitManagerConfig(t *testing.T) {
 
 func TestConfigToSyncServiceConfig(t *testing.T) {
 	config := DefaultConfig()
-	
+
 	syncConfig := config.ToSyncServiceConfig()
-	
+
 	if syncConfig.RepoPath != config.Git.RepoPath {
 		t.Errorf("Expected repo path %s, got %s", config.Git.RepoPath, syncConfig.RepoPath)
 	}
-	
+
 	expectedDelay := time.Duration(config.Sync.DebounceSeconds) * time.Second
 	if syncConfig.DebounceDelay != expectedDelay {
 		t.Errorf("Expected debounce delay %v, got %v", expectedDelay, syncConfig.DebounceDelay)
 	}
-	
+
 	if syncConfig.AutoSyncEnabled != config.Sync.AutoSyncEnabled {
 		t.Errorf("Expected auto-sync %v, got %v", config.Sync.AutoSyncEnabled, syncConfig.AutoSyncEnabled)
 	}
-	
+
 	if syncConfig.IgnoreFile != ".syncignore" {
 		t.Errorf("Expected ignore file .syncignore, got %s", syncConfig.IgnoreFile)
 	}
@@ -279,29 +279,29 @@ func TestConfigToSyncServiceConfig(t *testing.T) {
 
 func TestConfigJSONSerialization(t *testing.T) {
 	config := DefaultConfig()
-	
+
 	// Marshal to JSON
 	data, err := json.Marshal(config)
 	if err != nil {
 		t.Fatalf("Failed to marshal config: %v", err)
 	}
-	
+
 	// Unmarshal from JSON
 	var unmarshaled SyncConfig
 	err = json.Unmarshal(data, &unmarshaled)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal config: %v", err)
 	}
-	
+
 	// Verify key fields match
 	if unmarshaled.Version != config.Version {
 		t.Errorf("Expected version %s, got %s", config.Version, unmarshaled.Version)
 	}
-	
+
 	if unmarshaled.Machine.Name != config.Machine.Name {
 		t.Errorf("Expected machine name %s, got %s", config.Machine.Name, unmarshaled.Machine.Name)
 	}
-	
+
 	if unmarshaled.Sync.PullIntervalSeconds != config.Sync.PullIntervalSeconds {
 		t.Errorf("Expected pull interval %d, got %d", config.Sync.PullIntervalSeconds, unmarshaled.Sync.PullIntervalSeconds)
 	}
