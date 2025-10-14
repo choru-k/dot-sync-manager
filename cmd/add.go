@@ -190,8 +190,13 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to remove original file: %w", err)
 	}
 
-	// Create symlink
-	if err := os.Symlink(targetPath, filePath); err != nil {
+	// Create symlink using relative path for portability across machines
+	relSymlinkPath, err := filepath.Rel(filepath.Dir(filePath), targetPath)
+	if err != nil {
+		return fmt.Errorf("failed to compute relative symlink path: %w", err)
+	}
+
+	if err := os.Symlink(relSymlinkPath, filePath); err != nil {
 		// Rollback: restore from backup or from target
 		restoreSuccessful := false
 		if backupCreated {
@@ -282,7 +287,7 @@ func getTargetPath(repoPath, sourcePath string) (string, error) {
 	return filepath.Join(repoPath, relativePath), nil
 }
 
-func copyFile(src, dst string) error {
+func copyFile(src, dst string) (err error) {
 	sourceFile, err := os.Open(src)
 	if err != nil {
 		return err
@@ -300,9 +305,13 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer destFile.Close()
+	defer func() {
+		if cerr := destFile.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
-	if _, err := io.Copy(destFile, sourceFile); err != nil {
+	if _, err = io.Copy(destFile, sourceFile); err != nil {
 		return err
 	}
 

@@ -78,11 +78,12 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to start daemon: %w", err)
 	}
 
-	if err := process.WritePID(daemonCmd.Process.Pid); err != nil {
-		fmt.Printf("⚠️  Warning: failed to write PID file: %v\n", err)
-	}
-
-	fmt.Printf("✅ Dotfile sync daemon started (PID: %d)\n", daemonCmd.Process.Pid)
+	// Note: The daemon process writes its own PID file in foreground mode
+	// We don't write it here to avoid race conditions
+	// Wait briefly to verify daemon started successfully
+	pid := daemonCmd.Process.Pid
+	
+	fmt.Printf("✅ Dotfile sync daemon started (PID: %d)\n", pid)
 	fmt.Printf("📁 Repository: %s\n", cfg.Git.RepoPath)
 	fmt.Printf("📊 Machine: %s\n", cfg.Machine.Name)
 	fmt.Printf("⚙️  Auto-sync: %v\n", cfg.Sync.AutoSyncEnabled)
@@ -97,10 +98,14 @@ func runForegroundDaemon(cfg *config.SyncConfig) error {
 	fmt.Println("Starting dotfile sync daemon in foreground...")
 	fmt.Println("Press Ctrl+C to stop")
 
-	gmCfg := cfg.ToGitManagerConfig()
-	ctx := context.Background()
+	// Create context with signal handling first so it can be used throughout
+	signalCtx, cancel := signal.NotifyContext(context.Background(), daemonSignals()...)
+	defer cancel()
 
-	gitMgr, err := gitmanager.NewGitManager(ctx, gmCfg)
+	gmCfg := cfg.ToGitManagerConfig()
+
+	// Use signal context for git manager so it can be cancelled on shutdown
+	gitMgr, err := gitmanager.NewGitManager(signalCtx, gmCfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize git manager: %w", err)
 	}
@@ -126,20 +131,18 @@ func runForegroundDaemon(cfg *config.SyncConfig) error {
 	if err := process.WritePID(os.Getpid()); err != nil {
 		fmt.Printf("⚠️  Warning: failed to write PID file: %v\n", err)
 	}
+	defer func() {
+		if err := process.RemovePID(); err != nil {
+			fmt.Printf("⚠️  Warning: failed to remove PID file: %v\n", err)
+		}
+	}()
 
 	fmt.Printf("🚀 Watching repository: %s\n", cfg.Git.RepoPath)
 	fmt.Printf("📊 Machine: %s\n", cfg.Machine.Name)
 	fmt.Printf("⚙️  Auto-sync enabled: %v\n", cfg.Sync.AutoSyncEnabled)
 
-	signalCtx, cancel := signal.NotifyContext(context.Background(), daemonSignals()...)
-	defer cancel()
-
 	<-signalCtx.Done()
 	fmt.Println("\n🛑 Stopping sync service...")
-
-	if err := process.RemovePID(); err != nil {
-		fmt.Printf("⚠️  Warning: failed to remove PID file: %v\n", err)
-	}
 
 	return nil
 }

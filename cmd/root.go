@@ -75,11 +75,13 @@ func expandPath(path string) string {
 }
 
 // isDaemonRunning checks if the daemon is already running
+// Uses the process package which properly detects the actual binary name
 func isDaemonRunning() bool {
 	return process.IsDaemonRunning()
 }
 
 // getDaemonPID finds the PID of the running daemon using platform-appropriate methods
+// Uses the process package which properly handles PID file and process name detection
 func getDaemonPID() (int, error) {
 	return process.GetDaemonPID()
 }
