@@ -289,7 +289,10 @@ func getTargetPath(repoPath, sourcePath string) (string, error) {
 	}
 
 	// For files outside home directory, use the full path structure
-	relativePath := strings.TrimPrefix(sourcePath, string(os.PathSeparator))
+	// Strip volume name (e.g., "C:" on Windows) to ensure relative path
+	volumeName := filepath.VolumeName(sourcePath)
+	relativePath := strings.TrimPrefix(sourcePath, volumeName)
+	relativePath = strings.TrimPrefix(relativePath, string(os.PathSeparator))
 	relativePath = filepath.Clean(relativePath)
 	return filepath.Join(repoPath, relativePath), nil
 }
