@@ -593,23 +593,26 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			errMsg:  "maximum log size must not exceed 1000 MB",
 		},
 		{
-			name: "mapping target gets expanded to absolute",
+			name: "mapping target requires absolute path",
 			config: func() *SyncConfig {
 				c := DefaultConfig()
 				c.Mappings = map[string]string{
-					"bashrc": "relative/path", // This will be expanded to absolute path
+					"bashrc": "relative/path", // Relative path without expansion
 				}
 				return c
 			}(),
-			wantErr: false, // No error because expandPath converts to absolute
+			wantErr: true,
+			errMsg:  "mapping target for 'bashrc' must be an absolute path",
 		},
 		{
-			name: "valid mapping target",
+			name: "valid mapping target with absolute path",
 			config: func() *SyncConfig {
 				c := DefaultConfig()
+				// Use absolute paths (as they would be after expandPaths())
+				homeDir, _ := os.UserHomeDir()
 				c.Mappings = map[string]string{
-					"bashrc": "~/.bashrc",
-					"config": "~/.config",
+					"bashrc": filepath.Join(homeDir, ".bashrc"),
+					"config": filepath.Join(homeDir, ".config"),
 				}
 				return c
 			}(),
@@ -649,11 +652,11 @@ func TestExpandPath(t *testing.T) {
 	if err := os.Setenv("HOME", testHome); err != nil {
 		t.Fatalf("Failed to set HOME: %v", err)
 	}
-	defer func() {
+	t.Cleanup(func() {
 		if err := os.Setenv("HOME", originalHome); err != nil {
 			t.Errorf("Failed to restore HOME: %v", err)
 		}
-	}()
+	})
 
 	tests := []struct {
 		input          string

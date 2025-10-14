@@ -275,13 +275,9 @@ func LoadFromFile(filename string) (*SyncConfig, error) {
 		return nil, fmt.Errorf("config: failed to parse config file: %w", err)
 	}
 
-	// Expand user-provided paths for consistency
-	if config.Git.RepoPath != "" {
-		expandedPath, err := util.ExpandPath(config.Git.RepoPath)
-		if err != nil {
-			return nil, fmt.Errorf("config: failed to expand git.repo_path: %w", err)
-		}
-		config.Git.RepoPath = expandedPath
+	// Expand all user-provided paths for consistency
+	if err := config.expandPaths(); err != nil {
+		return nil, fmt.Errorf("config: failed to expand paths: %w", err)
 	}
 
 	// Validate configuration
@@ -355,8 +351,64 @@ func LoadFromDefaultLocation() (*SyncConfig, error) {
 	return cfg, nil
 }
 
+// expandPaths normalizes all user-provided paths to absolute paths
+func (c *SyncConfig) expandPaths() error {
+	// Helper to expand a single path field
+	expand := func(path *string, fieldName string) error {
+		if *path == "" {
+			return nil
+		}
+		expanded, err := util.ExpandPath(*path)
+		if err != nil {
+			return fmt.Errorf("failed to expand %s: %w", fieldName, err)
+		}
+		*path = expanded
+		return nil
+	}
+
+	// Expand Git-related paths
+	if err := expand(&c.Git.RepoPath, "git.repo_path"); err != nil {
+		return err
+	}
+	if err := expand(&c.Git.SSHKeyPath, "git.ssh_key_path"); err != nil {
+		return err
+	}
+	if err := expand(&c.Git.KnownHostsPath, "git.known_hosts_path"); err != nil {
+		return err
+	}
+
+	// Expand conflict resolution paths
+	if err := expand(&c.ConflictResolution.BackupDir, "conflict_resolution.backup_dir"); err != nil {
+		return err
+	}
+
+	// Expand advanced paths
+	if err := expand(&c.Advanced.LogFile, "advanced.log_file"); err != nil {
+		return err
+	}
+
+	// Expand mapping targets
+	for key, target := range c.Mappings {
+		if target == "" {
+			continue
+		}
+		expanded, err := util.ExpandPath(target)
+		if err != nil {
+			return fmt.Errorf("failed to expand mapping target for '%s': %w", key, err)
+		}
+		c.Mappings[key] = expanded
+	}
+
+	return nil
+}
+
 // SaveToFile saves configuration to a JSON file
 func (c *SyncConfig) SaveToFile(filename string) error {
+	// Expand paths before validation and saving
+	if err := c.expandPaths(); err != nil {
+		return fmt.Errorf("config: failed to expand paths: %w", err)
+	}
+
 	// Validate before saving
 	if err := c.Validate(); err != nil {
 		return fmt.Errorf("config: invalid configuration: %w", err)
@@ -486,7 +538,7 @@ func (c *SyncConfig) Validate() error {
 		return fmt.Errorf("maximum log size must not exceed %d MB", maxLogSizeMB)
 	}
 
-	// Validate file mappings
+	// Validate file mappings (paths are already expanded by expandPaths)
 	if c.Mappings != nil {
 		for source, target := range c.Mappings {
 			if source == "" {
@@ -495,12 +547,8 @@ func (c *SyncConfig) Validate() error {
 			if target == "" {
 				return fmt.Errorf("mapping target for '%s' cannot be empty", source)
 			}
-			// Target paths must be absolute after expansion
-			expandedTarget, err := util.ExpandPath(target)
-			if err != nil {
-				return fmt.Errorf("mapping target for '%s' failed to expand: %w", source, err)
-			}
-			if !filepath.IsAbs(expandedTarget) {
+			// Target paths should already be absolute after expandPaths()
+			if !filepath.IsAbs(target) {
 				return fmt.Errorf("mapping target for '%s' must be an absolute path, but got '%s'", source, target)
 			}
 		}
