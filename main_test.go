@@ -32,7 +32,7 @@ func TestExpandPath(t *testing.T) {
 func TestNewApplication(t *testing.T) {
 	// Create a temporary directory for testing
 	tmpDir := t.TempDir()
-	
+
 	// Create a test configuration
 	testConfig := &config.SyncConfig{
 		Version: "1.0",

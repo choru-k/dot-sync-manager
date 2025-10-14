@@ -23,8 +23,8 @@ const (
 var (
 	configFile = flag.String("config", defaultConfigFile, "Path to configuration file")
 	version    = flag.Bool("version", false, "Show version information")
-	daemon    = flag.Bool("daemon", false, "Run as daemon (background)")
-	verbose   = flag.Bool("verbose", false, "Enable verbose logging")
+	daemon     = flag.Bool("daemon", false, "Run as daemon (background)")
+	verbose    = flag.Bool("verbose", false, "Enable verbose logging")
 )
 
 // Application represents the main application
@@ -179,7 +179,7 @@ func (app *Application) Stop() error {
 // GetStatus returns the current status of the application
 func (app *Application) GetStatus() map[string]interface{} {
 	stats := app.syncService.GetStats()
-	
+
 	return map[string]interface{}{
 		"machine":     app.config.Machine.Name,
 		"config_file": *configFile,
@@ -203,7 +203,7 @@ func expandPath(path string) string {
 // setupLogging configures logging based on verbosity
 func setupLogging(verbose bool) {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	
+
 	if verbose {
 		log.SetOutput(os.Stdout)
 	} else {
@@ -215,7 +215,7 @@ func setupLogging(verbose bool) {
 func init() {
 	// Set up logging
 	setupLogging(*verbose)
-	
+
 	// Log startup
 	log.Printf("Dotfile Sync Manager starting (verbose=%v)", *verbose)
 }

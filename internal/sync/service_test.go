@@ -13,15 +13,15 @@ import (
 func TestSyncService_New(t *testing.T) {
 	// Create a temporary directory for testing
 	tmpDir := t.TempDir()
-	
+
 	// Create git manager config
 	gitConfig := gitmanager.Config{
-		RepoPath:     tmpDir,
-		RemoteURL:    "https://github.com/test/test.git",
-		RemoteName:   "origin",
-		AuthorName:   "Test User",
-		AuthorEmail:  "test@example.com",
-		AuthType:     gitmanager.AuthStrategyNone,
+		RepoPath:    tmpDir,
+		RemoteURL:   "https://github.com/test/test.git",
+		RemoteName:  "origin",
+		AuthorName:  "Test User",
+		AuthorEmail: "test@example.com",
+		AuthType:    gitmanager.AuthStrategyNone,
 	}
 
 	// Create git manager
@@ -61,7 +61,7 @@ func TestSyncService_New(t *testing.T) {
 	defaultConfig := &Config{
 		RepoPath: tmpDir,
 	}
-	
+
 	service2, err := New(gitMgr, defaultConfig)
 	if err != nil {
 		t.Fatalf("Failed to create sync service with defaults: %v", err)
@@ -80,12 +80,12 @@ func TestSyncService_ConfigValidation(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	gitConfig := gitmanager.Config{
-		RepoPath:     tmpDir,
-		RemoteURL:    "https://github.com/test/test.git",
-		RemoteName:   "origin",
-		AuthorName:   "Test User",
-		AuthorEmail:  "test@example.com",
-		AuthType:     gitmanager.AuthStrategyNone,
+		RepoPath:    tmpDir,
+		RemoteURL:   "https://github.com/test/test.git",
+		RemoteName:  "origin",
+		AuthorName:  "Test User",
+		AuthorEmail: "test@example.com",
+		AuthType:    gitmanager.AuthStrategyNone,
 	}
 
 	gitMgr, err := gitmanager.NewGitManager(context.Background(), gitConfig)
@@ -118,14 +118,14 @@ func TestSyncService_ConfigValidation(t *testing.T) {
 
 func TestSyncService_EventCallbacks(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	gitConfig := gitmanager.Config{
-		RepoPath:     tmpDir,
-		RemoteURL:    "https://github.com/test/test.git",
-		RemoteName:   "origin",
-		AuthorName:   "Test User",
-		AuthorEmail:  "test@example.com",
-		AuthType:     gitmanager.AuthStrategyNone,
+		RepoPath:    tmpDir,
+		RemoteURL:   "https://github.com/test/test.git",
+		RemoteName:  "origin",
+		AuthorName:  "Test User",
+		AuthorEmail: "test@example.com",
+		AuthType:    gitmanager.AuthStrategyNone,
 	}
 
 	gitMgr, err := gitmanager.NewGitManager(context.Background(), gitConfig)
@@ -163,7 +163,7 @@ func TestSyncService_EventCallbacks(t *testing.T) {
 
 func TestSyncService_IgnoreFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	
+
 	// Create a .syncignore file
 	ignoreContent := `*.log
 *.tmp
@@ -177,12 +177,12 @@ node_modules/
 	}
 
 	gitConfig := gitmanager.Config{
-		RepoPath:     tmpDir,
-		RemoteURL:    "https://github.com/test/test.git",
-		RemoteName:   "origin",
-		AuthorName:   "Test User",
-		AuthorEmail:  "test@example.com",
-		AuthType:     gitmanager.AuthStrategyNone,
+		RepoPath:    tmpDir,
+		RemoteURL:   "https://github.com/test/test.git",
+		RemoteName:  "origin",
+		AuthorName:  "Test User",
+		AuthorEmail: "test@example.com",
+		AuthType:    gitmanager.AuthStrategyNone,
 	}
 
 	gitMgr, err := gitmanager.NewGitManager(context.Background(), gitConfig)
@@ -220,12 +220,12 @@ func TestSyncService_GetStats(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	gitConfig := gitmanager.Config{
-		RepoPath:     tmpDir,
-		RemoteURL:    "https://github.com/test/test.git",
-		RemoteName:   "origin",
-		AuthorName:   "Test User",
-		AuthorEmail:  "test@example.com",
-		AuthType:     gitmanager.AuthStrategyNone,
+		RepoPath:    tmpDir,
+		RemoteURL:   "https://github.com/test/test.git",
+		RemoteName:  "origin",
+		AuthorName:  "Test User",
+		AuthorEmail: "test@example.com",
+		AuthType:    gitmanager.AuthStrategyNone,
 	}
 
 	gitMgr, err := gitmanager.NewGitManager(context.Background(), gitConfig)
@@ -268,12 +268,12 @@ func TestSyncService_DynamicDirectoryWatching(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	gitConfig := gitmanager.Config{
-		RepoPath:     tmpDir,
-		RemoteURL:    "https://github.com/test/test.git",
-		RemoteName:   "origin",
-		AuthorName:   "Test User",
-		AuthorEmail:  "test@example.com",
-		AuthType:     gitmanager.AuthStrategyNone,
+		RepoPath:    tmpDir,
+		RemoteURL:   "https://github.com/test/test.git",
+		RemoteName:  "origin",
+		AuthorName:  "Test User",
+		AuthorEmail: "test@example.com",
+		AuthType:    gitmanager.AuthStrategyNone,
 	}
 
 	gitMgr, err := gitmanager.NewGitManager(context.Background(), gitConfig)

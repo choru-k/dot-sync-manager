@@ -210,17 +210,17 @@ func TestParser_EdgeCases(t *testing.T) {
 	}{
 		// Simple patterns that work
 		{"file.secret", true},
-		{"important.secret", false}, // negated
-		{"some/important.secret", false}, // also negated (matches *.secret then negated)
-		{"config/settings.json", true}, // matches config/**/settings.json
+		{"important.secret", false},        // negated
+		{"some/important.secret", false},   // also negated (matches *.secret then negated)
+		{"config/settings.json", true},     // matches config/**/settings.json
 		{"config/app/settings.json", true}, // matches config/**/settings.json
 		{"test.tmp", true},
-		{"cache", true}, // cache/** matches cache
-		{"cache/file.txt", true}, // cache/** matches files under cache
-		{"cache/important", false}, // negated pattern - exactly matches cache/important
+		{"cache", true},                  // cache/** matches cache
+		{"cache/file.txt", true},         // cache/** matches files under cache
+		{"cache/important", false},       // negated pattern - exactly matches cache/important
 		{"cache/subdir/important", true}, // not negated - matches cache/** but not cache/important
-		{"logs/app.log", true}, // logs/ matches logs directory
-		{"some/logs/app.log", true}, // logs/ matches logs component
+		{"logs/app.log", true},           // logs/ matches logs directory
+		{"some/logs/app.log", true},      // logs/ matches logs component
 		// Things that don't match
 		{"file.txt", false},
 		{"", false},
@@ -290,13 +290,13 @@ func TestParser_EmptyAndSpecialPatterns(t *testing.T) {
 		path     string
 		expected bool
 	}{
-		{"file.txt", true}, // matches *.txt
-		{"important.txt", false}, // negated - should match *.txt then get negated
+		{"file.txt", true},            // matches *.txt
+		{"important.txt", false},      // negated - should match *.txt then get negated
 		{"some/important.txt", false}, // negated - should match *.txt then get negated
-		{"temp/file.txt", true}, // temp/ matches directory
-		{"some/temp/file.txt", true}, // temp/ matches directory component
-		{".hidden.txt", true}, // matches *.txt
-		{"file.log", false}, // doesn't match *.txt
+		{"temp/file.txt", true},       // temp/ matches directory
+		{"some/temp/file.txt", true},  // temp/ matches directory component
+		{".hidden.txt", true},         // matches *.txt
+		{"file.log", false},           // doesn't match *.txt
 	}
 
 	for _, test := range tests {

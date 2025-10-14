@@ -43,12 +43,12 @@ cache/
 
 	// Create git manager config
 	gitConfig := gitmanager.Config{
-		RepoPath:     repoPath,
-		RemoteURL:    "https://github.com/test/test.git", // Dummy remote URL
-		RemoteName:   "origin",
-		AuthorName:   "Test User",
-		AuthorEmail:  "test@example.com",
-		AuthType:     gitmanager.AuthStrategyNone,
+		RepoPath:    repoPath,
+		RemoteURL:   "https://github.com/test/test.git", // Dummy remote URL
+		RemoteName:  "origin",
+		AuthorName:  "Test User",
+		AuthorEmail: "test@example.com",
+		AuthType:    gitmanager.AuthStrategyNone,
 	}
 
 	// Create git manager and initialize repo
@@ -159,8 +159,8 @@ cache/
 	expectedFiles := map[string]bool{
 		"config.txt":      true,
 		"important.log":   true,
-		"debug.log":       true,  // File exists but should be ignored by git
-		"cache/cache.txt": true,  // File exists but should be ignored by git
+		"debug.log":       true, // File exists but should be ignored by git
+		"cache/cache.txt": true, // File exists but should be ignored by git
 	}
 
 	// Check that all expected files exist

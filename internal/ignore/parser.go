@@ -9,9 +9,9 @@ import (
 
 // Pattern represents a single ignore pattern
 type Pattern struct {
-	raw      string
-	negated  bool
-	dirOnly  bool
+	raw     string
+	negated bool
+	dirOnly bool
 }
 
 // Parser handles parsing and matching of ignore patterns
@@ -42,7 +42,7 @@ func (p *Parser) LoadFromFile(filename string) error {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		
+
 		// Skip comments and empty lines
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -225,7 +225,7 @@ func (p *Parser) matchDoubleAsterisk(pattern, path string) bool {
 		// Check if path ends with suffix
 		if strings.HasSuffix(path, suffix) {
 			// Extract the middle part between prefix and suffix
-			middle := path[len(prefix):len(path)-len(suffix)]
+			middle := path[len(prefix) : len(path)-len(suffix)]
 			// Middle can be empty or contain any path
 			if middle == "" || strings.HasPrefix(middle, "/") && strings.HasSuffix(middle, "/") {
 				return true
