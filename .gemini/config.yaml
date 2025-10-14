@@ -1,0 +1,60 @@
+# Gemini Code Assist Configuration for Dotfile Sync Manager
+# This configuration enables code review only with appropriate settings for a Go project
+
+have_fun: false
+
+code_review:
+  disable: false
+  comment_severity_threshold: MEDIUM
+  max_review_comments: -1
+  pull_request_opened:
+    help: false
+    summary: true
+    code_review: true
+    include_drafts: true
+
+# Ignore patterns - files that Gemini should skip during review
+ignore_patterns:
+  # Build artifacts and binaries
+  - "bin/**"
+  - "dotfile-sync-manager"
+  - "*.exe"
+  
+  # Test coverage and reports
+  - "coverage.out"
+  - "*.coverprofile"
+  
+  # Go dependency files (auto-generated)
+  - "go.sum"
+  
+  # Git internals
+  - ".git/**"
+  
+  # Documentation files (optional - remove if you want docs reviewed)
+  - "*.md"
+  
+  # CI/CD workflows (optional - remove if you want workflow reviews)
+  - ".github/**"
+  
+  # Vendor directory (if using vendoring)
+  - "vendor/**"
+  
+  # IDE and editor files
+  - ".vscode/**"
+  - ".idea/**"
+  - "*.swp"
+  - "*.swo"
+  - "*~"
+  
+  # OS files
+  - ".DS_Store"
+  - "Thumbs.db"
+  
+  # Test fixtures and test data
+  - "testdata/**"
+  - "fixtures/**"
+  
+  # Temporary files
+  - "tmp/**"
+  - "temp/**"
+  - "*.tmp"
