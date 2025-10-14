@@ -1,11 +1,16 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
-	"syscall"
+	"os/signal"
 
+	"github.com/choru-k/dot-sync-manager/internal/config"
+	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
+	"github.com/choru-k/dot-sync-manager/internal/process"
+	syncservice "github.com/choru-k/dot-sync-manager/internal/sync"
 	"github.com/spf13/cobra"
 )
 
@@ -42,29 +47,13 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 
 	// Prepare command arguments
-	cmdArgs := []string{"-config", cfg.GetConfigPath()}
+	flagArgs := []string{"--config", cfg.GetConfigPath()}
 	if verbose {
-		cmdArgs = append(cmdArgs, "-verbose")
+		flagArgs = append(flagArgs, "--verbose")
 	}
 
 	if foreground {
-		// Run in foreground
-		fmt.Println("Starting dotfile sync daemon in foreground...")
-		fmt.Println("Press Ctrl+C to stop")
-
-		// This would normally start the sync service directly
-		// For now, we'll simulate it
-		fmt.Printf("🚀 Starting sync service for repository: %s\n", cfg.Git.RepoPath)
-		fmt.Printf("📊 Machine: %s\n", cfg.Machine.Name)
-		fmt.Printf("⚙️  Auto-sync: %v\n", cfg.Sync.AutoSyncEnabled)
-		fmt.Printf("⏱️  Pull interval: %d seconds\n", cfg.Sync.PullIntervalSeconds)
-		fmt.Printf("⏱️  Debounce: %d seconds\n", cfg.Sync.DebounceSeconds)
-
-		// In a real implementation, this would start the actual sync service
-		fmt.Println("\n🔄 Monitoring for file changes...")
-		fmt.Println("(This is a simulation - actual daemon would run indefinitely)")
-
-		return nil
+		return runForegroundDaemon(cfg)
 	}
 
 	// Run as daemon
@@ -77,16 +66,20 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create command for daemon
-	daemonCmd := exec.Command(execPath, cmdArgs...)
+	daemonArgs := append(append([]string{}, flagArgs...), "start", "--foreground")
+	daemonCmd := exec.Command(execPath, daemonArgs...)
 
-	// Set up process attributes for daemon
-	daemonCmd.SysProcAttr = &syscall.SysProcAttr{
-		Setsid: true, // Create new session
+	if attrs := daemonProcAttr(); attrs != nil {
+		daemonCmd.SysProcAttr = attrs
 	}
 
 	// Start daemon
 	if err := daemonCmd.Start(); err != nil {
 		return fmt.Errorf("failed to start daemon: %w", err)
+	}
+
+	if err := process.WritePID(daemonCmd.Process.Pid); err != nil {
+		fmt.Printf("⚠️  Warning: failed to write PID file: %v\n", err)
 	}
 
 	fmt.Printf("✅ Dotfile sync daemon started (PID: %d)\n", daemonCmd.Process.Pid)
@@ -100,3 +93,53 @@ func runStart(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+func runForegroundDaemon(cfg *config.SyncConfig) error {
+	fmt.Println("Starting dotfile sync daemon in foreground...")
+	fmt.Println("Press Ctrl+C to stop")
+
+	gmCfg := cfg.ToGitManagerConfig()
+	ctx := context.Background()
+
+	gitMgr, err := gitmanager.NewGitManager(ctx, gmCfg)
+	if err != nil {
+		return fmt.Errorf("failed to initialize git manager: %w", err)
+	}
+
+	serviceCfg := cfg.ToSyncServiceConfig()
+	syncCfg := syncservice.Config{
+		RepoPath:        serviceCfg.RepoPath,
+		DebounceDelay:   serviceCfg.DebounceDelay,
+		AutoSyncEnabled: serviceCfg.AutoSyncEnabled,
+		IgnoreFile:      serviceCfg.IgnoreFile,
+		Backoff:         serviceCfg.Backoff,
+	}
+	syncSvc, err := syncservice.New(gitMgr, &syncCfg)
+	if err != nil {
+		return fmt.Errorf("failed to create sync service: %w", err)
+	}
+
+	if err := syncSvc.Start(); err != nil {
+		return fmt.Errorf("failed to start sync service: %w", err)
+	}
+	defer syncSvc.Stop()
+
+	if err := process.WritePID(os.Getpid()); err != nil {
+		fmt.Printf("⚠️  Warning: failed to write PID file: %v\n", err)
+	}
+
+	fmt.Printf("🚀 Watching repository: %s\n", cfg.Git.RepoPath)
+	fmt.Printf("📊 Machine: %s\n", cfg.Machine.Name)
+	fmt.Printf("⚙️  Auto-sync enabled: %v\n", cfg.Sync.AutoSyncEnabled)
+
+	signalCtx, cancel := signal.NotifyContext(context.Background(), daemonSignals()...)
+	defer cancel()
+
+	<-signalCtx.Done()
+	fmt.Println("\n🛑 Stopping sync service...")
+
+	if err := process.RemovePID(); err != nil {
+		fmt.Printf("⚠️  Warning: failed to remove PID file: %v\n", err)
+	}
+
+	return nil
+}

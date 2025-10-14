@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -53,8 +54,13 @@ func runInit(cmd *cobra.Command, args []string) error {
 	repoPath = expandPath(repoPath)
 
 	// Check if directory already exists
-	if _, err := os.Stat(repoPath); err == nil && !force {
-		return fmt.Errorf("directory %s already exists. Use --force to overwrite", repoPath)
+	if _, err := os.Stat(repoPath); err == nil {
+		if !force {
+			return fmt.Errorf("directory %s already exists\n\nOptions:\n  - Use --force to reinitialize\n  - Use a different --path\n  - Remove the existing directory first", repoPath)
+		}
+		if err := os.RemoveAll(repoPath); err != nil {
+			return fmt.Errorf("failed to remove existing directory: %w", err)
+		}
 	}
 
 	// Get machine name
@@ -71,28 +77,32 @@ func runInit(cmd *cobra.Command, args []string) error {
 		authorEmail = promptForInput("Enter your email: ", "")
 	}
 
+	ctx := context.Background()
+
 	// Create repository
+	gmCfg := gitmanager.Config{
+		RepoPath:    repoPath,
+		RemoteURL:   gitURL,
+		RemoteName:  "origin",
+		AuthorName:  authorName,
+		AuthorEmail: authorEmail,
+		AuthType:    gitmanager.AuthStrategyNone,
+	}
+
 	if gitURL != "" {
-		// Clone existing repository
 		fmt.Printf("Cloning repository from %s...\n", gitURL)
-
-		// TODO: Integrate with gitmanager to clone repository
-		// This should call gitmanager.Clone(ctx, gitURL, repoPath, auth)
-		fmt.Printf("⚠️  Git cloning not yet implemented - please clone manually:\n")
-		fmt.Printf("   git clone %s %s\n", gitURL, repoPath)
 	} else {
-		// Create new repository
 		fmt.Printf("Creating new repository in %s...\n", repoPath)
+	}
 
-		// Create directory
-		if err := os.MkdirAll(repoPath, 0755); err != nil {
-			return fmt.Errorf("failed to create directory: %w", err)
-		}
+	if _, err := gitmanager.NewGitManager(ctx, gmCfg); err != nil {
+		return fmt.Errorf("failed to set up repository: %w", err)
+	}
 
-		// TODO: Integrate with gitmanager to initialize repository
-		// This should call gitmanager.Init(ctx, repoPath)
-		fmt.Printf("⚠️  Git initialization not yet implemented - please initialize manually:\n")
-		fmt.Printf("   cd %s && git init\n", repoPath)
+	if gitURL != "" {
+		fmt.Println("✅ Repository cloned")
+	} else {
+		fmt.Println("✅ Repository initialized")
 	}
 
 	// Create configuration
@@ -108,7 +118,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 			Branch:      "main",
 			AuthorName:  authorName,
 			AuthorEmail: authorEmail,
-			AuthType:    gitmanager.AuthStrategySSH,
+			AuthType:    gitmanager.AuthStrategyNone,
 		},
 		Sync: config.SyncSettings{
 			AutoSyncEnabled:     true,
@@ -144,6 +154,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Save configuration
 	configPath := filepath.Join(repoPath, ".sync-config.json")
+	cfg.ConfigPath = configPath
+
 	if err := cfg.SaveToFile(configPath); err != nil {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
@@ -209,7 +221,6 @@ node_modules/
 
 	return nil
 }
-
 
 func getMachineName() (string, error) {
 	if hostname, err := os.Hostname(); err == nil {

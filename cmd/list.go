@@ -41,8 +41,14 @@ func runList(cmd *cobra.Command, args []string) error {
 	if showMappings && len(cfg.Mappings) > 0 {
 		fmt.Printf("File Mappings (%d):\n\n", len(cfg.Mappings))
 		for source, target := range cfg.Mappings {
+			sourcePath := filepath.Join(cfg.Git.RepoPath, source)
+			status, statusIcon := checkSymlinkStatus(sourcePath, target)
+
 			fmt.Printf("📄 %s\n", source)
-			fmt.Printf("   🔗 %s\n", target)
+			fmt.Printf("   🔗 %s %s\n", target, statusIcon)
+			if status != "linked" {
+				fmt.Printf("   ⚠️  Status: %s\n", status)
+			}
 			fmt.Println()
 		}
 		return nil
@@ -60,9 +66,9 @@ func runList(cmd *cobra.Command, args []string) error {
 
 		// Skip hidden files and directories (except .gitignore, .syncignore, .sync-config.json)
 		if strings.HasPrefix(info.Name(), ".") &&
-		   info.Name() != ".gitignore" &&
-		   info.Name() != ".syncignore" &&
-		   info.Name() != ".sync-config.json" {
+			info.Name() != ".gitignore" &&
+			info.Name() != ".syncignore" &&
+			info.Name() != ".sync-config.json" {
 			if info.IsDir() {
 				return filepath.SkipDir
 			}
@@ -122,4 +128,54 @@ func runList(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("\n📁 Repository: %s\n", repoPath)
 	return nil
+}
+
+// checkSymlinkStatus checks if a symlink exists and is valid
+// Returns: (status string, status icon string)
+func checkSymlinkStatus(sourcePath, targetPath string) (string, string) {
+	// Expand target path
+	targetPath = expandPath(targetPath)
+
+	// Check if target exists
+	targetInfo, err := os.Lstat(targetPath)
+	if os.IsNotExist(err) {
+		return "not linked", "○"
+	}
+	if err != nil {
+		return "error checking", "✗"
+	}
+
+	// Check if target is a symlink
+	if targetInfo.Mode()&os.ModeSymlink == 0 {
+		// Target exists but is not a symlink (could be original file)
+		return "not a symlink", "○"
+	}
+
+	// Read the symlink target
+	linkTarget, err := os.Readlink(targetPath)
+	if err != nil {
+		return "broken symlink", "✗"
+	}
+
+	// Resolve to absolute path for comparison
+	absLinkTarget, err := filepath.Abs(linkTarget)
+	if err != nil {
+		absLinkTarget = linkTarget
+	}
+	absSourcePath, err := filepath.Abs(sourcePath)
+	if err != nil {
+		absSourcePath = sourcePath
+	}
+
+	// Check if symlink points to the correct source
+	if absLinkTarget != absSourcePath {
+		return "points elsewhere", "✗"
+	}
+
+	// Verify source file exists
+	if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
+		return "source missing", "✗"
+	}
+
+	return "linked", "✓"
 }

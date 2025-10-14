@@ -354,6 +354,10 @@ func (c *SyncConfig) SaveToFile(filename string) error {
 		return fmt.Errorf("config: failed to create config directory: %w", err)
 	}
 
+	if c.Git.Password != "" || c.Git.SSHKeyPassphrase != "" {
+		fmt.Fprintln(os.Stderr, "⚠️  Warning: configuration contains plaintext credentials; ensure this file remains private")
+	}
+
 	// Marshal to JSON with indentation
 	data, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
@@ -444,7 +448,7 @@ func (c *SyncConfig) Validate() error {
 
 	// Validate conflict resolution settings
 	if c.ConflictResolution.Strategy == "" {
-		c.ConflictResolution.Strategy = "manual" // Default to manual
+		return fmt.Errorf("conflict resolution strategy is required")
 	}
 
 	validStrategies := []string{"manual", "auto_keep_local", "auto_keep_remote"}
@@ -469,7 +473,7 @@ func (c *SyncConfig) Validate() error {
 
 	// Validate UI settings
 	if c.UI.Theme == "" {
-		c.UI.Theme = "auto" // Default to auto
+		return fmt.Errorf("UI theme is required")
 	}
 
 	validThemes := []string{"auto", "light", "dark"}
@@ -535,8 +539,8 @@ func (c *SyncConfig) Validate() error {
 		}
 
 		// Always validate manual sync timeout if specified
-		if c.Sync.Backoff.ManualSyncTimeoutSeconds < 0 {
-			return fmt.Errorf("backoff manual sync timeout must be non-negative")
+		if c.Sync.Backoff.ManualSyncTimeoutSeconds <= 0 {
+			c.Sync.Backoff.ManualSyncTimeoutSeconds = 10
 		}
 	}
 

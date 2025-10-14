@@ -59,14 +59,19 @@ func (c *Config) validate() error {
 	if !filepath.IsAbs(c.RepoPath) {
 		return fmt.Errorf("gitmanager: repo path must be absolute (%s)", c.RepoPath)
 	}
-	if c.RemoteURL == "" {
-		return errors.New("gitmanager: remote URL is required")
-	}
 	if c.RemoteName == "" {
 		c.RemoteName = defaultRemoteName
 	}
+	if c.AuthType == "" {
+		c.AuthType = AuthStrategyNone
+	}
 	if c.AuthorName == "" || c.AuthorEmail == "" {
 		return errors.New("gitmanager: author name and email are required")
+	}
+
+	if c.RemoteURL == "" {
+		// Local repositories without remotes are allowed.
+		return nil
 	}
 
 	switch c.AuthType {

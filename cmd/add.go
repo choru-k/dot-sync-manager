@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,15 +37,47 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	filePath = expandPath(filePath)
 
 	// Check if file exists and validate it's a file (not a directory)
-	fileInfo, err := os.Stat(filePath)
+	fileInfo, err := os.Lstat(filePath) // Use Lstat to detect symlinks
 	if os.IsNotExist(err) {
 		return fmt.Errorf("file does not exist: %s", filePath)
 	}
 	if err != nil {
 		return fmt.Errorf("failed to stat file: %w", err)
 	}
+
+	// Check if it's a directory
 	if fileInfo.IsDir() {
 		return fmt.Errorf("path is a directory, not a file: %s\nHint: Use symlinks for directories or add individual files within the directory", filePath)
+	}
+
+	// Check if file is already a symlink
+	if fileInfo.Mode()&os.ModeSymlink != 0 {
+		linkTarget, _ := os.Readlink(filePath)
+		return fmt.Errorf("file is already a symlink: %s -> %s\nHint: Only add actual files, not symlinks", filePath, linkTarget)
+	}
+
+	// Warn if file appears to be sensitive
+	if isSensitiveFile(filePath) {
+		fmt.Printf("⚠️  WARNING: This file may contain sensitive data:\n")
+		fmt.Printf("   %s\n\n", filePath)
+		fmt.Printf("   Sensitive files should NOT be added to dotfiles repositories as they will be:\n")
+		fmt.Printf("   - Stored in Git history (cannot be fully removed)\n")
+		fmt.Printf("   - Potentially pushed to remote repositories\n")
+		fmt.Printf("   - Accessible to anyone with repository access\n\n")
+		fmt.Printf("   Common sensitive files include:\n")
+		fmt.Printf("   - SSH private keys (.ssh/id_*, .ssh/*.pem)\n")
+		fmt.Printf("   - Cloud credentials (.aws/credentials, .gcp/*, .azure/*)\n")
+		fmt.Printf("   - GPG private keys (.gnupg/private-keys-v1.d/*, *.key)\n")
+		fmt.Printf("   - Environment files (.env, .env.local, .env.production)\n")
+		fmt.Printf("   - Database credentials and API tokens\n\n")
+		fmt.Printf("Type 'yes' to continue anyway, or anything else to cancel: ")
+
+		var response string
+		fmt.Scanln(&response)
+		if response != "yes" {
+			return fmt.Errorf("operation cancelled by user")
+		}
+		fmt.Println()
 	}
 
 	// Load configuration
@@ -59,15 +92,35 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get absolute path: %w", err)
 	}
 
+	// Check if file is already inside the dotfiles repository
+	if strings.HasPrefix(absPath, cfg.Git.RepoPath+string(os.PathSeparator)) || absPath == cfg.Git.RepoPath {
+		return fmt.Errorf("file is already inside dotfiles repository: %s\nHint: Only add files from outside the repository", absPath)
+	}
+
 	// Determine target path in dotfiles repository
 	targetPath, err := getTargetPath(cfg.Git.RepoPath, absPath)
 	if err != nil {
 		return fmt.Errorf("failed to determine target path: %w", err)
 	}
 
+	absTarget, err := filepath.Abs(targetPath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve target path: %w", err)
+	}
+
+	absRepo, err := filepath.Abs(cfg.Git.RepoPath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve repository path: %w", err)
+	}
+
+	relTarget, err := filepath.Rel(absRepo, absTarget)
+	if err != nil || strings.HasPrefix(relTarget, "..") || relTarget == "." {
+		return fmt.Errorf("target path is outside repository: %s", absTarget)
+	}
+
 	// Check if target already exists
 	if _, err := os.Stat(targetPath); err == nil {
-		return fmt.Errorf("target file already exists in dotfiles: %s", targetPath)
+		return fmt.Errorf("target file already exists in dotfiles: %s\nThis file may have been added previously", targetPath)
 	}
 
 	// Create target directory if needed
@@ -78,59 +131,60 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	// Track backup path for potential rollback
 	var backupPath string
+	var backupCreated bool
 
 	// Backup original file if it exists and is not a symlink
 	if fileInfo, err := os.Lstat(filePath); err == nil && fileInfo.Mode()&os.ModeSymlink == 0 {
-		// Use configured backup directory if available
 		backupDir := cfg.ConflictResolution.BackupDir
 		if backupDir == "" {
 			backupDir = filepath.Join(cfg.Git.RepoPath, ".backup")
 		}
 
-		// Create backup directory if needed
 		if err := os.MkdirAll(backupDir, 0755); err != nil {
 			return fmt.Errorf("failed to create backup directory: %w", err)
 		}
 
-		// Generate backup filename with timestamp
 		timestamp := time.Now().Format("20060102-150405")
 		filename := filepath.Base(filePath)
 		backupPath = filepath.Join(backupDir, fmt.Sprintf("%s-%s", filename, timestamp))
 
-		if err := os.Rename(filePath, backupPath); err != nil {
+		if err := copyFile(filePath, backupPath); err != nil {
 			return fmt.Errorf("failed to backup original file: %w", err)
 		}
+		backupCreated = true
 		fmt.Printf("📦 Backed up original file to: %s\n", backupPath)
 	}
 
 	// Move file to dotfiles directory
 	if err := os.Rename(filePath, targetPath); err != nil {
-		// Rollback: Restore backup if it was created
-		if backupPath != "" {
-			_ = os.Rename(backupPath, filePath)
+		if backupCreated {
+			fmt.Printf("⚠️  Failed to move file; original remains at %s (backup at %s)\n", filePath, backupPath)
 		}
 		return fmt.Errorf("failed to move file to dotfiles: %w", err)
 	}
 
 	// Create symlink
 	if err := os.Symlink(targetPath, filePath); err != nil {
-		// Rollback: Move file back from dotfiles
-		_ = os.Rename(targetPath, filePath)
-		// Rollback: Restore the original backup if it was created
-		if backupPath != "" {
-			_ = os.Rename(filePath, backupPath)
+		// Attempt to restore original file location
+		if restoreErr := os.Rename(targetPath, filePath); restoreErr != nil {
+			fmt.Printf("❌ Failed to restore original file from dotfiles: %v\n", restoreErr)
 		}
-		return fmt.Errorf("failed to create symlink: %w", err)
+		// Keep backup for manual recovery
+		return fmt.Errorf("failed to create symlink: %w\nOriginal file restored to %s; backup retained at %s", err, filePath, backupPath)
 	}
 
 	// Success! Clean up the backup since operation completed successfully
-	if backupPath != "" {
-		_ = os.Remove(backupPath)
+	if backupCreated {
+		if err := os.Remove(backupPath); err != nil {
+			fmt.Printf("⚠️  Warning: failed to remove backup file %s: %v\n", backupPath, err)
+		}
 	}
 
 	// Update mappings in configuration
-	sourceRelative := strings.TrimPrefix(targetPath, cfg.Git.RepoPath)
-	sourceRelative = strings.TrimPrefix(sourceRelative, "/")
+	sourceRelative, err := filepath.Rel(cfg.Git.RepoPath, targetPath)
+	if err != nil {
+		return fmt.Errorf("failed to compute mapping path: %w", err)
+	}
 
 	if cfg.Mappings == nil {
 		cfg.Mappings = make(map[string]string)
@@ -165,17 +219,104 @@ func getTargetPath(repoPath, sourcePath string) (string, error) {
 	// If source is in home directory, strip the home directory prefix
 	if strings.HasPrefix(sourcePath, homeDir) {
 		relativePath := strings.TrimPrefix(sourcePath, homeDir)
-		relativePath = strings.TrimPrefix(relativePath, "/")
+		relativePath = strings.TrimPrefix(relativePath, string(os.PathSeparator))
 
-		// Remove leading dot from filename (as per PRD repository structure)
-		if strings.HasPrefix(relativePath, ".") {
-			relativePath = relativePath[1:]
+		parts := strings.Split(relativePath, string(os.PathSeparator))
+		if len(parts) > 0 {
+			parts[0] = strings.TrimPrefix(parts[0], ".")
 		}
+		normalized := filepath.Join(parts...)
 
-		return filepath.Join(repoPath, relativePath), nil
+		return filepath.Join(repoPath, normalized), nil
 	}
 
 	// For files outside home directory, use the full path structure
-	relativePath := strings.TrimPrefix(sourcePath, "/")
+	relativePath := strings.TrimPrefix(sourcePath, string(os.PathSeparator))
 	return filepath.Join(repoPath, relativePath), nil
+}
+
+func copyFile(src, dst string) error {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+
+	destFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	defer destFile.Close()
+
+	if _, err := io.Copy(destFile, sourceFile); err != nil {
+		return err
+	}
+
+	return destFile.Sync()
+}
+
+// isSensitiveFile checks if a file path matches patterns for sensitive files
+func isSensitiveFile(path string) bool {
+	// Normalize path separators
+	path = filepath.ToSlash(path)
+	baseName := filepath.Base(path)
+
+	// Sensitive file patterns
+	sensitivePatterns := []string{
+		// SSH keys
+		".ssh/id_rsa", ".ssh/id_dsa", ".ssh/id_ecdsa", ".ssh/id_ed25519",
+		".ssh/identity",
+		// Environment files
+		".env", ".env.local", ".env.production", ".env.development", ".env.test",
+		// Cloud credentials
+		".aws/credentials", ".aws/config",
+		".gcp/credentials", ".gcp/key.json",
+		".azure/credentials",
+		// GPG keys
+		".gnupg/secring.gpg", ".gnupg/pubring.gpg",
+		// Database files
+		".mysql_history", ".psql_history", ".pgpass",
+		// Docker secrets
+		".docker/config.json",
+	}
+
+	// Sensitive filename patterns
+	sensitiveNames := []string{
+		"credentials", "secrets", "secret", "password", "passwd",
+		"token", "auth", "private", "privatekey",
+	}
+
+	// Sensitive extensions
+	sensitiveExtensions := []string{
+		".pem", ".key", ".p12", ".pfx", ".jks", ".keystore",
+	}
+
+	// Check exact patterns
+	for _, pattern := range sensitivePatterns {
+		if strings.Contains(path, pattern) {
+			return true
+		}
+	}
+
+	// Check if basename contains sensitive keywords
+	lowerBaseName := strings.ToLower(baseName)
+	for _, name := range sensitiveNames {
+		if strings.Contains(lowerBaseName, name) {
+			return true
+		}
+	}
+
+	// Check extensions
+	for _, ext := range sensitiveExtensions {
+		if strings.HasSuffix(lowerBaseName, ext) {
+			return true
+		}
+	}
+
+	// Check for files inside .gnupg/private-keys-v1.d/
+	if strings.Contains(path, ".gnupg/private-keys-v1.d/") {
+		return true
+	}
+
+	return false
 }

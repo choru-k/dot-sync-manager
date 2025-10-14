@@ -338,44 +338,44 @@ func TestFindConfigFile(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		explicitPath   string
-		prdConfigExists bool
+		name               string
+		explicitPath       string
+		prdConfigExists    bool
 		legacyConfigExists bool
-		expectedPath  string
-		expectedExists bool
+		expectedPath       string
+		expectedExists     bool
 	}{
 		{
-			name:              "explicit path takes priority",
-			explicitPath:      filepath.Join(tmpDir, "custom.json"),
-			prdConfigExists:   true,
+			name:               "explicit path takes priority",
+			explicitPath:       filepath.Join(tmpDir, "custom.json"),
+			prdConfigExists:    true,
 			legacyConfigExists: true,
-			expectedPath:      filepath.Join(tmpDir, "custom.json"),
-			expectedExists:    false, // We don't create it in this test
+			expectedPath:       filepath.Join(tmpDir, "custom.json"),
+			expectedExists:     false, // We don't create it in this test
 		},
 		{
-			name:              "PRD location used when exists",
-			explicitPath:      "",
-			prdConfigExists:   true,
+			name:               "PRD location used when exists",
+			explicitPath:       "",
+			prdConfigExists:    true,
 			legacyConfigExists: false,
-			expectedPath:      filepath.Join(dotfilesDir, ".sync-config.json"),
-			expectedExists:    true,
+			expectedPath:       filepath.Join(dotfilesDir, ".sync-config.json"),
+			expectedExists:     true,
 		},
 		{
-			name:              "legacy location used when PRD doesn't exist",
-			explicitPath:      "",
-			prdConfigExists:   false,
+			name:               "legacy location used when PRD doesn't exist",
+			explicitPath:       "",
+			prdConfigExists:    false,
 			legacyConfigExists: true,
-			expectedPath:      filepath.Join(tmpDir, ".dotfile-sync.json"),
-			expectedExists:    true,
+			expectedPath:       filepath.Join(tmpDir, ".dotfile-sync.json"),
+			expectedExists:     true,
 		},
 		{
-			name:              "no config files exist",
-			explicitPath:      "",
-			prdConfigExists:   false,
+			name:               "no config files exist",
+			explicitPath:       "",
+			prdConfigExists:    false,
 			legacyConfigExists: false,
-			expectedPath:      filepath.Join(dotfilesDir, ".sync-config.json"),
-			expectedExists:    false,
+			expectedPath:       filepath.Join(dotfilesDir, ".sync-config.json"),
+			expectedExists:     false,
 		},
 	}
 
@@ -542,13 +542,14 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			errMsg:  "invalid conflict resolution strategy",
 		},
 		{
-			name: "conflict strategy defaults to manual",
+			name: "empty conflict strategy",
 			config: func() *SyncConfig {
 				c := DefaultConfig()
 				c.ConflictResolution.Strategy = ""
 				return c
 			}(),
-			wantErr: false,
+			wantErr: true,
+			errMsg:  "conflict resolution strategy is required",
 		},
 		{
 			name: "backup retention too long",
@@ -571,13 +572,14 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			errMsg:  "invalid UI theme",
 		},
 		{
-			name: "UI theme defaults to auto",
+			name: "empty UI theme",
 			config: func() *SyncConfig {
 				c := DefaultConfig()
 				c.UI.Theme = ""
 				return c
 			}(),
-			wantErr: false,
+			wantErr: true,
+			errMsg:  "UI theme is required",
 		},
 		{
 			name: "log size too large",

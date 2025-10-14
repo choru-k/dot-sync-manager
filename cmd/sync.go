@@ -1,8 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"time"
 
+	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
+	git "github.com/go-git/go-git/v5"
 	"github.com/spf13/cobra"
 )
 
@@ -36,37 +40,66 @@ func runSync(cmd *cobra.Command, args []string) error {
 	fmt.Println("🔄 Triggering manual sync...")
 	fmt.Printf("📁 Repository: %s\n", cfg.Git.RepoPath)
 
+	if isDaemonRunning() {
+		fmt.Println("ℹ️  Note: Daemon is running; manual sync will run alongside background sync")
+	}
+
+	gmCfg := cfg.ToGitManagerConfig()
+	ctx := context.Background()
+
+	gitMgr, err := gitmanager.NewGitManager(ctx, gmCfg)
+	if err != nil {
+		return fmt.Errorf("failed to prepare git repository: %w", err)
+	}
+
+	worktree, err := gitMgr.Repo().Worktree()
+	if err != nil {
+		return fmt.Errorf("failed to open worktree: %w", err)
+	}
+
+	status, err := worktree.Status()
+	if err != nil {
+		return fmt.Errorf("failed to read repository status: %w", err)
+	}
+
+	if status.IsClean() {
+		fmt.Println("✅ No changes to sync")
+		return nil
+	}
+
 	if dryRun {
 		fmt.Println("🔍 Dry run mode - no changes will be made")
-		// In a real implementation, this would check for changes without committing
-		fmt.Println("📋 Would stage and commit any changes")
+		for path, fileStatus := range status {
+			if fileStatus.Worktree == git.Unmodified && fileStatus.Staging == git.Unmodified {
+				continue
+			}
+			fmt.Printf(" • %s\n", path)
+		}
 		if cfg.Git.RemoteURL != "" {
 			fmt.Println("📤 Would push to remote repository")
 		}
 		return nil
 	}
 
-	// Check if daemon is running
-	if isDaemonRunning() {
-		fmt.Println("ℹ️  Note: Daemon is running, sync will be handled automatically")
-		fmt.Println("💡 Use 'dsm stop' to stop the daemon if you want manual control")
+	changed, err := gitMgr.StageCommitAndPush(ctx, time.Now())
+	if err != nil {
+		return fmt.Errorf("failed to sync changes: %w", err)
+	}
+
+	if len(changed) == 0 {
+		fmt.Println("✅ No changes to sync")
 		return nil
 	}
 
-	// In a real implementation, this would:
-	// 1. Stage all changes
-	// 2. Create a commit with timestamp
-	// 3. Push to remote if configured
-	fmt.Println("📋 Staging changes...")
-	fmt.Println("📝 Creating commit...")
-
-	if cfg.Git.RemoteURL != "" {
-		fmt.Println("📤 Pushing to remote...")
-	} else {
-		fmt.Println("ℹ️  No remote configured, skipping push")
+	fmt.Println("✅ Manual sync completed")
+	fmt.Println("📋 Committed files:")
+	for _, file := range changed {
+		fmt.Printf(" • %s\n", file)
 	}
 
-	fmt.Println("✅ Manual sync completed")
+	if cfg.Git.RemoteURL == "" {
+		fmt.Println("ℹ️  No remote configured, skipping push")
+	}
 
 	return nil
 }

@@ -55,6 +55,19 @@ func (gm *GitManager) bootstrapRepo(ctx context.Context) error {
 	}
 
 	if _, err := os.Stat(gm.cfg.RepoPath); errors.Is(err, os.ErrNotExist) {
+		if gm.cfg.RemoteURL == "" {
+			if err := os.MkdirAll(gm.cfg.RepoPath, 0o755); err != nil {
+				return fmt.Errorf("gitmanager: create repo dir: %w", err)
+			}
+
+			repo, err := git.PlainInit(gm.cfg.RepoPath, false)
+			if err != nil {
+				return fmt.Errorf("gitmanager: init repo: %w", err)
+			}
+			gm.repo = repo
+			return nil
+		}
+
 		if err := os.MkdirAll(filepath.Dir(gm.cfg.RepoPath), 0o755); err != nil {
 			return fmt.Errorf("gitmanager: create parent dir: %w", err)
 		}
@@ -98,6 +111,9 @@ func (gm *GitManager) bootstrapRepo(ctx context.Context) error {
 
 // ensureRemote keeps remote configuration aligned with Config.
 func (gm *GitManager) ensureRemote() error {
+	if gm.cfg.RemoteURL == "" {
+		return nil
+	}
 	remote, err := gm.repo.Remote(gm.cfg.RemoteName)
 	if err != nil {
 		if errors.Is(err, git.ErrRemoteNotFound) {
@@ -196,6 +212,10 @@ func (gm *GitManager) Push(ctx context.Context) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	default:
+	}
+
+	if gm.cfg.RemoteURL == "" {
+		return nil
 	}
 
 	err := gm.repo.PushContext(ctx, &git.PushOptions{
