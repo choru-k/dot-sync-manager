@@ -1,7 +1,8 @@
 name: Claude Code
 
-# Trigger Claude Code only when someone comments "/claude review"
-# This enables manual code review on demand rather than automatic triggering
+# Trigger Claude Code only when someone comments "@claude"
+# This enables manual assistance on demand rather than automatic triggering
+# Claude will use the comment body as the prompt for maximum flexibility
 on:
   issue_comment:
     types: [created]
@@ -15,10 +16,10 @@ on:
 jobs:
   claude:
     if: |
-      (github.event_name == 'issue_comment' && (contains(github.event.comment.body, '/claude review') || contains(github.event.comment.body, '@claude'))) ||
-      (github.event_name == 'pull_request_review_comment' && (contains(github.event.comment.body, '/claude review') || contains(github.event.comment.body, '@claude'))) ||
-      (github.event_name == 'pull_request_review' && (contains(github.event.review.body, '/claude review') || contains(github.event.review.body, '@claude'))) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '/claude review') || contains(github.event.issue.title, '/claude review') || contains(github.event.issue.body, '@claude')))
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -33,7 +34,8 @@ jobs:
           fetch-depth: 1
 
       - name: Run Claude Code
-        # Triggered by commenting "/claude review" on PRs, issues, or reviews
+        # Triggered by commenting "@claude" on PRs, issues, or reviews
+        # Claude will use the comment body as the prompt
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
@@ -42,22 +44,6 @@ jobs:
           # This is an optional setting that allows Claude to read CI results on PRs
           additional_permissions: |
             actions: read
-
-          # Optional: Give a custom prompt to Claude. If this is not specified, Claude will perform the instructions specified in the comment that tagged it.
-          prompt: |
-            REPO: ${{ github.repository }}
-            ISSUE/PR NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
-
-            Please review this pull request and provide feedback on:
-            - Code quality and best practices
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Test coverage
-
-            Use the repository's CLAUDE.md for guidance on style and conventions. Be constructive and helpful in your feedback.
-
-            Use `gh pr comment` or `gh issue comment` with your Bash tool to leave your review as a comment.
 
           # Optional: Add claude_args to customize behavior and configuration
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
