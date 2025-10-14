@@ -25,7 +25,7 @@ func getProcessInfo(pid int) (imageName string, exists bool) {
 	// Use csv.Reader for robust parsing
 	reader := csv.NewReader(strings.NewReader(string(output)))
 	records, err := reader.ReadAll()
-	if err != nil || len(records) < 2 {
+	if err != nil || len(records) < 2 || len(records[1]) < 1 {
 		return "", false
 	}
 
