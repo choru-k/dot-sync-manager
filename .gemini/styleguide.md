@@ -181,6 +181,29 @@ if err := util.ExpandPath(path); err != nil {
 
 **Rationale**: Error wrapping preserves stack and adds context.
 
+### Rule 7: Fail Fast on Path Resolution Errors
+**Context**: When resolving paths to absolute, errors should not be silently ignored.
+
+**✅ DO:**
+```go
+absPath, err := filepath.Abs(filename)
+if err != nil {
+    return nil, fmt.Errorf("failed to resolve absolute path for %s: %w", filename, err)
+}
+config.ConfigPath = absPath  // Guaranteed absolute
+```
+
+**❌ DON'T:**
+```go
+absPath, err := filepath.Abs(filename)
+if err != nil {
+    absPath = filename  // Silent fallback - could be relative!
+}
+config.ConfigPath = absPath  // Might not be absolute!
+```
+
+**Rationale**: Other code may assume `ConfigPath` is always absolute. Failing fast prevents downstream issues.
+
 ## Configuration Management
 
 ### Rule 7: Separate Normalization from Validation
@@ -452,6 +475,40 @@ if err := expand(&c.Git.SSHKeyPath, "git.ssh_key_path"); err != nil { return err
 
 **Rationale**: Logical grouping improves code readability.
 
+### Rule 17: Comment Accuracy with JSON Tags
+**Context**: Comments about optional fields with `omitempty` can be misleading with primitive types.
+
+**✅ DO:**
+```go
+// If manual sync timeout is not set (or is 0), a default of 10 seconds is used.
+// A negative value is invalid.
+ManualSyncTimeoutSeconds int `json:"manual_sync_timeout_seconds,omitempty"`
+
+// Validation
+if c.ManualSyncTimeoutSeconds < 0 {
+    return fmt.Errorf("timeout cannot be negative")
+}
+
+// Usage with default
+timeout := 10 * time.Second  // default
+if c.ManualSyncTimeoutSeconds > 0 {
+    timeout = time.Duration(c.ManualSyncTimeoutSeconds) * time.Second
+}
+```
+
+**❌ DON'T:**
+```go
+// Validate only if explicitly set (since it's optional with omitempty)
+ManualSyncTimeoutSeconds int `json:"manual_sync_timeout_seconds,omitempty"`
+
+// MISLEADING: Can't distinguish between omitted and explicit 0 with int type!
+if c.ManualSyncTimeoutSeconds < 0 {
+    return fmt.Errorf("timeout cannot be negative")
+}
+```
+
+**Rationale**: With `int` + `omitempty`, both omitted and explicit 0 appear as 0 in the struct. Comments must reflect this reality. Use `*int` if you need to distinguish nil from 0.
+
 ## Summary Checklist
 
 When writing configuration-related code, ensure:
@@ -459,6 +516,7 @@ When writing configuration-related code, ensure:
 - [ ] All path fields are expanded consistently in a dedicated method
 - [ ] Path expansion returns errors, not silently failing
 - [ ] Tilde expansion uses `path[2:]` for `~/` prefix
+- [ ] Path resolution errors propagated immediately (no silent fallbacks)
 - [ ] Validation only checks, never modifies state
 - [ ] Validation messages use "must" not "should"
 - [ ] Magic numbers are extracted to named constants
@@ -466,4 +524,5 @@ When writing configuration-related code, ensure:
 - [ ] Tests use `t.Cleanup` instead of `defer`
 - [ ] Tests check error returns from setup functions
 - [ ] Error messages include context via wrapping
+- [ ] Comments accurately reflect behavior (especially with `omitempty`)
 - [ ] Separation of concerns: normalize → validate → use

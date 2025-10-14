@@ -18,22 +18,23 @@ Quick reference guide for maintaining code quality and consistency in this proje
 
 ## Code Quality Rules
 
-9. **Reduce duplication with helpers** - Extract repeated validation patterns into helper functions
-10. **Refactor to loops** - Replace repeated if/else blocks with loop over slice/map
-11. **Remove unnecessary wrappers** - Don't create wrapper functions that just forward calls
-12. **Wrap errors with context** - Use `fmt.Errorf("operation failed: %w", err)` pattern
+10. **Reduce duplication with helpers** - Extract repeated validation patterns into helper functions
+11. **Refactor to loops** - Replace repeated if/else blocks with loop over slice/map
+12. **Remove unnecessary wrappers** - Don't create wrapper functions that just forward calls
+13. **Wrap errors with context** - Use `fmt.Errorf("operation failed: %w", err)` pattern
+14. **Document actual behavior** - Comments must reflect reality, especially with JSON tags like `omitempty`
 
 ## Testing Rules
 
-13. **Use `t.Cleanup` not `defer`** - Modern Go testing: cleanup runs after all subtests
-14. **Check all error returns** - Tests must check `os.Setenv`, `os.Mkdir`, etc. return values
-15. **Test post-normalization state** - Use absolute paths in tests when testing validation
+15. **Use `t.Cleanup` not `defer`** - Modern Go testing: cleanup runs after all subtests
+16. **Check all error returns** - Tests must check `os.Setenv`, `os.Mkdir`, etc. return values
+17. **Test post-normalization state** - Use absolute paths in tests when testing validation
 
 ## Architecture Principles
 
-16. **Separation of concerns** - Normalize → Validate → Save/Use (three distinct stages)
-17. **Fail fast** - Return errors early, don't continue with invalid state
-18. **Group related operations** - Keep related path expansions, validations together with comments
+18. **Separation of concerns** - Normalize → Validate → Save/Use (three distinct stages)
+19. **Fail fast** - Return errors early, don't continue with invalid state
+20. **Group related operations** - Keep related path expansions, validations together with comments
 
 ## Quick Examples
 
@@ -100,6 +101,16 @@ func ExpandPath(path string) string {
 }
 ```
 
+### ❌ Don't Fall Back on Path Resolution Failures
+```go
+// BAD
+absPath, err := filepath.Abs(filename)
+if err != nil {
+    absPath = filename  // Silent fallback - could be relative!
+}
+config.Path = absPath  // Other code expects absolute path
+```
+
 ### ❌ Don't Use Weak Validation Language
 ```go
 // BAD
@@ -108,19 +119,37 @@ if value < 60 {
 }
 ```
 
+### ❌ Don't Write Misleading Comments About omitempty
+```go
+// BAD
+// Validate only if explicitly set (omitempty)
+if c.TimeoutSeconds < 0 {  // With int, can't distinguish omitted from 0!
+    return errors.New("timeout cannot be negative")
+}
+
+// GOOD
+// If not set (or is 0), a default of 10 seconds is used.
+// A negative value is invalid.
+if c.TimeoutSeconds < 0 {
+    return errors.New("timeout cannot be negative")
+}
+```
+
 ## Review Checklist
 
 Before submitting code, verify:
 
 - [ ] All paths expanded via dedicated `expandPaths()` method
-- [ ] Path expansion returns errors properly
+- [ ] Path expansion returns errors properly (never silent fallback)
 - [ ] `~/path` uses `path[2:]` not `path[1:]`
+- [ ] Path resolution errors propagated immediately (fail fast)
 - [ ] Validation only checks, doesn't modify
 - [ ] Error messages use "must" language
 - [ ] Magic numbers extracted to constants
 - [ ] Helper functions reduce duplication
 - [ ] Tests use `t.Cleanup` for setup/teardown
 - [ ] All error returns checked in tests
+- [ ] Comments accurately reflect behavior (especially with `omitempty`)
 - [ ] Clear separation: normalize → validate → use
 
 ## References
