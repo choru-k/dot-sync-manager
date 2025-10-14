@@ -264,6 +264,80 @@ func LoadFromFile(filename string) (*SyncConfig, error) {
 	return config, nil
 }
 
+// FindConfigFile finds the configuration file using the following priority:
+// 1. Path provided explicitly (if exists)
+// 2. ~/dotfiles/.sync-config.json (PRD location)
+// 3. ~/.dotfile-sync.json (legacy location)
+// Returns the path to the config file and whether it exists
+func FindConfigFile(explicitPath string) (string, bool, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", false, fmt.Errorf("config: failed to get home directory: %w", err)
+	}
+
+	// If explicit path provided, use it
+	if explicitPath != "" {
+		path := expandPath(explicitPath)
+		if _, err := os.Stat(path); err == nil {
+			return path, true, nil
+		} else if !os.IsNotExist(err) {
+			return "", false, fmt.Errorf("config: error accessing config file %s: %w", path, err)
+		}
+		// Explicit path doesn't exist, return it anyway (caller can decide what to do)
+		return path, false, nil
+	}
+
+	// Check PRD location: ~/dotfiles/.sync-config.json
+	prdPath := filepath.Join(homeDir, "dotfiles", ".sync-config.json")
+	if _, err := os.Stat(prdPath); err == nil {
+		return prdPath, true, nil
+	} else if !os.IsNotExist(err) {
+		return "", false, fmt.Errorf("config: error accessing PRD config location %s: %w", prdPath, err)
+	}
+
+	// Check legacy location: ~/.dotfile-sync.json
+	legacyPath := filepath.Join(homeDir, ".dotfile-sync.json")
+	if _, err := os.Stat(legacyPath); err == nil {
+		return legacyPath, true, nil
+	} else if !os.IsNotExist(err) {
+		return "", false, fmt.Errorf("config: error accessing legacy config location %s: %w", legacyPath, err)
+	}
+
+	// No config file found, return the PRD location as the default
+	return prdPath, false, nil
+}
+
+// LoadFromDefaultLocation loads configuration from the default location
+// It searches for config files in the standard locations and returns a default config if none found
+func LoadFromDefaultLocation() (*SyncConfig, error) {
+	configPath, exists, err := FindConfigFile("")
+	if err != nil {
+		return nil, err
+	}
+
+	if exists {
+		return LoadFromFile(configPath)
+	}
+
+	// Return default config if no file found
+	return DefaultConfig(), nil
+}
+
+// expandPath expands ~ to user home directory
+func expandPath(path string) string {
+	if len(path) > 0 && path[0] == '~' {
+		if homeDir, err := os.UserHomeDir(); err == nil {
+			if len(path) == 1 {
+				// Just "~" -> home directory
+				return homeDir
+			}
+			// "~/" or "~/something" -> join with home directory
+			return filepath.Join(homeDir, path[1:])
+		}
+	}
+	return path
+}
+
 // SaveToFile saves configuration to a JSON file
 func (c *SyncConfig) SaveToFile(filename string) error {
 	// Validate before saving
@@ -291,12 +365,36 @@ func (c *SyncConfig) SaveToFile(filename string) error {
 	return nil
 }
 
+// GetConfigPath returns the path to the configuration file
+func (c *SyncConfig) GetConfigPath() string {
+	// This should be stored when loading, but for now we'll use the default logic
+	homeDir, _ := os.UserHomeDir()
+	prdPath := filepath.Join(homeDir, "dotfiles", ".sync-config.json")
+	legacyPath := filepath.Join(homeDir, ".dotfile-sync.json")
+
+	// Check which one exists
+	if _, err := os.Stat(prdPath); err == nil {
+		return prdPath
+	}
+	if _, err := os.Stat(legacyPath); err == nil {
+		return legacyPath
+	}
+	return prdPath // Default to PRD location
+}
+
 // Validate checks if the configuration is valid
 func (c *SyncConfig) Validate() error {
+	// Validate version
+	if c.Version == "" {
+		return fmt.Errorf("configuration version is required")
+	}
+
+	// Validate machine configuration
 	if c.Machine.Name == "" {
 		return fmt.Errorf("machine name is required")
 	}
 
+	// Validate git configuration
 	if c.Git.RepoPath == "" {
 		return fmt.Errorf("git repo path is required")
 	}
@@ -309,12 +407,99 @@ func (c *SyncConfig) Validate() error {
 		return fmt.Errorf("git author name and email are required")
 	}
 
+	// Validate git email format
+	if !strings.Contains(c.Git.AuthorEmail, "@") {
+		return fmt.Errorf("git author email must be valid")
+	}
+
+	// Validate sync settings
 	if c.Sync.PullIntervalSeconds <= 0 {
 		return fmt.Errorf("pull interval must be positive")
 	}
 
+	if c.Sync.PullIntervalSeconds < 60 {
+		return fmt.Errorf("pull interval should be at least 60 seconds")
+	}
+
 	if c.Sync.DebounceSeconds <= 0 {
 		return fmt.Errorf("debounce delay must be positive")
+	}
+
+	if c.Sync.DebounceSeconds > c.Sync.PullIntervalSeconds {
+		return fmt.Errorf("debounce delay should not exceed pull interval")
+	}
+
+	// Validate notification settings
+	if c.Notifications.Enabled {
+		// No specific validation needed for enabled notifications
+	}
+
+	// Validate conflict resolution settings
+	if c.ConflictResolution.Strategy == "" {
+		c.ConflictResolution.Strategy = "manual" // Default to manual
+	}
+
+	validStrategies := []string{"manual", "auto_keep_local", "auto_keep_remote"}
+	strategyValid := false
+	for _, strategy := range validStrategies {
+		if c.ConflictResolution.Strategy == strategy {
+			strategyValid = true
+			break
+		}
+	}
+	if !strategyValid {
+		return fmt.Errorf("invalid conflict resolution strategy: %s (must be one of: %v)", c.ConflictResolution.Strategy, validStrategies)
+	}
+
+	if c.ConflictResolution.KeepBackupsDays < 0 {
+		return fmt.Errorf("backup retention days must be non-negative")
+	}
+
+	if c.ConflictResolution.KeepBackupsDays > 365 {
+		return fmt.Errorf("backup retention days should not exceed 365")
+	}
+
+	// Validate UI settings
+	if c.UI.Theme == "" {
+		c.UI.Theme = "auto" // Default to auto
+	}
+
+	validThemes := []string{"auto", "light", "dark"}
+	themeValid := false
+	for _, theme := range validThemes {
+		if c.UI.Theme == theme {
+			themeValid = true
+			break
+		}
+	}
+	if !themeValid {
+		return fmt.Errorf("invalid UI theme: %s (must be one of: %v)", c.UI.Theme, validThemes)
+	}
+
+	// Validate advanced settings
+	if c.Advanced.MaxLogSizeMB <= 0 {
+		return fmt.Errorf("maximum log size must be positive")
+	}
+
+	if c.Advanced.MaxLogSizeMB > 1000 {
+		return fmt.Errorf("maximum log size should not exceed 1000 MB")
+	}
+
+	// Validate file mappings
+	if c.Mappings != nil {
+		for source, target := range c.Mappings {
+			if source == "" {
+				return fmt.Errorf("mapping source cannot be empty")
+			}
+			if target == "" {
+				return fmt.Errorf("mapping target for '%s' cannot be empty", source)
+			}
+			// Expand and validate target path
+			expandedTarget := expandPath(target)
+			if !filepath.IsAbs(expandedTarget) {
+				return fmt.Errorf("mapping target '%s' must resolve to absolute path", target)
+			}
+		}
 	}
 
 	// Validate backoff settings if provided

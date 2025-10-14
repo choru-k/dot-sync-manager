@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -155,9 +156,24 @@ func TestConfigSaveAndLoad(t *testing.T) {
 			ShowSuccess: true,
 			ShowPulls:   false,
 		},
+		ConflictResolution: ConflictConfig{
+			Strategy:        "manual",
+			BackupDir:       "/tmp/backup",
+			KeepBackupsDays: 7,
+		},
 		Mappings: map[string]string{
 			"bashrc": "~/.bashrc",
 			"vimrc":  "~/.vimrc",
+		},
+		UI: UIConfig{
+			StartAtBoot:    false,
+			MinimizeToTray: true,
+			Theme:          "auto",
+		},
+		Advanced: AdvancedConfig{
+			DebugLogging: false,
+			LogFile:      "/tmp/test.log",
+			MaxLogSizeMB: 10,
 		},
 	}
 
@@ -304,5 +320,352 @@ func TestConfigJSONSerialization(t *testing.T) {
 
 	if unmarshaled.Sync.PullIntervalSeconds != config.Sync.PullIntervalSeconds {
 		t.Errorf("Expected pull interval %d, got %d", config.Sync.PullIntervalSeconds, unmarshaled.Sync.PullIntervalSeconds)
+	}
+}
+
+func TestFindConfigFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Mock home directory
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// Create dotfiles directory
+	dotfilesDir := filepath.Join(tmpDir, "dotfiles")
+	if err := os.MkdirAll(dotfilesDir, 0755); err != nil {
+		t.Fatalf("Failed to create dotfiles directory: %v", err)
+	}
+
+	tests := []struct {
+		name           string
+		explicitPath   string
+		prdConfigExists bool
+		legacyConfigExists bool
+		expectedPath  string
+		expectedExists bool
+	}{
+		{
+			name:              "explicit path takes priority",
+			explicitPath:      filepath.Join(tmpDir, "custom.json"),
+			prdConfigExists:   true,
+			legacyConfigExists: true,
+			expectedPath:      filepath.Join(tmpDir, "custom.json"),
+			expectedExists:    false, // We don't create it in this test
+		},
+		{
+			name:              "PRD location used when exists",
+			explicitPath:      "",
+			prdConfigExists:   true,
+			legacyConfigExists: false,
+			expectedPath:      filepath.Join(dotfilesDir, ".sync-config.json"),
+			expectedExists:    true,
+		},
+		{
+			name:              "legacy location used when PRD doesn't exist",
+			explicitPath:      "",
+			prdConfigExists:   false,
+			legacyConfigExists: true,
+			expectedPath:      filepath.Join(tmpDir, ".dotfile-sync.json"),
+			expectedExists:    true,
+		},
+		{
+			name:              "no config files exist",
+			explicitPath:      "",
+			prdConfigExists:   false,
+			legacyConfigExists: false,
+			expectedPath:      filepath.Join(dotfilesDir, ".sync-config.json"),
+			expectedExists:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Clean up any existing files
+			os.Remove(filepath.Join(dotfilesDir, ".sync-config.json"))
+			os.Remove(filepath.Join(tmpDir, ".dotfile-sync.json"))
+			os.Remove(tt.explicitPath)
+
+			// Create config files as specified by test
+			if tt.prdConfigExists {
+				if err := os.WriteFile(filepath.Join(dotfilesDir, ".sync-config.json"), []byte("{}"), 0644); err != nil {
+					t.Fatalf("Failed to create PRD config file: %v", err)
+				}
+			}
+			if tt.legacyConfigExists {
+				if err := os.WriteFile(filepath.Join(tmpDir, ".dotfile-sync.json"), []byte("{}"), 0644); err != nil {
+					t.Fatalf("Failed to create legacy config file: %v", err)
+				}
+			}
+			if tt.explicitPath != "" {
+				// For explicit path tests, we control whether the file exists based on tt.expectedExists
+				if tt.expectedExists {
+					if err := os.WriteFile(tt.explicitPath, []byte("{}"), 0644); err != nil {
+						t.Fatalf("Failed to create explicit config file: %v", err)
+					}
+				}
+			}
+
+			// Test FindConfigFile
+			path, exists, err := FindConfigFile(tt.explicitPath)
+			if err != nil {
+				t.Fatalf("FindConfigFile() error: %v", err)
+			}
+
+			if path != tt.expectedPath {
+				t.Errorf("Expected path %s, got %s", tt.expectedPath, path)
+			}
+			if exists != tt.expectedExists {
+				t.Errorf("Expected exists %v, got %v", tt.expectedExists, exists)
+			}
+		})
+	}
+}
+
+func TestLoadFromDefaultLocation(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Mock home directory
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
+	// Create dotfiles directory
+	dotfilesDir := filepath.Join(tmpDir, "dotfiles")
+	if err := os.MkdirAll(dotfilesDir, 0755); err != nil {
+		t.Fatalf("Failed to create dotfiles directory: %v", err)
+	}
+
+	t.Run("no config file exists", func(t *testing.T) {
+		// Ensure no config files exist
+		os.Remove(filepath.Join(dotfilesDir, ".sync-config.json"))
+		os.Remove(filepath.Join(tmpDir, ".dotfile-sync.json"))
+
+		config, err := LoadFromDefaultLocation()
+		if err != nil {
+			t.Fatalf("LoadFromDefaultLocation() error: %v", err)
+		}
+
+		// Should return default config
+		if config.Version != "1.0" {
+			t.Errorf("Expected default version 1.0, got %s", config.Version)
+		}
+	})
+
+	t.Run("PRD config file exists", func(t *testing.T) {
+		// Create a PRD config file
+		configPath := filepath.Join(dotfilesDir, ".sync-config.json")
+		testConfig := `{
+			"version": "1.0",
+			"machine": {"name": "test-machine"},
+			"sync": {"auto_sync_enabled": false, "pull_interval_seconds": 600, "debounce_seconds": 60}
+		}`
+		if err := os.WriteFile(configPath, []byte(testConfig), 0644); err != nil {
+			t.Fatalf("Failed to write config file: %v", err)
+		}
+
+		config, err := LoadFromDefaultLocation()
+		if err != nil {
+			t.Fatalf("LoadFromDefaultLocation() error: %v", err)
+		}
+
+		if config.Machine.Name != "test-machine" {
+			t.Errorf("Expected machine name 'test-machine', got '%s'", config.Machine.Name)
+		}
+		if config.Sync.AutoSyncEnabled != false {
+			t.Errorf("Expected auto_sync_enabled false, got %v", config.Sync.AutoSyncEnabled)
+		}
+	})
+}
+
+func TestConfigValidationEnhanced(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  *SyncConfig
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "valid config",
+			config:  DefaultConfig(),
+			wantErr: false,
+		},
+		{
+			name: "empty version",
+			config: func() *SyncConfig {
+				c := DefaultConfig()
+				c.Version = ""
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "configuration version is required",
+		},
+		{
+			name: "invalid email format",
+			config: func() *SyncConfig {
+				c := DefaultConfig()
+				c.Git.AuthorEmail = "invalid-email"
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "git author email must be valid",
+		},
+		{
+			name: "pull interval too short",
+			config: func() *SyncConfig {
+				c := DefaultConfig()
+				c.Sync.PullIntervalSeconds = 30
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "pull interval should be at least 60 seconds",
+		},
+		{
+			name: "debounce exceeds pull interval",
+			config: func() *SyncConfig {
+				c := DefaultConfig()
+				c.Sync.PullIntervalSeconds = 300
+				c.Sync.DebounceSeconds = 400
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "debounce delay should not exceed pull interval",
+		},
+		{
+			name: "invalid conflict strategy",
+			config: func() *SyncConfig {
+				c := DefaultConfig()
+				c.ConflictResolution.Strategy = "invalid"
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "invalid conflict resolution strategy",
+		},
+		{
+			name: "conflict strategy defaults to manual",
+			config: func() *SyncConfig {
+				c := DefaultConfig()
+				c.ConflictResolution.Strategy = ""
+				return c
+			}(),
+			wantErr: false,
+		},
+		{
+			name: "backup retention too long",
+			config: func() *SyncConfig {
+				c := DefaultConfig()
+				c.ConflictResolution.KeepBackupsDays = 500
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "backup retention days should not exceed 365",
+		},
+		{
+			name: "invalid UI theme",
+			config: func() *SyncConfig {
+				c := DefaultConfig()
+				c.UI.Theme = "invalid"
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "invalid UI theme",
+		},
+		{
+			name: "UI theme defaults to auto",
+			config: func() *SyncConfig {
+				c := DefaultConfig()
+				c.UI.Theme = ""
+				return c
+			}(),
+			wantErr: false,
+		},
+		{
+			name: "log size too large",
+			config: func() *SyncConfig {
+				c := DefaultConfig()
+				c.Advanced.MaxLogSizeMB = 2000
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "maximum log size should not exceed 1000 MB",
+		},
+		{
+			name: "invalid mapping target",
+			config: func() *SyncConfig {
+				c := DefaultConfig()
+				c.Mappings = map[string]string{
+					"bashrc": "relative/path",
+				}
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "must resolve to absolute path",
+		},
+		{
+			name: "valid mapping target",
+			config: func() *SyncConfig {
+				c := DefaultConfig()
+				c.Mappings = map[string]string{
+					"bashrc": "~/.bashrc",
+					"config": "~/.config",
+				}
+				return c
+			}(),
+			wantErr: false,
+		},
+		{
+			name: "empty mapping source",
+			config: func() *SyncConfig {
+				c := DefaultConfig()
+				c.Mappings = map[string]string{
+					"": "~/.bashrc",
+				}
+				return c
+			}(),
+			wantErr: true,
+			errMsg:  "mapping source cannot be empty",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.config.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("Expected error message to contain '%s', got '%s'", tt.errMsg, err.Error())
+			}
+		})
+	}
+}
+
+func TestExpandPath(t *testing.T) {
+	originalHome := os.Getenv("HOME")
+	testHome := "/test/home"
+	os.Setenv("HOME", testHome)
+	defer os.Setenv("HOME", originalHome)
+
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"~/file.txt", "/test/home/file.txt"},
+		{"~/dir/subdir/file.txt", "/test/home/dir/subdir/file.txt"},
+		{"/absolute/path", "/absolute/path"},
+		{"relative/path", "relative/path"},
+		{"", ""},
+		{"~", "/test/home"},
+		{"~/", "/test/home"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := expandPath(tt.input)
+			if result != tt.expected {
+				t.Errorf("expandPath(%s) = %s, expected %s", tt.input, result, tt.expected)
+			}
+		})
 	}
 }

@@ -15,6 +15,7 @@ func TestBackoffSettings_Validation(t *testing.T) {
 		{
 			name: "valid backoff settings",
 			config: &SyncConfig{
+				Version: "1.0",
 				Machine: MachineConfig{Name: "test"},
 				Git: GitConfig{
 					RepoPath:    "/tmp/test",
@@ -34,12 +35,16 @@ func TestBackoffSettings_Validation(t *testing.T) {
 						DecayResetSeconds:  300,
 					},
 				},
+				ConflictResolution: ConflictConfig{Strategy: "manual", BackupDir: "/tmp", KeepBackupsDays: 7},
+				UI: UIConfig{Theme: "auto"},
+				Advanced: AdvancedConfig{MaxLogSizeMB: 10},
 			},
 			wantErr: false,
 		},
 		{
 			name: "no backoff settings",
 			config: &SyncConfig{
+				Version: "1.0",
 				Machine: MachineConfig{Name: "test"},
 				Git: GitConfig{
 					RepoPath:    "/tmp/test",
@@ -52,12 +57,16 @@ func TestBackoffSettings_Validation(t *testing.T) {
 					DebounceSeconds:     30,
 					Backoff:             nil,
 				},
+				ConflictResolution: ConflictConfig{Strategy: "manual", BackupDir: "/tmp", KeepBackupsDays: 7},
+				UI: UIConfig{Theme: "auto"},
+				Advanced: AdvancedConfig{MaxLogSizeMB: 10},
 			},
 			wantErr: false,
 		},
 		{
 			name: "backoff max delay too small",
 			config: &SyncConfig{
+				Version: "1.0",
 				Machine: MachineConfig{Name: "test"},
 				Git: GitConfig{
 					RepoPath:    "/tmp/test",
@@ -77,6 +86,9 @@ func TestBackoffSettings_Validation(t *testing.T) {
 						DecayResetSeconds:  300,
 					},
 				},
+				ConflictResolution: ConflictConfig{Strategy: "manual", BackupDir: "/tmp", KeepBackupsDays: 7},
+				UI: UIConfig{Theme: "auto"},
+				Advanced: AdvancedConfig{MaxLogSizeMB: 10},
 			},
 			wantErr: true,
 			errMsg:  "backoff max delay must be >= debounce delay",
@@ -84,6 +96,7 @@ func TestBackoffSettings_Validation(t *testing.T) {
 		{
 			name: "backoff multiplier too low",
 			config: &SyncConfig{
+				Version: "1.0",
 				Machine: MachineConfig{Name: "test"},
 				Git: GitConfig{
 					RepoPath:    "/tmp/test",
@@ -103,6 +116,9 @@ func TestBackoffSettings_Validation(t *testing.T) {
 						DecayResetSeconds:  300,
 					},
 				},
+				ConflictResolution: ConflictConfig{Strategy: "manual", BackupDir: "/tmp", KeepBackupsDays: 7},
+				UI: UIConfig{Theme: "auto"},
+				Advanced: AdvancedConfig{MaxLogSizeMB: 10},
 			},
 			wantErr: true,
 			errMsg:  "backoff multiplier must be > 1.0",
@@ -110,6 +126,7 @@ func TestBackoffSettings_Validation(t *testing.T) {
 		{
 			name: "backoff churn threshold zero",
 			config: &SyncConfig{
+				Version: "1.0",
 				Machine: MachineConfig{Name: "test"},
 				Git: GitConfig{
 					RepoPath:    "/tmp/test",
@@ -129,6 +146,9 @@ func TestBackoffSettings_Validation(t *testing.T) {
 						DecayResetSeconds:  300,
 					},
 				},
+				ConflictResolution: ConflictConfig{Strategy: "manual", BackupDir: "/tmp", KeepBackupsDays: 7},
+				UI: UIConfig{Theme: "auto"},
+				Advanced: AdvancedConfig{MaxLogSizeMB: 10},
 			},
 			wantErr: true,
 			errMsg:  "backoff churn threshold must be positive",
@@ -136,6 +156,7 @@ func TestBackoffSettings_Validation(t *testing.T) {
 		{
 			name: "backoff window negative",
 			config: &SyncConfig{
+				Version: "1.0",
 				Machine: MachineConfig{Name: "test"},
 				Git: GitConfig{
 					RepoPath:    "/tmp/test",
@@ -155,6 +176,9 @@ func TestBackoffSettings_Validation(t *testing.T) {
 						DecayResetSeconds:  300,
 					},
 				},
+				ConflictResolution: ConflictConfig{Strategy: "manual", BackupDir: "/tmp", KeepBackupsDays: 7},
+				UI: UIConfig{Theme: "auto"},
+				Advanced: AdvancedConfig{MaxLogSizeMB: 10},
 			},
 			wantErr: true,
 			errMsg:  "backoff churn window must be positive",
@@ -162,6 +186,7 @@ func TestBackoffSettings_Validation(t *testing.T) {
 		{
 			name: "backoff decay reset zero",
 			config: &SyncConfig{
+				Version: "1.0",
 				Machine: MachineConfig{Name: "test"},
 				Git: GitConfig{
 					RepoPath:    "/tmp/test",
@@ -181,6 +206,9 @@ func TestBackoffSettings_Validation(t *testing.T) {
 						DecayResetSeconds:  0, // Invalid
 					},
 				},
+				ConflictResolution: ConflictConfig{Strategy: "manual", BackupDir: "/tmp", KeepBackupsDays: 7},
+				UI: UIConfig{Theme: "auto"},
+				Advanced: AdvancedConfig{MaxLogSizeMB: 10},
 			},
 			wantErr: true,
 			errMsg:  "backoff decay reset must be positive",
@@ -207,6 +235,7 @@ func TestBackoffSettings_Validation(t *testing.T) {
 
 func TestToSyncServiceConfig_WithBackoff(t *testing.T) {
 	config := &SyncConfig{
+		Version: "1.0",
 		Machine: MachineConfig{Name: "test"},
 		Git: GitConfig{
 			RepoPath:    "/tmp/test",
@@ -226,6 +255,9 @@ func TestToSyncServiceConfig_WithBackoff(t *testing.T) {
 				DecayResetSeconds:  600,
 			},
 		},
+		ConflictResolution: ConflictConfig{Strategy: "manual", BackupDir: "/tmp", KeepBackupsDays: 7},
+		UI: UIConfig{Theme: "auto"},
+		Advanced: AdvancedConfig{MaxLogSizeMB: 10},
 	}
 
 	syncConfig := config.ToSyncServiceConfig()
@@ -283,6 +315,7 @@ func TestToSyncServiceConfig_WithBackoff(t *testing.T) {
 
 func TestToSyncServiceConfig_WithoutBackoff(t *testing.T) {
 	config := &SyncConfig{
+		Version: "1.0",
 		Machine: MachineConfig{Name: "test"},
 		Git: GitConfig{
 			RepoPath:    "/tmp/test",
@@ -295,6 +328,9 @@ func TestToSyncServiceConfig_WithoutBackoff(t *testing.T) {
 			DebounceSeconds:     30,
 			Backoff:             nil, // No backoff settings
 		},
+		ConflictResolution: ConflictConfig{Strategy: "manual", BackupDir: "/tmp", KeepBackupsDays: 7},
+		UI: UIConfig{Theme: "auto"},
+		Advanced: AdvancedConfig{MaxLogSizeMB: 10},
 	}
 
 	syncConfig := config.ToSyncServiceConfig()
