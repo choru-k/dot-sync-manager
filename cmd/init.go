@@ -71,15 +71,27 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Get Git author info if not provided
 	if authorName == "" {
-		authorName, err = promptForInput("Enter your name: ", "")
-		if err != nil {
-			return fmt.Errorf("failed to read author name: %w", err)
+		for {
+			authorName, err = promptForInput("Enter your name: ", "")
+			if err != nil {
+				return fmt.Errorf("failed to read author name: %w", err)
+			}
+			if authorName != "" {
+				break
+			}
+			fmt.Println("Author name cannot be empty. Please try again.")
 		}
 	}
 	if authorEmail == "" {
-		authorEmail, err = promptForInput("Enter your email: ", "")
-		if err != nil {
-			return fmt.Errorf("failed to read author email: %w", err)
+		for {
+			authorEmail, err = promptForInput("Enter your email: ", "")
+			if err != nil {
+				return fmt.Errorf("failed to read author email: %w", err)
+			}
+			if authorEmail != "" {
+				break
+			}
+			fmt.Println("Author email cannot be empty. Please try again.")
 		}
 	}
 

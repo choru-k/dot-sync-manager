@@ -170,9 +170,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	// Move file to dotfiles directory using copy-then-remove for cross-filesystem compatibility
 	if err := copyFile(filePath, targetPath); err != nil {
 		if backupCreated {
-			if removeErr := os.Remove(backupPath); removeErr != nil {
-				fmt.Printf("⚠️  Warning: failed to remove backup file %s after copy error: %v\n", backupPath, removeErr)
-			}
+			// On copy failure, preserve the backup for manual recovery.
+			fmt.Printf("⚠️  Failed to copy file to dotfiles. Backup of original file retained at: %s\n", backupPath)
 		}
 		return fmt.Errorf("failed to copy file to dotfiles: %w", err)
 	}
@@ -184,9 +183,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			fmt.Printf("❌ Failed to remove copied file during rollback: %v\n", removeErr)
 		}
 		if backupCreated {
-			if removeErr := os.Remove(backupPath); removeErr != nil {
-				fmt.Printf("⚠️  Warning: failed to remove backup file %s after remove error: %v\n", backupPath, removeErr)
-			}
+			fmt.Printf("⚠️  Failed to remove original file. The file was copied to the repository, but the original was not removed. Backup retained at: %s for manual recovery.\n", backupPath)
 		}
 		return fmt.Errorf("failed to remove original file: %w", err)
 	}
