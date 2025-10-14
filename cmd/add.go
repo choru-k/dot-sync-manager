@@ -147,27 +147,25 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	var backupPath string
 	var backupCreated bool
 
-	// Backup original file if it exists and is not a symlink
-	if fileInfo, err := os.Lstat(filePath); err == nil && fileInfo.Mode()&os.ModeSymlink == 0 {
-		backupDir := cfg.ConflictResolution.BackupDir
-		if backupDir == "" {
-			backupDir = filepath.Join(cfg.Git.RepoPath, ".backup")
-		}
-
-		if err := os.MkdirAll(backupDir, 0755); err != nil {
-			return fmt.Errorf("failed to create backup directory: %w", err)
-		}
-
-		timestamp := time.Now().Format("20060102-150405")
-		filename := filepath.Base(filePath)
-		backupPath = filepath.Join(backupDir, fmt.Sprintf("%s-%s", filename, timestamp))
-
-		if err := copyFile(filePath, backupPath); err != nil {
-			return fmt.Errorf("failed to backup original file: %w", err)
-		}
-		backupCreated = true
-		fmt.Printf("📦 Backed up original file to: %s\n", backupPath)
+	// Backup original file. The previous checks ensure it's a regular file.
+	backupDir := cfg.ConflictResolution.BackupDir
+	if backupDir == "" {
+		backupDir = filepath.Join(cfg.Git.RepoPath, ".backup")
 	}
+
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		return fmt.Errorf("failed to create backup directory: %w", err)
+	}
+
+	timestamp := time.Now().Format("20060102-150405")
+	filename := filepath.Base(filePath)
+	backupPath = filepath.Join(backupDir, fmt.Sprintf("%s-%s", filename, timestamp))
+
+	if err := copyFile(filePath, backupPath); err != nil {
+		return fmt.Errorf("failed to backup original file: %w", err)
+	}
+	backupCreated = true
+	fmt.Printf("📦 Backed up original file to: %s\n", backupPath)
 
 	// Move file to dotfiles directory using copy-then-remove for cross-filesystem compatibility
 	if err := copyFile(filePath, targetPath); err != nil {
