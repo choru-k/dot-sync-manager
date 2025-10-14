@@ -2,9 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 
+	git "github.com/go-git/go-git/v5"
 	"github.com/spf13/cobra"
 )
 
@@ -75,18 +75,27 @@ func runStatus(cmd *cobra.Command, args []string) error {
 }
 
 func showGitStatus(repoPath string) {
-	// This is a simplified implementation
-	// In a real implementation, you would use the gitmanager package
-	cmd := exec.Command("git", "-C", repoPath, "status", "--porcelain")
-	output, err := cmd.Output()
+	r, err := git.PlainOpen(repoPath)
 	if err != nil {
-		fmt.Printf("❓ Git status unavailable (repository may not be initialized)\n")
+		fmt.Printf("❓ Git status unavailable (repository may not be initialized: %v)\n", err)
 		return
 	}
 
-	if len(output) == 0 {
+	w, err := r.Worktree()
+	if err != nil {
+		fmt.Printf("❓ Git status unavailable (could not get worktree: %v)\n", err)
+		return
+	}
+
+	status, err := w.Status()
+	if err != nil {
+		fmt.Printf("❓ Git status unavailable (could not get status: %v)\n", err)
+		return
+	}
+
+	if status.IsClean() {
 		fmt.Println("✅ Repository is clean")
 	} else {
-		fmt.Printf("📝 %d files have changes\n", len(strings.Split(strings.TrimSpace(string(output)), "\n")))
+		fmt.Printf("📝 %d files have changes\n", len(status))
 	}
 }

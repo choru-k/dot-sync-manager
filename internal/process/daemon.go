@@ -58,15 +58,22 @@ func readPID() (int, error) {
 
 // IsDaemonRunning checks if the daemon associated with the stored PID is running.
 func IsDaemonRunning() bool {
+	expectedName := defaultProcessName()
 	pid, err := readPID()
 	if err == nil {
 		if pid != os.Getpid() && processExists(pid) {
-			return true
+			// Verify this PID actually belongs to our process
+			if verifyProcessName(pid, expectedName) {
+				return true
+			}
+			// Stale PID file - clean it up
+			_ = RemovePID()
+		} else {
+			_ = RemovePID()
 		}
-		_ = RemovePID()
 	}
 
-	if pid, err = findProcessByName(defaultProcessName()); err == nil {
+	if pid, err = findProcessByName(expectedName); err == nil {
 		if pid == os.Getpid() {
 			return false
 		}
@@ -79,14 +86,16 @@ func IsDaemonRunning() bool {
 
 // GetDaemonPID retrieves the PID from the pidfile or falls back to process discovery.
 func GetDaemonPID() (int, error) {
+	expectedName := defaultProcessName()
+
 	if pid, err := readPID(); err == nil {
-		if processExists(pid) {
+		if processExists(pid) && verifyProcessName(pid, expectedName) {
 			return pid, nil
 		}
 		_ = RemovePID()
 	}
 
-	pid, err := findProcessByName(defaultProcessName())
+	pid, err := findProcessByName(expectedName)
 	if err != nil {
 		return 0, err
 	}

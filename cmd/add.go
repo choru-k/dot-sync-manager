@@ -91,14 +91,24 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Get absolute path
+	// Get absolute paths for both file and repo
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
 		return fmt.Errorf("failed to get absolute path: %w", err)
 	}
 
+	absRepo, err := filepath.Abs(cfg.Git.RepoPath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve repository path: %w", err)
+	}
+
 	// Check if file is already inside the dotfiles repository
-	if strings.HasPrefix(absPath, cfg.Git.RepoPath+string(os.PathSeparator)) || absPath == cfg.Git.RepoPath {
+	relPath, err := filepath.Rel(absRepo, absPath)
+	if err != nil {
+		// filepath.Rel can fail on Windows with different drives
+		// In this case, they're on different volumes, so file is definitely outside repo
+	} else if !strings.HasPrefix(relPath, "..") && relPath != "." {
+		// File is inside or equal to repo directory
 		return fmt.Errorf("file is already inside dotfiles repository: %s\nHint: Only add files from outside the repository", absPath)
 	}
 
@@ -113,11 +123,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to resolve target path: %w", err)
 	}
 
-	absRepo, err := filepath.Abs(cfg.Git.RepoPath)
-	if err != nil {
-		return fmt.Errorf("failed to resolve repository path: %w", err)
-	}
-
+	// Validate target is inside repository (absRepo already computed above)
 	relTarget, err := filepath.Rel(absRepo, absTarget)
 	if err != nil || strings.HasPrefix(relTarget, "..") || relTarget == "." {
 		return fmt.Errorf("target path is outside repository: %s", absTarget)

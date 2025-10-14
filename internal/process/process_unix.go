@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -16,6 +18,38 @@ func processExists(pid int) bool {
 		return false
 	}
 	return syscall.Kill(pid, 0) == nil
+}
+
+// verifyProcessName checks if the given PID belongs to a process with the expected name
+func verifyProcessName(pid int, expectedName string) bool {
+	if pid <= 0 {
+		return false
+	}
+
+	// Try ps command first (most portable across Unix systems)
+	// Use "args=" to get full command line instead of truncated comm
+	output, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "args=").Output()
+	if err == nil {
+		args := strings.TrimSpace(string(output))
+		if strings.Contains(args, expectedName) {
+			return true
+		}
+	}
+
+	// On Linux, also try /proc/<pid>/exe (faster and more reliable when available)
+	if runtime.GOOS == "linux" {
+		exePath := fmt.Sprintf("/proc/%d/exe", pid)
+		if link, err := os.Readlink(exePath); err == nil {
+			baseName := filepath.Base(link)
+			// Strip " (deleted)" suffix that appears when binary is replaced
+			baseName = strings.TrimSuffix(baseName, " (deleted)")
+			if strings.Contains(baseName, expectedName) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func terminateProcess(proc *os.Process) error {

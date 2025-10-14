@@ -1,0 +1,66 @@
+name: Claude Code Review
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  claude-review:
+    # Only run when comment contains /claude review on a PR
+    if: |
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '/claude review')
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: refs/pull/${{ github.event.issue.number }}/head
+          fetch-depth: 0
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.issue.number }}
+
+            Review this Go PR for the Dotfile Sync Manager project. Focus on:
+
+            **Code Quality Guidelines (from CLAUDE.md):**
+            - Config paths: Must use cfg.GetConfigPath(), not hardcoded paths
+            - Validation functions: Should never mutate state, only validate
+            - Symlink resolution: Relative symlinks resolved relative to symlink's directory
+            - Process detection: Use os.Executable(), not hardcoded binary names
+            - User input: Use bufio.NewReader, not fmt.Scanln
+            - File operations: Preserve source file permissions with sourceInfo.Mode()
+            - GitHub operations: Always use gh CLI, not web fetch or browser commands
+
+            **Go Best Practices:**
+            - Error handling and nil checks
+            - Context usage for cancellation and long-running operations
+            - Thread safety and race conditions
+            - Test coverage for edge cases (table-driven tests preferred)
+            - Security: no secrets in logs or commits
+            - Proper use of defer for cleanup
+
+            **Project Patterns:**
+            - Review cmd/ for Cobra command structure consistency
+            - Check internal/ packages follow existing patterns
+            - Verify git operations use go-git library (not shell commands)
+            - Ensure proper PID file management for daemon operations
+
+            Read CLAUDE.md and AGENTS.md for complete project context. Use `gh pr comment` to post your review with specific line references and actionable feedback.
+
+          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
+          # or https://docs.claude.com/en/docs/claude-code/cli-reference for available options
+          claude_args: '--allowed-tools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr list:*),Bash(gh pr comment:*),Bash(gh issue view:*),Read,Grep,Glob,LS"'

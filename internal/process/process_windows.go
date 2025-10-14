@@ -3,6 +3,7 @@
 package process
 
 import (
+	"encoding/csv"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,17 +11,42 @@ import (
 	"strings"
 )
 
-func processExists(pid int) bool {
+// getProcessInfo queries tasklist for process information by PID
+func getProcessInfo(pid int) (imageName string, exists bool) {
 	if pid <= 0 {
-		return false
+		return "", false
 	}
-	// Query tasklist for the pid
+
 	output, err := exec.Command("tasklist", "/FI", fmt.Sprintf("PID eq %d", pid), "/FO", "CSV").Output()
 	if err != nil {
+		return "", false
+	}
+
+	// Use csv.Reader for robust parsing
+	reader := csv.NewReader(strings.NewReader(string(output)))
+	records, err := reader.ReadAll()
+	if err != nil || len(records) < 2 {
+		return "", false
+	}
+
+	// First column is Image Name
+	return records[1][0], true
+}
+
+func processExists(pid int) bool {
+	_, exists := getProcessInfo(pid)
+	return exists
+}
+
+// verifyProcessName checks if the given PID belongs to a process with the expected name
+func verifyProcessName(pid int, expectedName string) bool {
+	imageName, exists := getProcessInfo(pid)
+	if !exists {
 		return false
 	}
-	lines := strings.Split(string(output), "\n")
-	return len(lines) > 1 && strings.TrimSpace(lines[1]) != ""
+
+	return strings.Contains(imageName, expectedName) ||
+		strings.Contains(imageName, expectedName+".exe")
 }
 
 func terminateProcess(proc *os.Process) error {

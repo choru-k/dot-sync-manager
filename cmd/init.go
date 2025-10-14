@@ -71,10 +71,16 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Get Git author info if not provided
 	if authorName == "" {
-		authorName = promptForInput("Enter your name: ", "")
+		authorName, err = promptForInput("Enter your name: ", "")
+		if err != nil {
+			return fmt.Errorf("failed to read author name: %w", err)
+		}
 	}
 	if authorEmail == "" {
-		authorEmail = promptForInput("Enter your email: ", "")
+		authorEmail, err = promptForInput("Enter your email: ", "")
+		if err != nil {
+			return fmt.Errorf("failed to read author email: %w", err)
+		}
 	}
 
 	ctx := context.Background()
@@ -229,7 +235,7 @@ func getMachineName() (string, error) {
 	return "unknown-machine", nil
 }
 
-func promptForInput(prompt, defaultValue string) string {
+func promptForInput(prompt, defaultValue string) (string, error) {
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print(prompt)
 
@@ -237,11 +243,14 @@ func promptForInput(prompt, defaultValue string) string {
 		fmt.Printf("(%s) ", defaultValue)
 	}
 
-	input, _ := reader.ReadString('\n')
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return "", fmt.Errorf("reading input: %w", err)
+	}
 	input = strings.TrimSpace(input)
 
 	if input == "" {
-		return defaultValue
+		return defaultValue, nil
 	}
-	return input
+	return input, nil
 }

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -294,4 +295,114 @@ func processExists(pid int) bool {
 		return false
 	}
 	return syscall.Kill(pid, 0) == nil
+}
+
+// TestRunAddPathValidation tests the improved path checking logic
+func TestRunAddPathValidation(t *testing.T) {
+	cfg, homeDir, repoPath := setupTestConfig(t)
+
+	// Initialize git repository
+	gmCfg := cfg.ToGitManagerConfig()
+	ctx := context.Background()
+	if _, err := gitmanager.NewGitManager(ctx, gmCfg); err != nil {
+		t.Fatalf("failed to initialize git: %v", err)
+	}
+
+	t.Run("rejects file already in repo", func(t *testing.T) {
+		// Create a file inside the repo
+		fileInRepo := filepath.Join(repoPath, "config.txt")
+		if err := os.WriteFile(fileInRepo, []byte("test"), 0644); err != nil {
+			t.Fatalf("failed to create file in repo: %v", err)
+		}
+
+		// Try to add it - should fail
+		err := runAdd(nil, []string{fileInRepo})
+		if err == nil {
+			t.Fatal("expected error when adding file already in repo, got nil")
+		}
+		if !contains(err.Error(), "already inside dotfiles repository") {
+			t.Errorf("expected 'already inside dotfiles repository' error, got: %v", err)
+		}
+	})
+
+	t.Run("rejects file with relative path inside repo", func(t *testing.T) {
+		// Create a file in repo using a path with ".."
+		subDir := filepath.Join(repoPath, "subdir")
+		if err := os.MkdirAll(subDir, 0755); err != nil {
+			t.Fatalf("failed to create subdir: %v", err)
+		}
+		fileInRepo := filepath.Join(subDir, "config.txt")
+		if err := os.WriteFile(fileInRepo, []byte("test"), 0644); err != nil {
+			t.Fatalf("failed to create file: %v", err)
+		}
+
+		// Try to add using path with ".."
+		relPath := filepath.Join(repoPath, "subdir", "..", "subdir", "config.txt")
+		err := runAdd(nil, []string{relPath})
+		if err == nil {
+			t.Fatal("expected error when adding file in repo via relative path, got nil")
+		}
+		if !contains(err.Error(), "already inside dotfiles repository") {
+			t.Errorf("expected 'already inside dotfiles repository' error, got: %v", err)
+		}
+	})
+
+	t.Run("accepts file outside repo", func(t *testing.T) {
+		// Create a file outside the repo
+		fileOutside := filepath.Join(homeDir, "test_file.txt")
+		if err := os.WriteFile(fileOutside, []byte("test content"), 0644); err != nil {
+			t.Fatalf("failed to create file outside repo: %v", err)
+		}
+
+		// Add it - should succeed
+		if err := runAdd(nil, []string{fileOutside}); err != nil {
+			t.Fatalf("failed to add file outside repo: %v", err)
+		}
+
+		// Verify symlink was created
+		linkInfo, err := os.Lstat(fileOutside)
+		if err != nil {
+			t.Fatalf("failed to stat original location: %v", err)
+		}
+		if linkInfo.Mode()&os.ModeSymlink == 0 {
+			t.Error("expected symlink at original location")
+		}
+	})
+
+	t.Run("handles symlinks to files outside repo", func(t *testing.T) {
+		// Create a real file
+		realFile := filepath.Join(homeDir, "real_file.txt")
+		if err := os.WriteFile(realFile, []byte("real content"), 0644); err != nil {
+			t.Fatalf("failed to create real file: %v", err)
+		}
+
+		// Create a symlink to it
+		symlinkPath := filepath.Join(homeDir, "symlink_file.txt")
+		if err := os.Symlink(realFile, symlinkPath); err != nil {
+			t.Fatalf("failed to create symlink: %v", err)
+		}
+
+		// Try to add the symlink - should fail
+		err := runAdd(nil, []string{symlinkPath})
+		if err == nil {
+			t.Fatal("expected error when adding symlink, got nil")
+		}
+		if !contains(err.Error(), "already a symlink") {
+			t.Errorf("expected 'already a symlink' error, got: %v", err)
+		}
+	})
+}
+
+func contains(s, substr string) bool {
+	return len(substr) > 0 && len(s) >= len(substr) && 
+		(s == substr || findSubstring(s, substr))
+}
+
+func findSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }
