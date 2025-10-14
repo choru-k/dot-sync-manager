@@ -329,8 +329,14 @@ func TestFindConfigFile(t *testing.T) {
 
 	// Mock home directory
 	originalHome := os.Getenv("HOME")
-	_ = os.Setenv("HOME", tmpDir)
-	defer func() { _ = os.Setenv("HOME", originalHome) }()
+	if err := os.Setenv("HOME", tmpDir); err != nil {
+		t.Fatalf("failed to set HOME: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Setenv("HOME", originalHome); err != nil {
+			t.Errorf("failed to restore HOME: %v", err)
+		}
+	})
 
 	// Create dotfiles directory
 	dotfilesDir := filepath.Join(tmpDir, "dotfiles")
@@ -428,8 +434,14 @@ func TestLoadFromDefaultLocation(t *testing.T) {
 
 	// Mock home directory
 	originalHome := os.Getenv("HOME")
-	_ = os.Setenv("HOME", tmpDir)
-	defer func() { _ = os.Setenv("HOME", originalHome) }()
+	if err := os.Setenv("HOME", tmpDir); err != nil {
+		t.Fatalf("failed to set HOME: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Setenv("HOME", originalHome); err != nil {
+			t.Errorf("failed to restore HOME: %v", err)
+		}
+	})
 
 	// Create dotfiles directory
 	dotfilesDir := filepath.Join(tmpDir, "dotfiles")

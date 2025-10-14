@@ -366,25 +366,22 @@ func (c *SyncConfig) expandPaths() error {
 		return nil
 	}
 
-	// Expand Git-related paths
-	if err := expand(&c.Git.RepoPath, "git.repo_path"); err != nil {
-		return err
-	}
-	if err := expand(&c.Git.SSHKeyPath, "git.ssh_key_path"); err != nil {
-		return err
-	}
-	if err := expand(&c.Git.KnownHostsPath, "git.known_hosts_path"); err != nil {
-		return err
-	}
-
-	// Expand conflict resolution paths
-	if err := expand(&c.ConflictResolution.BackupDir, "conflict_resolution.backup_dir"); err != nil {
-		return err
+	// Define all paths to expand
+	pathsToExpand := []struct {
+		pathPtr   *string
+		fieldName string
+	}{
+		{&c.Git.RepoPath, "git.repo_path"},
+		{&c.Git.SSHKeyPath, "git.ssh_key_path"},
+		{&c.Git.KnownHostsPath, "git.known_hosts_path"},
+		{&c.ConflictResolution.BackupDir, "conflict_resolution.backup_dir"},
+		{&c.Advanced.LogFile, "advanced.log_file"},
 	}
 
-	// Expand advanced paths
-	if err := expand(&c.Advanced.LogFile, "advanced.log_file"); err != nil {
-		return err
+	for _, p := range pathsToExpand {
+		if err := expand(p.pathPtr, p.fieldName); err != nil {
+			return err
+		}
 	}
 
 	// Expand mapping targets
