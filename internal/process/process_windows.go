@@ -65,31 +65,36 @@ func stopAllDaemons(name string) error {
 }
 
 func findProcessByName(name string) (int, error) {
-	cmd := exec.Command("tasklist", "/FI", "IMAGENAME eq "+name+".exe", "/FO", "CSV")
+	// Use /NH (No Header) to simplify parsing
+	cmd := exec.Command("tasklist", "/FI", "IMAGENAME eq "+name+".exe", "/FO", "CSV", "/NH")
 	output, err := cmd.Output()
 	if err != nil {
-		cmd = exec.Command("tasklist", "/FI", "IMAGENAME eq "+name, "/FO", "CSV")
+		// Fallback to name without .exe
+		cmd = exec.Command("tasklist", "/FI", "IMAGENAME eq "+name, "/FO", "CSV", "/NH")
 		output, err = cmd.Output()
 		if err != nil {
-			return 0, fmt.Errorf("process: tasklist failed: %w", err)
+			// This error usually means the process was not found.
+			return 0, fmt.Errorf("process: not found: %s", name)
 		}
 	}
 
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines[1:] {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		fields := strings.Split(line, "\",\"")
-		if len(fields) < 2 {
-			continue
-		}
-		pidStr := strings.Trim(fields[1], "\"")
-		pid, convErr := strconv.Atoi(pidStr)
-		if convErr == nil {
-			return pid, nil
-		}
+	// Use csv.Reader for robust parsing
+	reader := csv.NewReader(strings.NewReader(string(output)))
+	records, err := reader.ReadAll()
+	if err != nil || len(records) == 0 {
+		return 0, fmt.Errorf("process: not found: %s", name)
 	}
-	return 0, fmt.Errorf("process: not found: %s", name)
+
+	// We expect at least one record, and it should have at least 2 columns (Image Name, PID)
+	record := records[0]
+	if len(record) < 2 {
+		return 0, fmt.Errorf("process: unexpected tasklist output format")
+	}
+
+	pid, convErr := strconv.Atoi(record[1])
+	if convErr != nil {
+		return 0, fmt.Errorf("process: could not parse PID '%s': %w", record[1], convErr)
+	}
+
+	return pid, nil
 }

@@ -547,7 +547,6 @@ func (c *SyncConfig) Validate() error {
 			if target == "" {
 				return fmt.Errorf("mapping target for '%s' cannot be empty", source)
 			}
-			// Target paths should already be absolute after expandPaths()
 			if !filepath.IsAbs(target) {
 				return fmt.Errorf("mapping target for '%s' must be an absolute path, but got '%s'", source, target)
 			}
