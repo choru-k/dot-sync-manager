@@ -23,8 +23,8 @@ var (
 )
 
 const (
-	// Default remote name for git operations
-	defaultRemoteName = "origin"
+	// forceConfirmationKeyword is the exact string users must type to confirm destructive operations
+	forceConfirmationKeyword = "DELETE"
 )
 
 // Default .syncignore content
@@ -116,12 +116,12 @@ Options:
 		// Confirm before removing directory (require strong confirmation)
 		fmt.Printf("⚠️  WARNING: --force will delete the entire directory: %s\n", repoPath)
 		fmt.Printf("⚠️  This action CANNOT be undone!\n")
-		confirmation, err := promptForInput("Type 'DELETE' in all caps to confirm: ", "")
+		confirmation, err := promptForInput(fmt.Sprintf("Type '%s' in all caps to confirm: ", forceConfirmationKeyword), "")
 		if err != nil {
 			return fmt.Errorf("failed to read confirmation: %w", err)
 		}
-		if confirmation != "DELETE" {
-			return fmt.Errorf("operation cancelled (you must type 'DELETE' exactly)")
+		if confirmation != forceConfirmationKeyword {
+			return fmt.Errorf("operation cancelled (you must type '%s' exactly)", forceConfirmationKeyword)
 		}
 		
 		if err := os.RemoveAll(repoPath); err != nil {
@@ -158,6 +158,11 @@ Options:
 			break
 		}
 	}
+	
+	// Validate email format regardless of source (flag or prompt)
+	if _, err := mail.ParseAddress(authorEmail); err != nil {
+		return fmt.Errorf("invalid email format %q: %w", authorEmail, err)
+	}
 
 	ctx := cmd.Context()
 
@@ -165,7 +170,7 @@ Options:
 	gmCfg := gitmanager.Config{
 		RepoPath:    repoPath,
 		RemoteURL:   gitURL,
-		RemoteName:  defaultRemoteName,
+		RemoteName:  gitmanager.DefaultRemoteName,
 		AuthorName:  authorName,
 		AuthorEmail: authorEmail,
 		AuthType:    gitmanager.AuthStrategyNone,
@@ -223,7 +228,7 @@ Options:
 	cfg.Machine.Name = machineName
 	cfg.Git.RepoPath = repoPath
 	cfg.Git.RemoteURL = gitURL
-	cfg.Git.RemoteName = defaultRemoteName
+	cfg.Git.RemoteName = gitmanager.DefaultRemoteName
 	cfg.Git.AuthorName = authorName
 	cfg.Git.AuthorEmail = authorEmail
 	cfg.Git.AuthType = gitmanager.AuthStrategyNone // Override default SSH for init

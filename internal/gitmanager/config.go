@@ -7,7 +7,10 @@ import (
 )
 
 const (
-	defaultRemoteName = "origin"
+	// DefaultRemoteName is the default name for git remotes
+	DefaultRemoteName = "origin"
+	
+	defaultRemoteName = DefaultRemoteName // Internal alias for backward compatibility
 )
 
 // AuthStrategy identifies the authentication mode for remote git operations.
