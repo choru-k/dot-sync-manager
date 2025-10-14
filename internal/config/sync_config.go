@@ -15,6 +15,13 @@ import (
 	"github.com/choru-k/dot-sync-manager/internal/util"
 )
 
+// Validation constants
+const (
+	minPullIntervalSeconds = 60
+	maxBackupRetentionDays = 365
+	maxLogSizeMB           = 1000
+)
+
 // SyncConfig represents the complete configuration for the dotfile sync manager
 type SyncConfig struct {
 	// Version of the configuration file format
@@ -289,7 +296,10 @@ func FindConfigFile(explicitPath string) (string, bool, error) {
 
 	// If explicit path provided, use it
 	if explicitPath != "" {
-		path := expandPath(explicitPath)
+		path, err := expandPath(explicitPath)
+		if err != nil {
+			return "", false, fmt.Errorf("config: failed to expand explicit path: %w", err)
+		}
 		if _, err := os.Stat(path); err == nil {
 			return path, true, nil
 		} else if !os.IsNotExist(err) {
@@ -299,20 +309,19 @@ func FindConfigFile(explicitPath string) (string, bool, error) {
 		return path, false, nil
 	}
 
-	// Check PRD location: ~/dotfiles/.sync-config.json
+	// Check standard locations in order of priority
 	prdPath := filepath.Join(homeDir, "dotfiles", ".sync-config.json")
-	if _, err := os.Stat(prdPath); err == nil {
-		return prdPath, true, nil
-	} else if !os.IsNotExist(err) {
-		return "", false, fmt.Errorf("config: error accessing PRD config location %s: %w", prdPath, err)
+	searchPaths := []string{
+		prdPath,                                       // PRD location
+		filepath.Join(homeDir, ".dotfile-sync.json"), // Legacy location
 	}
 
-	// Check legacy location: ~/.dotfile-sync.json
-	legacyPath := filepath.Join(homeDir, ".dotfile-sync.json")
-	if _, err := os.Stat(legacyPath); err == nil {
-		return legacyPath, true, nil
-	} else if !os.IsNotExist(err) {
-		return "", false, fmt.Errorf("config: error accessing legacy config location %s: %w", legacyPath, err)
+	for _, path := range searchPaths {
+		if _, err := os.Stat(path); err == nil {
+			return path, true, nil
+		} else if !os.IsNotExist(err) {
+			return "", false, fmt.Errorf("config: error accessing config location %s: %w", path, err)
+		}
 	}
 
 	// No config file found, return the PRD location as the default
@@ -338,7 +347,7 @@ func LoadFromDefaultLocation() (*SyncConfig, error) {
 }
 
 // expandPath expands ~ to user home directory using shared utility
-func expandPath(path string) string {
+func expandPath(path string) (string, error) {
 	return util.ExpandPath(path)
 }
 
@@ -379,6 +388,16 @@ func (c *SyncConfig) GetConfigPath() string {
 	return c.ConfigPath
 }
 
+// validateInclusion checks if a value is in a list of allowed options
+func validateInclusion(value string, options []string, fieldName string) error {
+	for _, opt := range options {
+		if value == opt {
+			return nil
+		}
+	}
+	return fmt.Errorf("invalid %s: %s (must be one of: %v)", fieldName, value, options)
+}
+
 // Validate checks if the configuration is valid
 func (c *SyncConfig) Validate() error {
 	// Validate version
@@ -414,8 +433,8 @@ func (c *SyncConfig) Validate() error {
 		return fmt.Errorf("pull interval must be positive")
 	}
 
-	if c.Sync.PullIntervalSeconds < 60 {
-		return fmt.Errorf("pull interval should be at least 60 seconds")
+	if c.Sync.PullIntervalSeconds < minPullIntervalSeconds {
+		return fmt.Errorf("pull interval must be at least %d seconds", minPullIntervalSeconds)
 	}
 
 	if c.Sync.DebounceSeconds <= 0 {
@@ -423,7 +442,7 @@ func (c *SyncConfig) Validate() error {
 	}
 
 	if c.Sync.DebounceSeconds > c.Sync.PullIntervalSeconds {
-		return fmt.Errorf("debounce delay should not exceed pull interval")
+		return fmt.Errorf("debounce delay must not exceed pull interval")
 	}
 
 	// Notification settings validated elsewhere if needed
@@ -433,24 +452,16 @@ func (c *SyncConfig) Validate() error {
 		return fmt.Errorf("conflict resolution strategy is required")
 	}
 
-	validStrategies := []string{"manual", "auto_keep_local", "auto_keep_remote"}
-	strategyValid := false
-	for _, strategy := range validStrategies {
-		if c.ConflictResolution.Strategy == strategy {
-			strategyValid = true
-			break
-		}
-	}
-	if !strategyValid {
-		return fmt.Errorf("invalid conflict resolution strategy: %s (must be one of: %v)", c.ConflictResolution.Strategy, validStrategies)
+	if err := validateInclusion(c.ConflictResolution.Strategy, []string{"manual", "auto_keep_local", "auto_keep_remote"}, "conflict resolution strategy"); err != nil {
+		return err
 	}
 
 	if c.ConflictResolution.KeepBackupsDays < 0 {
 		return fmt.Errorf("backup retention days must be non-negative")
 	}
 
-	if c.ConflictResolution.KeepBackupsDays > 365 {
-		return fmt.Errorf("backup retention days should not exceed 365")
+	if c.ConflictResolution.KeepBackupsDays > maxBackupRetentionDays {
+		return fmt.Errorf("backup retention days must not exceed %d", maxBackupRetentionDays)
 	}
 
 	// Validate UI settings
@@ -458,16 +469,8 @@ func (c *SyncConfig) Validate() error {
 		return fmt.Errorf("UI theme is required")
 	}
 
-	validThemes := []string{"auto", "light", "dark"}
-	themeValid := false
-	for _, theme := range validThemes {
-		if c.UI.Theme == theme {
-			themeValid = true
-			break
-		}
-	}
-	if !themeValid {
-		return fmt.Errorf("invalid UI theme: %s (must be one of: %v)", c.UI.Theme, validThemes)
+	if err := validateInclusion(c.UI.Theme, []string{"auto", "light", "dark"}, "UI theme"); err != nil {
+		return err
 	}
 
 	// Validate advanced settings
@@ -475,8 +478,8 @@ func (c *SyncConfig) Validate() error {
 		return fmt.Errorf("maximum log size must be positive")
 	}
 
-	if c.Advanced.MaxLogSizeMB > 1000 {
-		return fmt.Errorf("maximum log size should not exceed 1000 MB")
+	if c.Advanced.MaxLogSizeMB > maxLogSizeMB {
+		return fmt.Errorf("maximum log size must not exceed %d MB", maxLogSizeMB)
 	}
 
 	// Validate file mappings
@@ -488,7 +491,14 @@ func (c *SyncConfig) Validate() error {
 			if target == "" {
 				return fmt.Errorf("mapping target for '%s' cannot be empty", source)
 			}
-			// Note: expandPath always returns absolute paths, no need to check
+			// Target paths must be absolute after expansion
+			expandedTarget, err := util.ExpandPath(target)
+			if err != nil {
+				return fmt.Errorf("mapping target for '%s' failed to expand: %w", source, err)
+			}
+			if !filepath.IsAbs(expandedTarget) {
+				return fmt.Errorf("mapping target for '%s' must be an absolute path, but got '%s'", source, target)
+			}
 		}
 	}
 

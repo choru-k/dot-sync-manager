@@ -1,27 +1,39 @@
 package util
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
-// ExpandPath expands ~ to user home directory and resolves relative paths
-func ExpandPath(path string) string {
-	if len(path) > 0 && path[0] == '~' {
-		if homeDir, err := os.UserHomeDir(); err == nil {
-			if len(path) == 1 {
-				return homeDir
-			}
-			return filepath.Join(homeDir, path[1:])
+// ExpandPath expands ~ to user home directory and resolves relative paths.
+// Returns an error if path expansion fails.
+func ExpandPath(path string) (string, error) {
+	// Handle tilde expansion
+	if strings.HasPrefix(path, "~/") {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to get home directory: %w", err)
 		}
+		return filepath.Join(homeDir, path[2:]), nil
+	}
+	if path == "~" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to get home directory: %w", err)
+		}
+		return homeDir, nil
 	}
 
 	// Convert to absolute path if it's not already
 	if !filepath.IsAbs(path) {
-		if absPath, err := filepath.Abs(path); err == nil {
-			return absPath
+		absPath, err := filepath.Abs(path)
+		if err != nil {
+			return "", fmt.Errorf("failed to get absolute path: %w", err)
 		}
+		return absPath, nil
 	}
 
-	return path
+	return path, nil
 }

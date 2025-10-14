@@ -518,7 +518,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 				return c
 			}(),
 			wantErr: true,
-			errMsg:  "pull interval should be at least 60 seconds",
+			errMsg:  "pull interval must be at least 60 seconds",
 		},
 		{
 			name: "debounce exceeds pull interval",
@@ -529,7 +529,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 				return c
 			}(),
 			wantErr: true,
-			errMsg:  "debounce delay should not exceed pull interval",
+			errMsg:  "debounce delay must not exceed pull interval",
 		},
 		{
 			name: "invalid conflict strategy",
@@ -559,7 +559,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 				return c
 			}(),
 			wantErr: true,
-			errMsg:  "backup retention days should not exceed 365",
+			errMsg:  "backup retention days must not exceed 365",
 		},
 		{
 			name: "invalid UI theme",
@@ -589,7 +589,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 				return c
 			}(),
 			wantErr: true,
-			errMsg:  "maximum log size should not exceed 1000 MB",
+			errMsg:  "maximum log size must not exceed 1000 MB",
 		},
 		{
 			name: "mapping target gets expanded to absolute",
@@ -645,8 +645,14 @@ func TestConfigValidationEnhanced(t *testing.T) {
 func TestExpandPath(t *testing.T) {
 	originalHome := os.Getenv("HOME")
 	testHome := "/test/home"
-	os.Setenv("HOME", testHome)
-	defer os.Setenv("HOME", originalHome)
+	if err := os.Setenv("HOME", testHome); err != nil {
+		t.Fatalf("Failed to set HOME: %v", err)
+	}
+	defer func() {
+		if err := os.Setenv("HOME", originalHome); err != nil {
+			t.Errorf("Failed to restore HOME: %v", err)
+		}
+	}()
 
 	tests := []struct {
 		input          string
@@ -665,7 +671,10 @@ func TestExpandPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			result := expandPath(tt.input)
+			result, err := expandPath(tt.input)
+			if err != nil {
+				t.Fatalf("expandPath(%s) returned error: %v", tt.input, err)
+			}
 			if tt.checkPrefix {
 				// For relative paths, just verify they became absolute
 				if !filepath.IsAbs(result) {
