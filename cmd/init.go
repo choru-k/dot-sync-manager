@@ -200,6 +200,11 @@ node_modules/
 		fmt.Printf("1. Add dotfiles: dsm add ~/.bashrc\n")
 		fmt.Printf("2. Set up remote: cd %s && git remote add origin <your-repo-url>\n", repoPath)
 		fmt.Printf("3. Push initial commit: cd %s && git push -u origin main\n", repoPath)
+		fmt.Printf("4. Start daemon: dsm start\n")
+	} else {
+		fmt.Printf("\n📝 Next steps:\n")
+		fmt.Printf("1. Add dotfiles: dsm add ~/.bashrc\n")
+		fmt.Printf("2. Start daemon: dsm start\n")
 	}
 
 	return nil

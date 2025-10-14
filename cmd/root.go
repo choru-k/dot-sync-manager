@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
+	"github.com/choru-k/dot-sync-manager/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -68,17 +69,9 @@ func getConfig() (*config.SyncConfig, error) {
 	return cfg, nil
 }
 
-// expandPath expands ~ to user home directory
+// expandPath expands ~ to user home directory using shared utility
 func expandPath(path string) string {
-	if len(path) > 0 && path[0] == '~' {
-		if homeDir, err := os.UserHomeDir(); err == nil {
-			if len(path) == 1 {
-				return homeDir
-			}
-			return filepath.Join(homeDir, path[1:])
-		}
-	}
-	return path
+	return util.ExpandPath(path)
 }
 
 // isDaemonRunning checks if the daemon is already running

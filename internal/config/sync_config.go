@@ -11,6 +11,7 @@ import (
 
 	"github.com/choru-k/dot-sync-manager/internal/debouncer"
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
+	"github.com/choru-k/dot-sync-manager/internal/util"
 )
 
 // SyncConfig represents the complete configuration for the dotfile sync manager
@@ -323,19 +324,9 @@ func LoadFromDefaultLocation() (*SyncConfig, error) {
 	return DefaultConfig(), nil
 }
 
-// expandPath expands ~ to user home directory
+// expandPath expands ~ to user home directory using shared utility
 func expandPath(path string) string {
-	if len(path) > 0 && path[0] == '~' {
-		if homeDir, err := os.UserHomeDir(); err == nil {
-			if len(path) == 1 {
-				// Just "~" -> home directory
-				return homeDir
-			}
-			// "~/" or "~/something" -> join with home directory
-			return filepath.Join(homeDir, path[1:])
-		}
-	}
-	return path
+	return util.ExpandPath(path)
 }
 
 // SaveToFile saves configuration to a JSON file
