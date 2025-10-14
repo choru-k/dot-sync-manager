@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"net/mail"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -403,9 +404,9 @@ func (c *SyncConfig) Validate() error {
 		return fmt.Errorf("git author name and email are required")
 	}
 
-	// Validate git email format
-	if !strings.Contains(c.Git.AuthorEmail, "@") {
-		return fmt.Errorf("git author email must be valid")
+	// Validate git email format using RFC 5322 compliant parsing
+	if _, err := mail.ParseAddress(c.Git.AuthorEmail); err != nil {
+		return fmt.Errorf("git author email must be a valid email address: %w", err)
 	}
 
 	// Validate sync settings

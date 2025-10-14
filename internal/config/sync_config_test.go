@@ -508,7 +508,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 				return c
 			}(),
 			wantErr: true,
-			errMsg:  "git author email must be valid",
+			errMsg:  "git author email must be a valid email address",
 		},
 		{
 			name: "pull interval too short",
