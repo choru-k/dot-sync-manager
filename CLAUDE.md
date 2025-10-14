@@ -10,17 +10,26 @@ Dotfile Sync Manager (DSM) is a Go application that automatically syncs dotfiles
 
 ### Build and Run
 ```bash
-# Build the main application
-go build -v -o bin/dotfile-sync-manager .
+# Build the main application (binary name: dot-sync-manager)
+go build -v -o bin/dot-sync-manager .
 
-# Run the application
-./bin/dotfile-sync-manager -config ~/.dotfile-sync.json
+# Run CLI commands (use 'dsm' as the command name)
+./bin/dot-sync-manager init
+./bin/dot-sync-manager add ~/.bashrc
+./bin/dot-sync-manager list
+./bin/dot-sync-manager status
+./bin/dot-sync-manager start
+./bin/dot-sync-manager stop
+./bin/dot-sync-manager sync
+
+# Run with config file
+./bin/dot-sync-manager -config ~/.dotfile-sync.json status
 
 # Run with verbose logging
-./bin/dotfile-sync-manager -config ~/.dotfile-sync.json -verbose
+./bin/dot-sync-manager -v status
 
 # Show version
-./bin/dotfile-sync-manager -version
+./bin/dot-sync-manager -version
 ```
 
 ### Testing
@@ -62,30 +71,45 @@ GOOS=darwin GOARCH=arm64 go build -v -o bin/dotfile-sync-manager-darwin .
 
 ### Core Components
 
-1. **GitManager** (`internal/gitmanager/`)
+1. **CLI Commands** (`cmd/`)
+   - Cobra-based CLI with commands: init, add, list, status, start, stop, sync
+   - Each command in separate file (e.g., `add.go`, `list.go`, `status.go`)
+   - Process management for daemon operations (start/stop)
+   - Key files: `root.go`, `add.go`, `list.go`, `status.go`, `start.go`, `stop.go`
+
+2. **GitManager** (`internal/gitmanager/`)
    - Handles all git operations: clone, commit, push, pull
    - Manages authentication (SSH keys, HTTPS with credentials)
    - Implements stash-based conflict resolution for pull operations
    - Key files: `git_manager.go`, `auth.go`, `config.go`, `stash.go`
 
-2. **SyncService** (`internal/sync/`)
+3. **SyncService** (`internal/sync/`)
    - Orchestrates file watching and automatic syncing
    - Uses fsnotify for file system event monitoring
    - Implements debouncing to avoid excessive commits
    - Recursively watches directories, excluding `.git` and ignored paths
    - Key file: `service.go`
 
-3. **Configuration** (`internal/config/`)
-   - Manages user configuration from JSON file (default: `~/.dotfile-sync.json`)
-   - Includes machine identification, git settings, sync behavior, notifications
-   - Key file: `sync_config.go`
+4. **Configuration** (`internal/config/`)
+   - Manages user configuration from JSON file
+   - PRD-compliant path discovery: `~/dotfiles/.sync-config.json` (primary), `~/.dotfile-sync.json` (legacy)
+   - Includes machine identification, git settings, sync behavior, notifications, backoff settings
+   - Key files: `sync_config.go`, `backoff_config_test.go`
 
-4. **Debouncer** (`internal/debouncer/`)
-   - Thread-safe timer-based debouncing mechanism
+5. **Process Management** (`internal/process/`)
+   - Cross-platform daemon process detection and management
+   - PID file management for tracking running daemons
+   - Uses os.Executable() to detect actual binary name
+   - Platform-specific implementations: `process_unix.go`, `process_windows.go`
+   - Key file: `daemon.go`
+
+6. **Debouncer** (`internal/debouncer/`)
+   - Thread-safe timer-based debouncing mechanism with exponential backoff
    - Delays sync operations until after a period of inactivity (default: 30 seconds)
-   - Key file: `debouncer.go`
+   - Advanced debouncer supports churn detection and configurable timeouts
+   - Key files: `debouncer.go`, `advanced_debouncer.go`
 
-5. **Ignore Parser** (`internal/ignore/`)
+7. **Ignore Parser** (`internal/ignore/`)
    - Parses `.syncignore` files (gitignore-style syntax)
    - Supports patterns: wildcards, negation (`!`), directory-only (`/`), double-asterisk (`**/`)
    - Key file: `parser.go`
@@ -106,14 +130,22 @@ GOOS=darwin GOARCH=arm64 go build -v -o bin/dotfile-sync-manager-darwin .
 
 ## Configuration File
 
-The application expects a JSON configuration file at `~/.dotfile-sync.json` (or specified via `-config` flag). Key fields:
+The application uses PRD-compliant config file discovery:
+1. `~/dotfiles/.sync-config.json` (primary, PRD location)
+2. `~/.dotfile-sync.json` (legacy fallback)
+3. Custom path via `-config` flag
 
+Key configuration fields:
 - `machine.name`: Identifier for this machine
 - `git.repo_path`: Absolute path to dotfiles repository
 - `git.remote_url`: Git remote URL (SSH or HTTPS)
-- `git.auth_type`: "ssh" or "basic" authentication
+- `git.auth_type`: Authentication strategy (ssh, basic, none)
 - `sync.auto_sync_enabled`: Enable/disable automatic syncing
 - `sync.debounce_seconds`: Delay after last change before syncing (default: 30)
+- `sync.backoff`: Advanced backoff settings for churn detection
+- `mappings`: Source-to-target file mappings for symlinks
+
+Important: Config path is always tracked via `ConfigPath` field and should be accessed using `cfg.GetConfigPath()`
 
 ## Testing Strategy
 
@@ -193,9 +225,30 @@ See `AGENTS.md` for complete workflow rules and details.
 
 ## Important Notes
 
+### General
 - Always use absolute paths in configuration (`git.repo_path`)
 - The `.git` directory is always excluded from watching
 - Auto-commits include timestamp and list of changed files
 - Git operations use go-git library (not shell commands)
 - SSH authentication requires proper known_hosts setup
-- Main entry point is `main.go`, but there's also `cmd/dotfile-sync-manager/main.go` (example/alternative)
+- Binary is named `dot-sync-manager` but invoked as `dsm`
+
+### Code Quality Guidelines
+- **Config Path Handling**: Always use `cfg.GetConfigPath()` to respect --config flag
+- **Validation Functions**: Should never mutate state, only check and return errors
+- **Symlink Resolution**: Relative symlinks must be resolved relative to symlink's directory before converting to absolute paths
+- **Process Detection**: Use `os.Executable()` to get actual binary name, not hardcoded values
+- **User Input**: Use `bufio.NewReader` instead of `fmt.Scanln` for robust input handling
+- **File Operations**: Preserve source file permissions when copying (use `sourceInfo.Mode()`)
+
+### GitHub Operations
+- **Always use `gh` CLI** for GitHub operations instead of web fetch or browser commands
+- Common `gh` commands:
+  ```bash
+  gh pr view <number>                    # View PR details
+  gh pr view <number> --json reviews     # Get PR reviews
+  gh api repos/:owner/:repo/pulls/:number/comments  # Get PR comments
+  gh pr create --title "..." --body "..."  # Create PR
+  gh issue list                          # List issues
+  gh issue create --title "..." --body "..."  # Create issue
+  ```
