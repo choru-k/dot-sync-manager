@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,6 +19,14 @@ var (
 	authorName  string
 	authorEmail string
 	force       bool
+)
+
+const (
+	// Default remote name for git operations
+	defaultRemoteName = "origin"
+	
+	// Default conflict resolution strategy
+	defaultConflictStrategy = "manual"
 )
 
 // Default .syncignore content
@@ -124,13 +131,13 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	ctx := context.Background()
+	ctx := cmd.Context()
 
 	// Create repository
 	gmCfg := gitmanager.Config{
 		RepoPath:    repoPath,
 		RemoteURL:   gitURL,
-		RemoteName:  "origin",
+		RemoteName:  defaultRemoteName,
 		AuthorName:  authorName,
 		AuthorEmail: authorEmail,
 		AuthType:    gitmanager.AuthStrategyNone,
@@ -161,7 +168,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		Git: config.GitConfig{
 			RepoPath:    repoPath,
 			RemoteURL:   gitURL,
-			RemoteName:  "origin",
+			RemoteName:  defaultRemoteName,
 			Branch:      "main",
 			AuthorName:  authorName,
 			AuthorEmail: authorEmail,
@@ -182,7 +189,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 			PlaySoundOnConflict: false,
 		},
 		ConflictResolution: config.ConflictConfig{
-			Strategy:        "manual",
+			Strategy:        defaultConflictStrategy,
 			BackupDir:       filepath.Join(repoPath, ".backup"),
 			KeepBackupsDays: config.DefaultKeepBackupsDays,
 		},
