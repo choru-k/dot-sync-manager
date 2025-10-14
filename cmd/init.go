@@ -130,7 +130,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Create configuration
 	cfg := &config.SyncConfig{
-		Version: "1.0",
+		Version: config.CurrentVersion,
 		Machine: config.MachineConfig{
 			Name: machineName,
 		},
@@ -145,8 +145,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 		},
 		Sync: config.SyncSettings{
 			AutoSyncEnabled:     true,
-			PullIntervalSeconds: 300, // 5 minutes
-			DebounceSeconds:     30,  // 30 seconds
+			PullIntervalSeconds: config.DefaultPullIntervalSeconds,
+			DebounceSeconds:     config.DefaultDebounceSeconds,
 			AutoCommit:          true,
 			AutoPush:            true,
 			AutoPull:            true,
@@ -160,7 +160,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		ConflictResolution: config.ConflictConfig{
 			Strategy:        "manual",
 			BackupDir:       filepath.Join(repoPath, ".backup"),
-			KeepBackupsDays: 7,
+			KeepBackupsDays: config.DefaultKeepBackupsDays,
 		},
 		Mappings: make(map[string]string),
 		UI: config.UIConfig{
@@ -171,7 +171,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		Advanced: config.AdvancedConfig{
 			DebugLogging: false,
 			LogFile:      "~/.dotfile-sync.log",
-			MaxLogSizeMB: 10,
+			MaxLogSizeMB: config.DefaultMaxLogSizeMB,
 		},
 	}
 

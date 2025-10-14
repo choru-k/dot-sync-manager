@@ -15,6 +15,17 @@ import (
 	"github.com/choru-k/dot-sync-manager/internal/util"
 )
 
+// Configuration version
+const CurrentVersion = "1.0"
+
+// Default configuration values
+const (
+	DefaultPullIntervalSeconds = 300 // 5 minutes
+	DefaultDebounceSeconds     = 30  // 30 seconds
+	DefaultMaxLogSizeMB        = 10
+	DefaultKeepBackupsDays     = 7
+)
+
 // Validation constants
 const (
 	minPullIntervalSeconds = 60
@@ -192,7 +203,7 @@ func DefaultConfig() *SyncConfig {
 	homeDir, _ := os.UserHomeDir()
 
 	return &SyncConfig{
-		Version: "1.0",
+		Version: CurrentVersion,
 		Machine: MachineConfig{
 			Name: getDefaultMachineName(),
 		},
@@ -207,8 +218,8 @@ func DefaultConfig() *SyncConfig {
 		},
 		Sync: SyncSettings{
 			AutoSyncEnabled:     true,
-			PullIntervalSeconds: 300, // 5 minutes
-			DebounceSeconds:     30,  // 30 seconds
+			PullIntervalSeconds: DefaultPullIntervalSeconds,
+			DebounceSeconds:     DefaultDebounceSeconds,
 			AutoCommit:          true,
 			AutoPush:            true,
 			AutoPull:            true,
@@ -231,7 +242,7 @@ func DefaultConfig() *SyncConfig {
 		ConflictResolution: ConflictConfig{
 			Strategy:        "manual",
 			BackupDir:       filepath.Join(homeDir, "dotfiles", ".backup"),
-			KeepBackupsDays: 7,
+			KeepBackupsDays: DefaultKeepBackupsDays,
 		},
 		Mappings: make(map[string]string),
 		UI: UIConfig{
@@ -242,7 +253,7 @@ func DefaultConfig() *SyncConfig {
 		Advanced: AdvancedConfig{
 			DebugLogging: false,
 			LogFile:      filepath.Join(homeDir, ".dotfile-sync.log"),
-			MaxLogSizeMB: 10,
+			MaxLogSizeMB: DefaultMaxLogSizeMB,
 		},
 	}
 }
