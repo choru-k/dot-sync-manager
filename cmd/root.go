@@ -1,6 +1,12 @@
 package cmd
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/choru-k/dot-sync-manager/internal/config"
+	"github.com/choru-k/dot-sync-manager/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -28,4 +34,42 @@ func Execute() error {
 func init() {
 	rootCmd.PersistentFlags().StringVar(&configFile, "config", "", "Path to configuration file")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
+}
+
+// getConfig loads configuration using proper discovery
+func getConfig() (*config.SyncConfig, error) {
+	var cfg *config.SyncConfig
+	var err error
+
+	if configFile != "" {
+		cfg, err = config.LoadFromFile(configFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load configuration from %s: %w\nHint: Check that the file exists and is valid JSON", configFile, err)
+		}
+	} else {
+		cfg, err = config.LoadFromDefaultLocation()
+		if err != nil {
+			homeDir, _ := os.UserHomeDir()
+			prdPath := filepath.Join(homeDir, "dotfiles", ".sync-config.json")
+			legacyPath := filepath.Join(homeDir, ".dotfile-sync.json")
+			return nil, fmt.Errorf("failed to load configuration: %w\n\nExpected config at:\n  - %s (PRD location)\n  - %s (legacy location)\n\nRun 'dsm init' to create a new configuration", err, prdPath, legacyPath)
+		}
+	}
+
+	return cfg, nil
+}
+
+// expandPath expands ~ to user home directory using shared utility
+func expandPath(path string) string {
+	return util.ExpandPath(path)
+}
+
+// isDaemonRunning checks if the daemon is already running (stub for PR2)
+func isDaemonRunning() bool {
+	return false
+}
+
+// getDaemonPID finds the PID of the running daemon (stub for PR2)
+func getDaemonPID() (int, error) {
+	return 0, fmt.Errorf("daemon not running")
 }
