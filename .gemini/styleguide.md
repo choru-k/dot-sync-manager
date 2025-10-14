@@ -9,6 +9,7 @@ This style guide documents the coding standards and best practices for this proj
 4. [Validation Patterns](#validation-patterns)
 5. [Testing Standards](#testing-standards)
 6. [Code Organization](#code-organization)
+7. [User Experience](#user-experience)
 
 ## Path Handling
 
@@ -509,20 +510,245 @@ if c.ManualSyncTimeoutSeconds < 0 {
 
 **Rationale**: With `int` + `omitempty`, both omitted and explicit 0 appear as 0 in the struct. Comments must reflect this reality. Use `*int` if you need to distinguish nil from 0.
 
+## User Experience
+
+### Rule 18: Use DefaultConfig() Instead of Manual Construction
+**Context**: Creating config structs manually duplicates logic and risks missing defaults.
+
+**✅ DO:**
+```go
+func initCommand() error {
+    cfg := config.DefaultConfig()  // All defaults included
+    
+    // Override only what's needed
+    cfg.Machine.Name = machineName
+    cfg.Git.RepoPath = repoPath
+    cfg.Git.AuthorName = authorName
+    
+    return cfg.SaveToFile(configPath)
+}
+```
+
+**❌ DON'T:**
+```go
+func initCommand() error {
+    // BAD: 50+ lines of duplication
+    cfg := &config.SyncConfig{
+        Version: config.CurrentVersion,
+        Machine: config.MachineConfig{Name: machineName},
+        Git: config.GitConfig{ /* ... */ },
+        Sync: config.SyncSettings{ /* ... */ },
+        // Missing Sync.Backoff and other fields!
+    }
+}
+```
+
+**Rationale**: Using `DefaultConfig()` ensures all defaults are set, reduces duplication, and makes maintenance easier. If defaults change, you get them automatically.
+
+### Rule 19: Check File Existence Before Overwriting
+**Context**: When creating config files, existing files may contain user data.
+
+**✅ DO:**
+```go
+configPath := filepath.Join(repoPath, ".sync-config.json")
+if _, err := os.Stat(configPath); err == nil {
+    fmt.Printf("✅ Using existing configuration: %s\n", configPath)
+    return nil
+}
+
+// Only create if doesn't exist
+cfg := config.DefaultConfig()
+cfg.SaveToFile(configPath)
+fmt.Printf("✅ Configuration created: %s\n", configPath)
+```
+
+**❌ DON'T:**
+```go
+// BAD: Unconditionally overwrites existing config
+configPath := filepath.Join(repoPath, ".sync-config.json")
+cfg := config.DefaultConfig()
+cfg.SaveToFile(configPath)  // Destroys user's mappings!
+```
+
+**Rationale**: When cloning an existing dotfiles repo, it likely already has a `.sync-config.json` with user's mappings and settings. Overwriting it destroys their configuration.
+
+### Rule 20: Confirm Destructive Operations
+**Context**: Operations that delete data should require explicit confirmation.
+
+**✅ DO:**
+```go
+if force {
+    fmt.Printf("⚠️  Warning: --force will delete the entire directory: %s\n", repoPath)
+    confirmation, err := promptForInput("Type 'yes' to confirm deletion: ", "")
+    if err != nil {
+        return fmt.Errorf("failed to read confirmation: %w", err)
+    }
+    if confirmation != "yes" {
+        return fmt.Errorf("operation cancelled")
+    }
+    os.RemoveAll(repoPath)
+}
+```
+
+**❌ DON'T:**
+```go
+// BAD: Deletes without asking
+if force {
+    os.RemoveAll(repoPath)  // No confirmation!
+}
+```
+
+**Rationale**: Users can accidentally use `--force` or misunderstand what it does. Explicit confirmation prevents data loss.
+
+### Rule 21: Use Raw String Literals for Multi-line Messages
+**Context**: Error messages with multiple lines are hard to read with explicit `\n`.
+
+**✅ DO:**
+```go
+return fmt.Errorf(`directory %s already exists
+
+Options:
+  - Use --force to reinitialize
+  - Use a different --path
+  - Remove the existing directory first`, repoPath)
+```
+
+**❌ DON'T:**
+```go
+// BAD: Hard to read and maintain
+return fmt.Errorf("directory %s already exists\n\nOptions:\n  - Use --force to reinitialize\n  - Use a different --path\n  - Remove the existing directory first", repoPath)
+```
+
+**Rationale**: Raw string literals (backticks) preserve formatting and are much easier to read and edit.
+
+### Rule 22: Add Godoc to Exported Functions
+**Context**: All exported functions should have documentation comments.
+
+**✅ DO:**
+```go
+// getConfig loads configuration using proper discovery logic.
+// If --config flag is provided, it loads from that path (with tilde expansion).
+// Otherwise, it searches default locations (~/dotfiles/.sync-config.json, ~/.dotfile-sync.json).
+// Returns error if explicit config file doesn't exist or has invalid JSON.
+func getConfig() (*config.SyncConfig, error) {
+    // ...
+}
+```
+
+**❌ DON'T:**
+```go
+// BAD: No documentation
+func getConfig() (*config.SyncConfig, error) {
+    // ...
+}
+```
+
+**Rationale**: Godoc comments make the API self-documenting and show up in `go doc` and IDE tooltips.
+
+### Rule 23: Mark Stubs with TODO Comments
+**Context**: Stub implementations should indicate they're incomplete and reference follow-up work.
+
+**✅ DO:**
+```go
+// isDaemonRunning checks if the daemon is already running.
+// TODO(PR3): Implement actual daemon detection via PID file or process lookup.
+func isDaemonRunning() bool {
+    return false
+}
+```
+
+**❌ DON'T:**
+```go
+// BAD: No indication this is incomplete
+func isDaemonRunning() bool {
+    return false  // Always returns false - is this intentional?
+}
+```
+
+**Rationale**: TODO comments with PR/issue references make it clear the code is intentionally incomplete and track follow-up work.
+
+### Rule 24: Avoid Tight Coupling in Tests
+**Context**: Tests should verify behavior, not implementation details from other packages.
+
+**✅ DO:**
+```go
+func TestConfigHasVersion(t *testing.T) {
+    cfg := config.DefaultConfig()
+    if cfg.Version == "" {
+        t.Error("Expected non-empty version")
+    }
+}
+```
+
+**❌ DON'T:**
+```go
+// BAD: Tests config package's constants from cmd package
+func TestDefaultConstants(t *testing.T) {
+    if config.CurrentVersion != "1.0" {  // Breaks when config changes
+        t.Errorf("Expected version 1.0")
+    }
+}
+```
+
+**Rationale**: Testing another package's constants creates tight coupling. If config changes its version, this unrelated test breaks. Test behavior, not implementation.
+
+### Rule 25: Descriptive Test Names
+**Context**: Test names should clearly communicate what is being tested.
+
+**✅ DO:**
+```go
+func TestCheckSymlinkStatusWithNonExistentTildePath(t *testing.T) {
+    // Test that tilde paths are properly expanded even when they don't exist
+    // Verifies graceful handling of non-existent paths
+    // ...
+}
+```
+
+**❌ DON'T:**
+```go
+// BAD: Unclear what "PathExpansionError" means
+func TestCheckSymlinkStatusPathExpansionError(t *testing.T) {
+    // Actually tests non-existent path, not expansion errors
+    // ...
+}
+```
+
+**Rationale**: Clear test names help future maintainers understand what behavior is being verified without reading implementation.
+
 ## Summary Checklist
 
 When writing configuration-related code, ensure:
 
+**Path Handling:**
 - [ ] All path fields are expanded consistently in a dedicated method
 - [ ] Path expansion returns errors, not silently failing
 - [ ] Tilde expansion uses `path[2:]` for `~/` prefix
 - [ ] Path resolution errors propagated immediately (no silent fallbacks)
+
+**Validation:**
 - [ ] Validation only checks, never modifies state
 - [ ] Validation messages use "must" not "should"
 - [ ] Magic numbers are extracted to named constants
 - [ ] Duplicated validation logic uses helper functions
-- [ ] Tests use `t.Cleanup` instead of `defer`
-- [ ] Tests check error returns from setup functions
+
+**Configuration:**
+- [ ] Used `DefaultConfig()` instead of manually creating config structs
+- [ ] Checked file existence before overwriting
+- [ ] User confirmation required for destructive operations
+
+**Code Quality:**
+- [ ] Raw string literals (backticks) for multi-line error messages
+- [ ] Godoc comments on all exported functions
+- [ ] TODO comments on stub implementations (TODO(PRx))
 - [ ] Error messages include context via wrapping
 - [ ] Comments accurately reflect behavior (especially with `omitempty`)
+
+**Testing:**
+- [ ] Tests use `t.Cleanup` instead of `defer`
+- [ ] Tests check error returns from setup functions
+- [ ] Test names clearly describe what is being tested
+- [ ] Tests don't verify other packages' constants (avoid tight coupling)
+- [ ] Test behavior, not implementation details
+
+**Architecture:**
 - [ ] Separation of concerns: normalize → validate → use
