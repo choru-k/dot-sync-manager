@@ -23,18 +23,22 @@ Quick reference guide for maintaining code quality and consistency in this proje
 12. **Remove unnecessary wrappers** - Don't create wrapper functions that just forward calls
 13. **Wrap errors with context** - Use `fmt.Errorf("operation failed: %w", err)` pattern
 14. **Document actual behavior** - Comments must reflect reality, especially with JSON tags like `omitempty`
+15. **Move large literals to constants** - Multi-line strings (>10 lines) belong at package level, not in functions
+16. **Honest function signatures** - Don't return error types that are never actually used or always nil
 
 ## Testing Rules
 
-15. **Use `t.Cleanup` not `defer`** - Modern Go testing: cleanup runs after all subtests
-16. **Check all error returns** - Tests must check `os.Setenv`, `os.Mkdir`, etc. return values
-17. **Test post-normalization state** - Use absolute paths in tests when testing validation
+17. **Use `t.Cleanup` not `defer`** - Modern Go testing: cleanup runs after all subtests
+18. **Check all error returns** - Tests must check `os.Setenv`, `os.Mkdir`, etc. return values (and in error handling too!)
+19. **Test post-normalization state** - Use absolute paths in tests when testing validation
 
 ## Architecture Principles
 
-18. **Separation of concerns** - Normalize → Validate → Save/Use (three distinct stages)
-19. **Fail fast** - Return errors early, don't continue with invalid state
-20. **Group related operations** - Keep related path expansions, validations together with comments
+20. **Separation of concerns** - Normalize → Validate → Save/Use (three distinct stages)
+21. **Fail fast** - Return errors early, don't continue with invalid state
+22. **Group related operations** - Keep related path expansions, validations together with comments
+23. **Design for optionality** - Make fields/parameters optional when legitimate use cases exist without them
+24. **Guard optional operations** - Check preconditions before calling functions that depend on optional config
 
 ## Quick Examples
 
@@ -135,6 +139,84 @@ if c.TimeoutSeconds < 0 {
 }
 ```
 
+### ❌ Don't Embed Large String Literals in Functions
+```go
+// BAD - 37 lines embedded in function
+func createIgnoreFile() error {
+    content := `# Line 1
+# Line 2
+... 35 more lines ...
+`
+    return os.WriteFile(path, []byte(content), 0644)
+}
+
+// GOOD - Package-level constant
+const defaultIgnoreContent = `# Line 1
+# Line 2
+... 35 more lines ...
+`
+
+func createIgnoreFile() error {
+    return os.WriteFile(path, []byte(defaultIgnoreContent), 0644)
+}
+```
+
+### ❌ Don't Return Errors That Are Never Used
+```go
+// BAD - Error return never populated
+func getMachineName() (string, error) {
+    if hostname, err := os.Hostname(); err == nil {
+        return hostname, nil
+    }
+    return "unknown-machine", nil  // Always returns nil error!
+}
+
+// GOOD - Honest signature
+func getMachineName() string {
+    if hostname, err := os.Hostname(); err == nil {
+        return hostname
+    }
+    return "unknown-machine"
+}
+```
+
+### ❌ Don't Ignore Errors in Error Handling
+```go
+// BAD - Error ignored when building error message
+homeDir, _ := os.UserHomeDir()  // Ignored!
+return fmt.Errorf("config not found at: %s", homeDir)  // Could be empty!
+
+// GOOD - Check error even in error paths
+homeDir, homeErr := os.UserHomeDir()
+if homeErr != nil {
+    return fmt.Errorf("config not found (unable to determine home: %v)", homeErr)
+}
+return fmt.Errorf("config not found at: %s", homeDir)
+```
+
+### ❌ Don't Make Fields Required When They're Optional
+```go
+// BAD - Always requires remote even for local-only use
+func (c *Config) validate() error {
+    if c.RemoteURL == "" {
+        return errors.New("remote URL is required")  // Blocks local-only!
+    }
+}
+
+// GOOD - Optional field with guarded operations
+func (c *Config) validate() error {
+    // RemoteURL is optional - local-only repos don't need it
+    if c.RemoteURL != "" && c.RemoteName == "" {
+        c.RemoteName = "origin"
+    }
+}
+
+// Guard dependent operations
+if gm.cfg.RemoteURL != "" {
+    return gm.ensureRemote()  // Only when configured
+}
+```
+
 ## Review Checklist
 
 Before submitting code, verify:
@@ -145,11 +227,15 @@ Before submitting code, verify:
 - [ ] Path resolution errors propagated immediately (fail fast)
 - [ ] Validation only checks, doesn't modify
 - [ ] Error messages use "must" language
-- [ ] Magic numbers extracted to constants
+- [ ] Magic numbers/strings extracted to constants
+- [ ] Large multi-line strings (>10 lines) moved to package constants
+- [ ] Function signatures don't return unused errors
 - [ ] Helper functions reduce duplication
 - [ ] Tests use `t.Cleanup` for setup/teardown
-- [ ] All error returns checked in tests
+- [ ] All error returns checked (even in error handling code)
 - [ ] Comments accurately reflect behavior (especially with `omitempty`)
+- [ ] Optional fields designed for legitimate use cases
+- [ ] Optional operations guarded with precondition checks
 - [ ] Clear separation: normalize → validate → use
 
 ## References
