@@ -24,9 +24,6 @@ var (
 const (
 	// Default remote name for git operations
 	defaultRemoteName = "origin"
-	
-	// Default conflict resolution strategy
-	defaultConflictStrategy = "manual"
 )
 
 // Default .syncignore content
@@ -107,11 +104,28 @@ func runInit(cmd *cobra.Command, args []string) error {
 	// Check if directory already exists
 	if _, statErr := os.Stat(repoPath); statErr == nil {
 		if !force {
-			return fmt.Errorf("directory %s already exists\n\nOptions:\n  - Use --force to reinitialize\n  - Use a different --path\n  - Remove the existing directory first", repoPath)
+			return fmt.Errorf(`directory %s already exists
+
+Options:
+  - Use --force to reinitialize
+  - Use a different --path
+  - Remove the existing directory first`, repoPath)
 		}
+		
+		// Confirm before removing directory
+		fmt.Printf("⚠️  Warning: --force will delete the entire directory: %s\n", repoPath)
+		confirmation, err := promptForInput("Type 'yes' to confirm deletion: ", "")
+		if err != nil {
+			return fmt.Errorf("failed to read confirmation: %w", err)
+		}
+		if confirmation != "yes" {
+			return fmt.Errorf("operation cancelled")
+		}
+		
 		if err := os.RemoveAll(repoPath); err != nil {
 			return fmt.Errorf("failed to remove existing directory: %w", err)
 		}
+		fmt.Println("✅ Directory removed")
 	}
 
 	// Get machine name
@@ -159,71 +173,57 @@ func runInit(cmd *cobra.Command, args []string) error {
 		fmt.Println("✅ Repository initialized")
 	}
 
-	// Create configuration
-	cfg := &config.SyncConfig{
-		Version: config.CurrentVersion,
-		Machine: config.MachineConfig{
-			Name: machineName,
-		},
-		Git: config.GitConfig{
-			RepoPath:    repoPath,
-			RemoteURL:   gitURL,
-			RemoteName:  defaultRemoteName,
-			Branch:      "main",
-			AuthorName:  authorName,
-			AuthorEmail: authorEmail,
-			AuthType:    gitmanager.AuthStrategyNone,
-		},
-		Sync: config.SyncSettings{
-			AutoSyncEnabled:     true,
-			PullIntervalSeconds: config.DefaultPullIntervalSeconds,
-			DebounceSeconds:     config.DefaultDebounceSeconds,
-			AutoCommit:          true,
-			AutoPush:            true,
-			AutoPull:            true,
-		},
-		Notifications: config.NotificationConfig{
-			Enabled:             true,
-			ShowSuccess:         false,
-			ShowPulls:           true,
-			PlaySoundOnConflict: false,
-		},
-		ConflictResolution: config.ConflictConfig{
-			Strategy:        defaultConflictStrategy,
-			BackupDir:       filepath.Join(repoPath, ".backup"),
-			KeepBackupsDays: config.DefaultKeepBackupsDays,
-		},
-		Mappings: make(map[string]string),
-		UI: config.UIConfig{
-			StartAtBoot:    false,
-			MinimizeToTray: true,
-			Theme:          "auto",
-		},
-		Advanced: config.AdvancedConfig{
-			DebugLogging: false,
-			LogFile:      "~/.dotfile-sync.log",
-			MaxLogSizeMB: config.DefaultMaxLogSizeMB,
-		},
-	}
-
-	// Save configuration
+	// Check if cloning an existing repo with config already present
 	configPath := filepath.Join(repoPath, ".sync-config.json")
-	cfg.ConfigPath = configPath
-
-	if err := cfg.SaveToFile(configPath); err != nil {
-		return fmt.Errorf("failed to save configuration: %w", err)
-	}
-
-	// Create default .syncignore file
 	ignorePath := filepath.Join(repoPath, ".syncignore")
-	if err := os.WriteFile(ignorePath, []byte(defaultSyncIgnoreContent), 0644); err != nil {
-		return fmt.Errorf("failed to create .syncignore file: %w", err)
+	configExists := false
+	ignoreExists := false
+	
+	if _, err := os.Stat(configPath); err == nil {
+		configExists = true
+	}
+	if _, err := os.Stat(ignorePath); err == nil {
+		ignoreExists = true
 	}
 
-	fmt.Printf("✅ Dotfiles repository initialized successfully!\n")
+	// Only create config if it doesn't exist (e.g., new repo or clone without config)
+	if !configExists {
+		// Create configuration using defaults, then override user-provided values
+		cfg := config.DefaultConfig()
+		
+		// Override with user-provided values
+		cfg.Machine.Name = machineName
+		cfg.Git.RepoPath = repoPath
+		cfg.Git.RemoteURL = gitURL
+		cfg.Git.RemoteName = defaultRemoteName
+		cfg.Git.AuthorName = authorName
+		cfg.Git.AuthorEmail = authorEmail
+		cfg.Git.AuthType = gitmanager.AuthStrategyNone // Override default SSH for init
+		
+		// Adjust paths relative to the new repo
+		cfg.ConflictResolution.BackupDir = filepath.Join(repoPath, ".backup")
+		cfg.ConfigPath = configPath
+
+		if err := cfg.SaveToFile(configPath); err != nil {
+			return fmt.Errorf("failed to save configuration: %w", err)
+		}
+		fmt.Printf("✅ Configuration created: %s\n", configPath)
+	} else {
+		fmt.Printf("✅ Using existing configuration: %s\n", configPath)
+	}
+
+	// Only create .syncignore if it doesn't exist
+	if !ignoreExists {
+		if err := os.WriteFile(ignorePath, []byte(defaultSyncIgnoreContent), 0644); err != nil {
+			return fmt.Errorf("failed to create .syncignore file: %w", err)
+		}
+		fmt.Printf("✅ Ignore file created: %s\n", ignorePath)
+	} else {
+		fmt.Printf("✅ Using existing ignore file: %s\n", ignorePath)
+	}
+
+	fmt.Printf("\n✅ Dotfiles repository initialized successfully!\n")
 	fmt.Printf("📁 Repository: %s\n", repoPath)
-	fmt.Printf("⚙️  Configuration: %s\n", configPath)
-	fmt.Printf("📄 Ignore file: %s\n", ignorePath)
 
 	if gitURL == "" {
 		fmt.Printf("\n📝 Next steps:\n")

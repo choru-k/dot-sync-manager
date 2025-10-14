@@ -147,21 +147,19 @@ func TestCheckSymlinkStatusWithTildePath(t *testing.T) {
 	}
 }
 
-func TestCheckSymlinkStatusPathExpansionError(t *testing.T) {
-	// Test with invalid path that would fail expansion
-	// This is difficult to trigger since ExpandPath is quite robust
-	// But we can test the error handling path exists
+func TestCheckSymlinkStatusWithNonExistentTildePath(t *testing.T) {
+	// Test that tilde paths are properly expanded even when they don't exist
+	// Verifies that the function handles non-existent paths gracefully
 	tmpDir := t.TempDir()
 	sourceFile := filepath.Join(tmpDir, "source.txt")
 	
-	status, icon := checkSymlinkStatus(sourceFile, "~/valid-path")
+	status, icon := checkSymlinkStatus(sourceFile, "~/nonexistent-test-path")
 	
-	// Should handle the path (may not exist, but expansion should work)
-	// This verifies the function doesn't panic on tilde paths
-	if status == "" {
-		t.Error("Expected non-empty status")
+	// Should return "not linked" since the expanded path doesn't exist
+	if status != "not linked" {
+		t.Errorf("Expected 'not linked' for non-existent path, got %q", status)
 	}
-	if icon == "" {
-		t.Error("Expected non-empty icon")
+	if icon != "○" {
+		t.Errorf("Expected '○' icon for non-existent path, got %q", icon)
 	}
 }

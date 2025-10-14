@@ -70,8 +70,10 @@ func runList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// checkSymlinkStatus checks if a symlink exists and is valid
-// Returns: (status string, status icon string)
+// checkSymlinkStatus verifies if a symlink exists at targetPath and correctly points to sourcePath.
+// It expands tilde paths, checks symlink validity, and resolves relative symlinks to absolute paths.
+// Returns two strings: (status description, status icon).
+// Possible status values: "linked" (✓), "not linked" (○), "broken symlink" (✗), "points elsewhere" (✗).
 func checkSymlinkStatus(sourcePath, targetPath string) (string, string) {
 	// Expand target path
 	expandedPath, err := util.ExpandPath(targetPath)

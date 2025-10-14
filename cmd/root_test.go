@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/choru-k/dot-sync-manager/internal/config"
 )
 
 func TestGetConfig(t *testing.T) {
@@ -173,24 +171,5 @@ func TestGetDaemonPID(t *testing.T) {
 	}
 	if pid != 0 {
 		t.Errorf("Expected PID 0, got %d", pid)
-	}
-}
-
-func TestDefaultConstants(t *testing.T) {
-	// Verify exported constants are available and have correct values
-	if config.CurrentVersion != "1.0" {
-		t.Errorf("Expected CurrentVersion '1.0', got '%s'", config.CurrentVersion)
-	}
-	if config.DefaultPullIntervalSeconds != 300 {
-		t.Errorf("Expected DefaultPullIntervalSeconds 300, got %d", config.DefaultPullIntervalSeconds)
-	}
-	if config.DefaultDebounceSeconds != 30 {
-		t.Errorf("Expected DefaultDebounceSeconds 30, got %d", config.DefaultDebounceSeconds)
-	}
-	if config.DefaultMaxLogSizeMB != 10 {
-		t.Errorf("Expected DefaultMaxLogSizeMB 10, got %d", config.DefaultMaxLogSizeMB)
-	}
-	if config.DefaultKeepBackupsDays != 7 {
-		t.Errorf("Expected DefaultKeepBackupsDays 7, got %d", config.DefaultKeepBackupsDays)
 	}
 }

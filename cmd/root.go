@@ -36,7 +36,10 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
 }
 
-// getConfig loads configuration using proper discovery
+// getConfig loads configuration using proper discovery logic.
+// If --config flag is provided, it loads from that path (with tilde expansion).
+// Otherwise, it searches default locations (~/dotfiles/.sync-config.json, ~/.dotfile-sync.json).
+// Returns error if explicit config file doesn't exist or has invalid JSON.
 func getConfig() (*config.SyncConfig, error) {
 	var cfg *config.SyncConfig
 	var err error
@@ -74,12 +77,14 @@ func getConfig() (*config.SyncConfig, error) {
 	return cfg, nil
 }
 
-// isDaemonRunning checks if the daemon is already running (stub for PR2)
+// isDaemonRunning checks if the daemon is already running.
+// TODO(PR3): Implement actual daemon detection via PID file or process lookup.
 func isDaemonRunning() bool {
 	return false
 }
 
-// getDaemonPID finds the PID of the running daemon (stub for PR2)
+// getDaemonPID finds the PID of the running daemon.
+// TODO(PR3): Implement by reading PID file from ~/.dotfile-sync.pid.
 func getDaemonPID() (int, error) {
 	return 0, fmt.Errorf("daemon not running")
 }
