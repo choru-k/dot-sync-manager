@@ -192,12 +192,15 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create symlink using relative path for portability across machines
+	// Fall back to absolute path if relative path cannot be computed (e.g., cross-drive on Windows)
 	relSymlinkPath, err := filepath.Rel(filepath.Dir(filePath), targetPath)
+	symlinkTarget := relSymlinkPath
 	if err != nil {
-		return fmt.Errorf("failed to compute relative symlink path: %w", err)
+		// Use absolute path when relative path cannot be computed
+		symlinkTarget = targetPath
 	}
 
-	if err := os.Symlink(relSymlinkPath, filePath); err != nil {
+	if err := os.Symlink(symlinkTarget, filePath); err != nil {
 		// Rollback: restore from backup or from target
 		restoreSuccessful := false
 		if backupCreated {

@@ -93,11 +93,13 @@ func (gm *GitManager) bootstrapRepo(ctx context.Context) error {
 			if initErr != nil {
 				return fmt.Errorf("gitmanager: init repo: %w", initErr)
 			}
-			if _, err := repo.CreateRemote(&config.RemoteConfig{
-				Name: gm.cfg.RemoteName,
-				URLs: []string{gm.cfg.RemoteURL},
-			}); err != nil {
-				return fmt.Errorf("gitmanager: configure remote: %w", err)
+			if gm.cfg.RemoteURL != "" {
+				if _, err := repo.CreateRemote(&config.RemoteConfig{
+					Name: gm.cfg.RemoteName,
+					URLs: []string{gm.cfg.RemoteURL},
+				}); err != nil {
+					return fmt.Errorf("gitmanager: configure remote: %w", err)
+				}
 			}
 			gm.repo = repo
 			return nil
