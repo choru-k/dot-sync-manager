@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/choru-k/dot-sync-manager/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -73,7 +74,11 @@ func runList(cmd *cobra.Command, args []string) error {
 // Returns: (status string, status icon string)
 func checkSymlinkStatus(sourcePath, targetPath string) (string, string) {
 	// Expand target path
-	targetPath = expandPath(targetPath)
+	expandedPath, err := util.ExpandPath(targetPath)
+	if err != nil {
+		return "error expanding path", "✗"
+	}
+	targetPath = expandedPath
 
 	// Check if target exists
 	targetInfo, err := os.Lstat(targetPath)

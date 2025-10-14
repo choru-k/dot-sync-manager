@@ -10,6 +10,7 @@ import (
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
+	"github.com/choru-k/dot-sync-manager/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -51,7 +52,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Expand repo path
-	repoPath = expandPath(repoPath)
+	expandedRepoPath, err := util.ExpandPath(repoPath)
+	if err != nil {
+		return fmt.Errorf("failed to expand repo path: %w", err)
+	}
+	repoPath = expandedRepoPath
 
 	// Check if directory already exists
 	if _, err := os.Stat(repoPath); err == nil {
@@ -165,7 +170,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		},
 		Advanced: config.AdvancedConfig{
 			DebugLogging: false,
-			LogFile:      expandPath("~/.dotfile-sync.log"),
+			LogFile:      "~/.dotfile-sync.log",
 			MaxLogSizeMB: 10,
 		},
 	}
