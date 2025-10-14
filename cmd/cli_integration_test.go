@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -320,7 +321,7 @@ func TestRunAddPathValidation(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error when adding file already in repo, got nil")
 		}
-		if !contains(err.Error(), "already inside dotfiles repository") {
+		if !strings.Contains(err.Error(), "already inside dotfiles repository") {
 			t.Errorf("expected 'already inside dotfiles repository' error, got: %v", err)
 		}
 	})
@@ -342,7 +343,7 @@ func TestRunAddPathValidation(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error when adding file in repo via relative path, got nil")
 		}
-		if !contains(err.Error(), "already inside dotfiles repository") {
+		if !strings.Contains(err.Error(), "already inside dotfiles repository") {
 			t.Errorf("expected 'already inside dotfiles repository' error, got: %v", err)
 		}
 	})
@@ -387,22 +388,8 @@ func TestRunAddPathValidation(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error when adding symlink, got nil")
 		}
-		if !contains(err.Error(), "already a symlink") {
+		if !strings.Contains(err.Error(), "already a symlink") {
 			t.Errorf("expected 'already a symlink' error, got: %v", err)
 		}
 	})
-}
-
-func contains(s, substr string) bool {
-	return len(substr) > 0 && len(s) >= len(substr) && 
-		(s == substr || findSubstring(s, substr))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

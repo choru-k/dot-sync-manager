@@ -166,39 +166,58 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		fmt.Printf("📦 Backed up original file to: %s\n", backupPath)
 	}
 
-	// Move file to dotfiles directory
-	if err := os.Rename(filePath, targetPath); err != nil {
+	// Move file to dotfiles directory using copy-then-remove for cross-filesystem compatibility
+	if err := copyFile(filePath, targetPath); err != nil {
 		if backupCreated {
 			if removeErr := os.Remove(backupPath); removeErr != nil {
-				fmt.Printf("⚠️  Warning: failed to remove backup file %s after move error: %v\n", backupPath, removeErr)
+				fmt.Printf("⚠️  Warning: failed to remove backup file %s after copy error: %v\n", backupPath, removeErr)
 			}
 		}
-		return fmt.Errorf("failed to move file to dotfiles: %w", err)
+		return fmt.Errorf("failed to copy file to dotfiles: %w", err)
+	}
+
+	// Remove original file after successful copy
+	if err := os.Remove(filePath); err != nil {
+		// Rollback: remove the copied file
+		if removeErr := os.Remove(targetPath); removeErr != nil {
+			fmt.Printf("❌ Failed to remove copied file during rollback: %v\n", removeErr)
+		}
+		if backupCreated {
+			if removeErr := os.Remove(backupPath); removeErr != nil {
+				fmt.Printf("⚠️  Warning: failed to remove backup file %s after remove error: %v\n", backupPath, removeErr)
+			}
+		}
+		return fmt.Errorf("failed to remove original file: %w", err)
 	}
 
 	// Create symlink
 	if err := os.Symlink(targetPath, filePath); err != nil {
+		// Rollback: restore from backup or from target
 		restoreSuccessful := false
-		if restoreErr := os.Rename(targetPath, filePath); restoreErr != nil {
-			fmt.Printf("❌ Failed to restore original file from dotfiles: %v\n", restoreErr)
-		} else {
-			restoreSuccessful = true
+		if backupCreated {
+			// Restore from backup
+			if restoreErr := copyFile(backupPath, filePath); restoreErr != nil {
+				fmt.Printf("❌ Failed to restore from backup: %v\n", restoreErr)
+				fmt.Printf("⚠️  Backup retained at %s for manual recovery\n", backupPath)
+			} else {
+				restoreSuccessful = true
+				// Clean up backup after successful restore
+				os.Remove(backupPath)
+			}
 		}
 
-		if backupCreated {
-			if restoreSuccessful {
-				if removeErr := os.Remove(backupPath); removeErr != nil {
-					fmt.Printf("⚠️  Warning: failed to remove backup file %s after rollback: %v\n", backupPath, removeErr)
-				}
-			} else {
-				fmt.Printf("⚠️  Backup retained at %s for manual recovery\n", backupPath)
-			}
+		// Remove the file from dotfiles directory
+		if removeErr := os.Remove(targetPath); removeErr != nil {
+			fmt.Printf("⚠️  Warning: failed to remove file from dotfiles during rollback: %v\n", removeErr)
 		}
 
 		if restoreSuccessful {
 			return fmt.Errorf("failed to create symlink: %w\nOriginal file restored to %s", err, filePath)
 		}
-		return fmt.Errorf("failed to create symlink: %w\nOriginal file remains at %s", err, targetPath)
+		if backupCreated {
+			return fmt.Errorf("failed to create symlink: %w\nBackup available at %s", err, backupPath)
+		}
+		return fmt.Errorf("failed to create symlink: %w", err)
 	}
 
 	// Success! Clean up the backup since operation completed successfully
