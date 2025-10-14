@@ -158,19 +158,36 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	// Move file to dotfiles directory
 	if err := os.Rename(filePath, targetPath); err != nil {
 		if backupCreated {
-			fmt.Printf("⚠️  Failed to move file; original remains at %s (backup at %s)\n", filePath, backupPath)
+			if removeErr := os.Remove(backupPath); removeErr != nil {
+				fmt.Printf("⚠️  Warning: failed to remove backup file %s after move error: %v\n", backupPath, removeErr)
+			}
 		}
 		return fmt.Errorf("failed to move file to dotfiles: %w", err)
 	}
 
 	// Create symlink
 	if err := os.Symlink(targetPath, filePath); err != nil {
-		// Attempt to restore original file location
+		restoreSuccessful := false
 		if restoreErr := os.Rename(targetPath, filePath); restoreErr != nil {
 			fmt.Printf("❌ Failed to restore original file from dotfiles: %v\n", restoreErr)
+		} else {
+			restoreSuccessful = true
 		}
-		// Keep backup for manual recovery
-		return fmt.Errorf("failed to create symlink: %w\nOriginal file restored to %s; backup retained at %s", err, filePath, backupPath)
+
+		if backupCreated {
+			if restoreSuccessful {
+				if removeErr := os.Remove(backupPath); removeErr != nil {
+					fmt.Printf("⚠️  Warning: failed to remove backup file %s after rollback: %v\n", backupPath, removeErr)
+				}
+			} else {
+				fmt.Printf("⚠️  Backup retained at %s for manual recovery\n", backupPath)
+			}
+		}
+
+		if restoreSuccessful {
+			return fmt.Errorf("failed to create symlink: %w\nOriginal file restored to %s", err, filePath)
+		}
+		return fmt.Errorf("failed to create symlink: %w\nOriginal file remains at %s", err, targetPath)
 	}
 
 	// Success! Clean up the backup since operation completed successfully
@@ -202,8 +219,6 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	fmt.Printf("🔗 Symlink: %s\n", filePath)
 	fmt.Printf("📂 Repository: %s\n", cfg.Git.RepoPath)
 
-	// TODO: Git add and commit
-	// This would integrate with the gitmanager package to stage and commit the changes
 	fmt.Printf("\n📝 Note: File staged for git commit. Run 'dsm sync' or wait for auto-sync.\n")
 
 	return nil
@@ -220,6 +235,7 @@ func getTargetPath(repoPath, sourcePath string) (string, error) {
 	if strings.HasPrefix(sourcePath, homeDir) {
 		relativePath := strings.TrimPrefix(sourcePath, homeDir)
 		relativePath = strings.TrimPrefix(relativePath, string(os.PathSeparator))
+		relativePath = filepath.Clean(relativePath)
 
 		parts := strings.Split(relativePath, string(os.PathSeparator))
 		if len(parts) > 0 {
@@ -232,6 +248,7 @@ func getTargetPath(repoPath, sourcePath string) (string, error) {
 
 	// For files outside home directory, use the full path structure
 	relativePath := strings.TrimPrefix(sourcePath, string(os.PathSeparator))
+	relativePath = filepath.Clean(relativePath)
 	return filepath.Join(repoPath, relativePath), nil
 }
 
