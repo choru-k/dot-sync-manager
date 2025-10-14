@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
@@ -78,12 +79,21 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to start daemon: %w", err)
 	}
 
-	// Note: The daemon process writes its own PID file in foreground mode
-	// We don't write it here to avoid race conditions
-	// Wait briefly to verify daemon started successfully
-	pid := daemonCmd.Process.Pid
+	// Wait for daemon to fully initialize by checking for PID file
+	// This ensures the daemon successfully started before we report success
+	if err := waitForDaemonStartup(5 * time.Second); err != nil {
+		return fmt.Errorf("daemon failed to start: %w", err)
+	}
+
+	// Get the actual daemon PID from the PID file (not the spawned process PID)
+	pid, err := getDaemonPID()
+	if err != nil {
+		// Daemon started but we couldn't read PID - still report success
+		fmt.Println("✅ Dotfile sync daemon started")
+	} else {
+		fmt.Printf("✅ Dotfile sync daemon started (PID: %d)\n", pid)
+	}
 	
-	fmt.Printf("✅ Dotfile sync daemon started (PID: %d)\n", pid)
 	fmt.Printf("📁 Repository: %s\n", cfg.Git.RepoPath)
 	fmt.Printf("📊 Machine: %s\n", cfg.Machine.Name)
 	fmt.Printf("⚙️  Auto-sync: %v\n", cfg.Sync.AutoSyncEnabled)
@@ -92,6 +102,23 @@ func runStart(cmd *cobra.Command, args []string) error {
 	fmt.Println("💡 Use 'dsm status' to check daemon status")
 
 	return nil
+}
+
+// waitForDaemonStartup polls for the daemon to fully initialize by checking for PID file
+func waitForDaemonStartup(timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+
+	for time.Now().Before(deadline) {
+		// Check if daemon is running by checking PID file and process existence
+		if isDaemonRunning() {
+			return nil
+		}
+		<-ticker.C
+	}
+
+	return fmt.Errorf("daemon did not start within %v", timeout)
 }
 
 func runForegroundDaemon(cfg *config.SyncConfig) error {

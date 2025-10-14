@@ -68,10 +68,7 @@ func runStop(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("✅ Sent graceful shutdown signal to daemon (PID: %d)\n", pid)
 	fmt.Println("💡 The daemon will finish any pending operations before stopping")
-
-	if err := process.RemovePID(); err != nil {
-		fmt.Printf("⚠️  Warning: failed to remove PID file: %v\n", err)
-	}
+	fmt.Println("💡 The daemon will clean up its own PID file upon shutdown")
 
 	return nil
 }

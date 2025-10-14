@@ -53,7 +53,10 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	// Check if file is already a symlink
 	if fileInfo.Mode()&os.ModeSymlink != 0 {
-		linkTarget, _ := os.Readlink(filePath)
+		linkTarget, err := os.Readlink(filePath)
+		if err != nil {
+			return fmt.Errorf("file is a symlink, but could not read its target: %w", err)
+		}
 		return fmt.Errorf("file is already a symlink: %s -> %s\nHint: Only add actual files, not symlinks", filePath, linkTarget)
 	}
 
@@ -243,10 +246,16 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 	cfg.Mappings[sourceRelative] = filePath
 
-	// Save updated configuration to the original location
+	// Save updated configuration atomically using temp file pattern
 	configPath := cfg.GetConfigPath()
-	if err := cfg.SaveToFile(configPath); err != nil {
-		return fmt.Errorf("file moved and symlinked, but failed to update configuration: %w. Please check %s for correctness", err, configPath)
+	tempConfigPath := configPath + ".tmp"
+	if err := cfg.SaveToFile(tempConfigPath); err != nil {
+		return fmt.Errorf("file moved and symlinked, but failed to prepare configuration update: %w. Please check %s for correctness", err, configPath)
+	}
+	// Atomically rename temp file to actual config file as final step
+	if err := os.Rename(tempConfigPath, configPath); err != nil {
+		os.Remove(tempConfigPath) // cleanup temp file
+		return fmt.Errorf("file moved and symlinked, but failed to finalize configuration: %w. Please check %s for correctness", err, configPath)
 	}
 
 	fmt.Printf("✅ Added file to dotfiles\n")
