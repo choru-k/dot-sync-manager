@@ -93,7 +93,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Printf("✅ Dotfile sync daemon started (PID: %d)\n", pid)
 	}
-	
+
 	fmt.Printf("📁 Repository: %s\n", cfg.Git.RepoPath)
 	fmt.Printf("📊 Machine: %s\n", cfg.Machine.Name)
 	fmt.Printf("⚙️  Auto-sync: %v\n", cfg.Sync.AutoSyncEnabled)
