@@ -1,5 +1,7 @@
 name: Claude Code
 
+# Trigger Claude Code only when someone comments "/claude review"
+# This enables manual code review on demand rather than automatic triggering
 on:
   issue_comment:
     types: [created]
@@ -13,10 +15,10 @@ on:
 jobs:
   claude:
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
-      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '/claude review')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '/claude review')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '/claude review')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '/claude review') || contains(github.event.issue.title, '/claude review')))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -31,6 +33,7 @@ jobs:
           fetch-depth: 1
 
       - name: Run Claude Code
+        # Triggered by commenting "/claude review" on PRs, issues, or reviews
         id: claude
         uses: anthropics/claude-code-action@v1
         with:
