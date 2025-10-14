@@ -6,54 +6,56 @@ import (
 	"testing"
 )
 
+// testConfig is a sample configuration used for testing
+const testConfig = `{
+	"version": "1.0",
+	"machine": {"name": "test-machine"},
+	"git": {
+		"repo_path": "/tmp/test-repo",
+		"remote_url": "",
+		"remote_name": "origin",
+		"branch": "main",
+		"author_name": "Test User",
+		"author_email": "test@example.com",
+		"auth_type": "ssh"
+	},
+	"sync": {
+		"auto_sync_enabled": true,
+		"pull_interval_seconds": 300,
+		"debounce_seconds": 30,
+		"auto_commit": true,
+		"auto_push": true,
+		"auto_pull": true
+	},
+	"notifications": {
+		"enabled": true,
+		"show_success": false,
+		"show_pulls": true,
+		"play_sound_on_conflict": false
+	},
+	"conflict_resolution": {
+		"strategy": "manual",
+		"backup_dir": "/tmp/backup",
+		"keep_backups_days": 7
+	},
+	"mappings": {},
+	"ui": {
+		"start_at_boot": false,
+		"minimize_to_tray": true,
+		"theme": "auto"
+	},
+	"advanced": {
+		"debug_logging": false,
+		"log_file": "/tmp/test.log",
+		"max_log_size_mb": 10
+	}
+}`
+
 func TestGetConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create a test config file
 	configPath := filepath.Join(tmpDir, ".sync-config.json")
-	testConfig := `{
-		"version": "1.0",
-		"machine": {"name": "test-machine"},
-		"git": {
-			"repo_path": "/tmp/test-repo",
-			"remote_url": "",
-			"remote_name": "origin",
-			"branch": "main",
-			"author_name": "Test User",
-			"author_email": "test@example.com",
-			"auth_type": "ssh"
-		},
-		"sync": {
-			"auto_sync_enabled": true,
-			"pull_interval_seconds": 300,
-			"debounce_seconds": 30,
-			"auto_commit": true,
-			"auto_push": true,
-			"auto_pull": true
-		},
-		"notifications": {
-			"enabled": true,
-			"show_success": false,
-			"show_pulls": true,
-			"play_sound_on_conflict": false
-		},
-		"conflict_resolution": {
-			"strategy": "manual",
-			"backup_dir": "/tmp/backup",
-			"keep_backups_days": 7
-		},
-		"mappings": {},
-		"ui": {
-			"start_at_boot": false,
-			"minimize_to_tray": true,
-			"theme": "auto"
-		},
-		"advanced": {
-			"debug_logging": false,
-			"log_file": "/tmp/test.log",
-			"max_log_size_mb": 10
-		}
-	}`
 	if err := os.WriteFile(configPath, []byte(testConfig), 0644); err != nil {
 		t.Fatalf("Failed to create test config: %v", err)
 	}

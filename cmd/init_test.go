@@ -32,16 +32,12 @@ func TestPromptForNonEmpty(t *testing.T) {
 		os.Stdin = r
 		t.Cleanup(func() {
 			os.Stdin = oldStdin
-			if err := r.Close(); err != nil {
-				t.Logf("failed to close pipe: %v", err)
-			}
+			_ = r.Close() // Ignore error in cleanup
 		})
 
 		go func() {
 			defer func() {
-				if err := w.Close(); err != nil {
-					t.Logf("failed to close pipe: %v", err)
-				}
+				_ = w.Close() // Ignore error in cleanup
 			}()
 			if _, err := w.Write([]byte("valid-input\n")); err != nil {
 				t.Errorf("failed to write to pipe: %v", err)
@@ -66,16 +62,12 @@ func TestPromptForNonEmpty(t *testing.T) {
 		os.Stdin = r
 		t.Cleanup(func() {
 			os.Stdin = oldStdin
-			if err := r.Close(); err != nil {
-				t.Logf("failed to close pipe: %v", err)
-			}
+			_ = r.Close() // Ignore error in cleanup
 		})
 
 		go func() {
 			defer func() {
-				if err := w.Close(); err != nil {
-					t.Logf("failed to close pipe: %v", err)
-				}
+				_ = w.Close() // Ignore error in cleanup
 			}()
 			if _, err := w.Write([]byte("  valid-input  \n")); err != nil {
 				t.Errorf("failed to write to pipe: %v", err)
@@ -138,9 +130,7 @@ func TestPromptForInput(t *testing.T) {
 			// Write test input
 			go func() {
 				defer func() {
-					if err := w.Close(); err != nil {
-						t.Logf("failed to close pipe: %v", err)
-					}
+					_ = w.Close() // Ignore error in cleanup
 				}()
 				if _, err := w.Write([]byte(tt.input)); err != nil {
 					t.Errorf("failed to write to pipe: %v", err)
@@ -166,12 +156,8 @@ func TestPromptForInputError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create pipe: %v", err)
 	}
-	if err := r.Close(); err != nil {
-		t.Logf("failed to close read pipe: %v", err)
-	}
-	if err := w.Close(); err != nil {
-		t.Logf("failed to close write pipe: %v", err)
-	}
+	_ = r.Close() // Ignore error - intentionally closed for test
+	_ = w.Close() // Ignore error - intentionally closed for test
 
 	oldStdin := os.Stdin
 	os.Stdin = r

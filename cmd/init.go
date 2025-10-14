@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"fmt"
+	"net/mail"
 	"os"
 	"path/filepath"
 	"strings"
@@ -112,14 +113,15 @@ Options:
   - Remove the existing directory first`, repoPath)
 		}
 		
-		// Confirm before removing directory
-		fmt.Printf("⚠️  Warning: --force will delete the entire directory: %s\n", repoPath)
-		confirmation, err := promptForInput("Type 'yes' to confirm deletion: ", "")
+		// Confirm before removing directory (require strong confirmation)
+		fmt.Printf("⚠️  WARNING: --force will delete the entire directory: %s\n", repoPath)
+		fmt.Printf("⚠️  This action CANNOT be undone!\n")
+		confirmation, err := promptForInput("Type 'DELETE' in all caps to confirm: ", "")
 		if err != nil {
 			return fmt.Errorf("failed to read confirmation: %w", err)
 		}
-		if confirmation != "yes" {
-			return fmt.Errorf("operation cancelled")
+		if confirmation != "DELETE" {
+			return fmt.Errorf("operation cancelled (you must type 'DELETE' exactly)")
 		}
 		
 		if err := os.RemoveAll(repoPath); err != nil {
@@ -139,9 +141,21 @@ Options:
 		}
 	}
 	if authorEmail == "" {
-		authorEmail, err = promptForNonEmpty("Enter your email: ", "author email")
-		if err != nil {
-			return err
+		for {
+			authorEmail, err = promptForInput("Enter your email: ", "")
+			if err != nil {
+				return fmt.Errorf("failed to read author email: %w", err)
+			}
+			if authorEmail == "" {
+				fmt.Println("Author email cannot be empty. Please try again.")
+				continue
+			}
+			// Validate email format
+			if _, err := mail.ParseAddress(authorEmail); err != nil {
+				fmt.Printf("Invalid email format: %v. Please try again.\n", err)
+				continue
+			}
+			break
 		}
 	}
 
@@ -186,30 +200,45 @@ Options:
 		ignoreExists = true
 	}
 
-	// Only create config if it doesn't exist (e.g., new repo or clone without config)
+	// Create or update config for this machine
+	var cfg *config.SyncConfig
+	
 	if !configExists {
-		// Create configuration using defaults, then override user-provided values
-		cfg := config.DefaultConfig()
-		
-		// Override with user-provided values
-		cfg.Machine.Name = machineName
-		cfg.Git.RepoPath = repoPath
-		cfg.Git.RemoteURL = gitURL
-		cfg.Git.RemoteName = defaultRemoteName
-		cfg.Git.AuthorName = authorName
-		cfg.Git.AuthorEmail = authorEmail
-		cfg.Git.AuthType = gitmanager.AuthStrategyNone // Override default SSH for init
-		
-		// Adjust paths relative to the new repo
-		cfg.ConflictResolution.BackupDir = filepath.Join(repoPath, ".backup")
-		cfg.ConfigPath = configPath
-
-		if err := cfg.SaveToFile(configPath); err != nil {
-			return fmt.Errorf("failed to save configuration: %w", err)
+		// Create new configuration using defaults
+		cfg, err = config.DefaultConfig()
+		if err != nil {
+			return fmt.Errorf("failed to create default config: %w", err)
 		}
 		fmt.Printf("✅ Configuration created: %s\n", configPath)
 	} else {
-		fmt.Printf("✅ Using existing configuration: %s\n", configPath)
+		// Load existing config and update for this machine
+		cfg, err = config.LoadFromFile(configPath)
+		if err != nil {
+			return fmt.Errorf("failed to load existing config: %w", err)
+		}
+		fmt.Printf("✅ Loaded existing configuration, updating for this machine\n")
+	}
+	
+	// Update machine-specific fields for new location/machine
+	cfg.Machine.Name = machineName
+	cfg.Git.RepoPath = repoPath
+	cfg.Git.RemoteURL = gitURL
+	cfg.Git.RemoteName = defaultRemoteName
+	cfg.Git.AuthorName = authorName
+	cfg.Git.AuthorEmail = authorEmail
+	cfg.Git.AuthType = gitmanager.AuthStrategyNone // Override default SSH for init
+	
+	// Adjust paths relative to the new repo location
+	cfg.ConflictResolution.BackupDir = filepath.Join(repoPath, ".backup")
+	cfg.ConfigPath = configPath
+
+	if err := cfg.SaveToFile(configPath); err != nil {
+		return fmt.Errorf("failed to save configuration: %w", err)
+	}
+	
+	// Set restrictive permissions on config file (may contain sensitive data)
+	if err := os.Chmod(configPath, 0600); err != nil {
+		return fmt.Errorf("failed to set config file permissions: %w", err)
 	}
 
 	// Only create .syncignore if it doesn't exist

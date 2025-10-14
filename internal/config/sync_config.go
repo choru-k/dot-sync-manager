@@ -198,9 +198,13 @@ type AdvancedConfig struct {
 	MaxLogSizeMB int `json:"max_log_size_mb"`
 }
 
-// DefaultConfig returns a default configuration
-func DefaultConfig() *SyncConfig {
-	homeDir, _ := os.UserHomeDir()
+// DefaultConfig returns a default configuration.
+// Returns an error if the user's home directory cannot be determined.
+func DefaultConfig() (*SyncConfig, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("could not determine home directory: %w", err)
+	}
 
 	return &SyncConfig{
 		Version: CurrentVersion,
@@ -255,12 +259,15 @@ func DefaultConfig() *SyncConfig {
 			LogFile:      filepath.Join(homeDir, ".dotfile-sync.log"),
 			MaxLogSizeMB: DefaultMaxLogSizeMB,
 		},
-	}
+	}, nil
 }
 
 // LoadFromFile loads configuration from a JSON file
 func LoadFromFile(filename string) (*SyncConfig, error) {
-	config := DefaultConfig()
+	config, err := DefaultConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create default config: %w", err)
+	}
 
 	// Store the config path (resolve to absolute path)
 	absPath, err := filepath.Abs(filename)
@@ -357,7 +364,10 @@ func LoadFromDefaultLocation() (*SyncConfig, error) {
 	}
 
 	// Return default config if no file found, store the expected path
-	cfg := DefaultConfig()
+	cfg, err := DefaultConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create default config: %w", err)
+	}
 	cfg.ConfigPath = configPath
 	return cfg, nil
 }

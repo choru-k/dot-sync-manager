@@ -347,7 +347,10 @@ func TestToSyncServiceConfig_WithoutBackoff(t *testing.T) {
 }
 
 func TestDefaultConfig_HasBackoff(t *testing.T) {
-	config := DefaultConfig()
+	config, err := DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
 
 	// Check that default config has backoff settings
 	if config.Sync.Backoff == nil {
