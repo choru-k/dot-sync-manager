@@ -66,7 +66,8 @@ func getConfig() (*config.SyncConfig, error) {
 		if err != nil {
 			homeDir, homeErr := os.UserHomeDir()
 			if homeErr != nil {
-				return nil, fmt.Errorf("failed to load configuration: %w (unable to determine home directory: %v)", err, homeErr)
+				// Can't show expected paths if we can't get home directory
+				return nil, fmt.Errorf("failed to load configuration: %w", err)
 			}
 			prdPath := filepath.Join(homeDir, "dotfiles", ".sync-config.json")
 			legacyPath := filepath.Join(homeDir, ".dotfile-sync.json")

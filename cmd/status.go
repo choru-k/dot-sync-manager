@@ -8,6 +8,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	// statusSeparatorWidth defines the width of separator lines in status output
+	statusSeparatorWidth = 30
+)
+
 // statusCmd represents the status command
 var statusCmd = &cobra.Command{
 	Use:   "status",
@@ -31,7 +36,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println("📊 Dotfile Sync Manager Status")
-	fmt.Println("=" + strings.Repeat("=", 30))
+	fmt.Println("=" + strings.Repeat("=", statusSeparatorWidth))
 
 	// Check daemon status
 	if isDaemonRunning() {

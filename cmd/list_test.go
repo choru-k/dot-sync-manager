@@ -121,45 +121,20 @@ func TestCheckSymlinkStatus(t *testing.T) {
 	}
 }
 
-func TestCheckSymlinkStatusWithTildePath(t *testing.T) {
-	tmpDir := t.TempDir()
-	sourceFile := filepath.Join(tmpDir, "source.txt")
-	if err := os.WriteFile(sourceFile, []byte("test"), 0644); err != nil {
-		t.Fatalf("Failed to create source file: %v", err)
-	}
-
-	// Create symlink in temp dir
-	target := filepath.Join(tmpDir, "link")
-	if err := os.Symlink(sourceFile, target); err != nil {
-		t.Fatalf("Failed to create symlink: %v", err)
-	}
-
-	// Test with a path that would need expansion (but won't match our test setup)
-	// This tests the path expansion logic
-	status, icon := checkSymlinkStatus(sourceFile, "~/nonexistent-path-for-testing")
-
-	// Should return "not linked" since the expanded path won't exist
-	if status != "not linked" {
-		t.Errorf("Expected 'not linked' for non-existent tilde path, got %q", status)
-	}
-	if icon != "○" {
-		t.Errorf("Expected '○' icon for non-existent path, got %q", icon)
-	}
-}
-
 func TestCheckSymlinkStatusWithNonExistentTildePath(t *testing.T) {
-	// Test that tilde paths are properly expanded even when they don't exist
-	// Verifies that the function handles non-existent paths gracefully
+	// Test that tilde paths are properly expanded and handled gracefully when they don't exist
+	// This verifies both path expansion logic and non-existent path handling
 	tmpDir := t.TempDir()
 	sourceFile := filepath.Join(tmpDir, "source.txt")
 	
+	// Test with tilde path that doesn't exist after expansion
 	status, icon := checkSymlinkStatus(sourceFile, "~/nonexistent-test-path")
 	
 	// Should return "not linked" since the expanded path doesn't exist
 	if status != "not linked" {
-		t.Errorf("Expected 'not linked' for non-existent path, got %q", status)
+		t.Errorf("Expected 'not linked' for non-existent tilde path, got %q", status)
 	}
 	if icon != "○" {
-		t.Errorf("Expected '○' icon for non-existent path, got %q", icon)
+		t.Errorf("Expected '○' icon for non-existent tilde path, got %q", icon)
 	}
 }
