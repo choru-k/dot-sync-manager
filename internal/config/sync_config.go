@@ -372,26 +372,10 @@ func (c *SyncConfig) SaveToFile(filename string) error {
 	return nil
 }
 
-// GetConfigPath returns the path to the configuration file
+// GetConfigPath returns the path from which this config was loaded.
+// This path is always set during loading by LoadFromFile or LoadFromDefaultLocation.
 func (c *SyncConfig) GetConfigPath() string {
-	// Return stored path if available
-	if c.ConfigPath != "" {
-		return c.ConfigPath
-	}
-
-	// Fallback to discovery if ConfigPath wasn't set (shouldn't happen in normal usage)
-	homeDir, _ := os.UserHomeDir()
-	prdPath := filepath.Join(homeDir, "dotfiles", ".sync-config.json")
-	legacyPath := filepath.Join(homeDir, ".dotfile-sync.json")
-
-	// Check which one exists
-	if _, err := os.Stat(prdPath); err == nil {
-		return prdPath
-	}
-	if _, err := os.Stat(legacyPath); err == nil {
-		return legacyPath
-	}
-	return prdPath // Default to PRD location
+	return c.ConfigPath
 }
 
 // Validate checks if the configuration is valid
@@ -506,11 +490,7 @@ func (c *SyncConfig) Validate() error {
 			if target == "" {
 				return fmt.Errorf("mapping target for '%s' cannot be empty", source)
 			}
-			// Expand and validate target path
-			expandedTarget := expandPath(target)
-			if !filepath.IsAbs(expandedTarget) {
-				return fmt.Errorf("mapping target '%s' must resolve to absolute path", target)
-			}
+			// Note: expandPath always returns absolute paths, no need to check
 		}
 	}
 
@@ -538,9 +518,10 @@ func (c *SyncConfig) Validate() error {
 			}
 		}
 
-		// Always validate manual sync timeout if specified
-		if c.Sync.Backoff.ManualSyncTimeoutSeconds <= 0 {
-			c.Sync.Backoff.ManualSyncTimeoutSeconds = 10
+		// Validate manual sync timeout only if explicitly set (since it's optional with omitempty)
+		// The ToSyncServiceConfig() function provides a default of 10 seconds if not set
+		if c.Sync.Backoff.ManualSyncTimeoutSeconds < 0 {
+			return fmt.Errorf("backoff manual sync timeout cannot be negative")
 		}
 	}
 

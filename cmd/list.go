@@ -157,14 +157,19 @@ func checkSymlinkStatus(sourcePath, targetPath string) (string, string) {
 		return "broken symlink", "✗"
 	}
 
-	// Resolve to absolute path for comparison
+	// If linkTarget is not absolute, resolve it relative to the symlink's directory
+	if !filepath.IsAbs(linkTarget) {
+		linkTarget = filepath.Join(filepath.Dir(targetPath), linkTarget)
+	}
+
+	// Now resolve to absolute paths for comparison
 	absLinkTarget, err := filepath.Abs(linkTarget)
 	if err != nil {
-		absLinkTarget = linkTarget
+		return "error resolving link", "✗"
 	}
 	absSourcePath, err := filepath.Abs(sourcePath)
 	if err != nil {
-		absSourcePath = sourcePath
+		return "error resolving source", "✗"
 	}
 
 	// Check if symlink points to the correct source

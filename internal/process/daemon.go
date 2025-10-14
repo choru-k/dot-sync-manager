@@ -97,7 +97,13 @@ func GetDaemonPID() (int, error) {
 }
 
 func defaultProcessName() string {
-	return "dotfile-sync-manager"
+	// The actual binary name is dot-sync-manager (or dsm as the command)
+	// Use the executable name to ensure we match the actual running process
+	if exe, err := os.Executable(); err == nil {
+		return filepath.Base(exe)
+	}
+	// Fallback to the actual binary name if os.Executable fails
+	return "dot-sync-manager"
 }
 
 // FindProcessByName exposes name lookup for callers that need it.

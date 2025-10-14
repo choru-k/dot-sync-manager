@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -72,8 +73,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		fmt.Printf("   - Database credentials and API tokens\n\n")
 		fmt.Printf("Type 'yes' to continue anyway, or anything else to cancel: ")
 
-		var response string
-		fmt.Scanln(&response)
+		reader := bufio.NewReader(os.Stdin)
+		response, err := reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("failed to read user input: %w", err)
+		}
+		response = strings.TrimSpace(response)
 		if response != "yes" {
 			return fmt.Errorf("operation cancelled by user")
 		}
@@ -208,8 +213,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 	cfg.Mappings[sourceRelative] = filePath
 
-	// Save updated configuration
-	configPath := filepath.Join(cfg.Git.RepoPath, ".sync-config.json")
+	// Save updated configuration to the original location
+	configPath := cfg.GetConfigPath()
 	if err := cfg.SaveToFile(configPath); err != nil {
 		fmt.Printf("⚠️  Warning: failed to update configuration: %v\n", err)
 	}
@@ -259,7 +264,14 @@ func copyFile(src, dst string) error {
 	}
 	defer sourceFile.Close()
 
-	destFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	// Get source file info to preserve permissions
+	sourceInfo, err := sourceFile.Stat()
+	if err != nil {
+		return err
+	}
+
+	// Create destination file with source file's permissions
+	destFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, sourceInfo.Mode())
 	if err != nil {
 		return err
 	}
