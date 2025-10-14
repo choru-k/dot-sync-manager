@@ -42,6 +42,9 @@ type SyncConfig struct {
 
 	// Advanced settings
 	Advanced AdvancedConfig `json:"advanced"`
+
+	// ConfigPath stores the path from which this config was loaded (not persisted to JSON)
+	ConfigPath string `json:"-"`
 }
 
 // MachineConfig holds machine-specific settings
@@ -240,6 +243,13 @@ func DefaultConfig() *SyncConfig {
 func LoadFromFile(filename string) (*SyncConfig, error) {
 	config := DefaultConfig()
 
+	// Store the config path (resolve to absolute path)
+	absPath, err := filepath.Abs(filename)
+	if err != nil {
+		absPath = filename // Fallback to original if abs fails
+	}
+	config.ConfigPath = absPath
+
 	// Check if file exists
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		// Return default config if file doesn't exist
@@ -320,8 +330,10 @@ func LoadFromDefaultLocation() (*SyncConfig, error) {
 		return LoadFromFile(configPath)
 	}
 
-	// Return default config if no file found
-	return DefaultConfig(), nil
+	// Return default config if no file found, store the expected path
+	cfg := DefaultConfig()
+	cfg.ConfigPath = configPath
+	return cfg, nil
 }
 
 // expandPath expands ~ to user home directory using shared utility
@@ -358,7 +370,12 @@ func (c *SyncConfig) SaveToFile(filename string) error {
 
 // GetConfigPath returns the path to the configuration file
 func (c *SyncConfig) GetConfigPath() string {
-	// This should be stored when loading, but for now we'll use the default logic
+	// Return stored path if available
+	if c.ConfigPath != "" {
+		return c.ConfigPath
+	}
+
+	// Fallback to discovery if ConfigPath wasn't set (shouldn't happen in normal usage)
 	homeDir, _ := os.UserHomeDir()
 	prdPath := filepath.Join(homeDir, "dotfiles", ".sync-config.json")
 	legacyPath := filepath.Join(homeDir, ".dotfile-sync.json")

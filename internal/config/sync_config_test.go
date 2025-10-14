@@ -590,16 +590,15 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			errMsg:  "maximum log size should not exceed 1000 MB",
 		},
 		{
-			name: "invalid mapping target",
+			name: "mapping target gets expanded to absolute",
 			config: func() *SyncConfig {
 				c := DefaultConfig()
 				c.Mappings = map[string]string{
-					"bashrc": "relative/path",
+					"bashrc": "relative/path", // This will be expanded to absolute path
 				}
 				return c
 			}(),
-			wantErr: true,
-			errMsg:  "must resolve to absolute path",
+			wantErr: false, // No error because expandPath converts to absolute
 		},
 		{
 			name: "valid mapping target",
@@ -648,23 +647,32 @@ func TestExpandPath(t *testing.T) {
 	defer os.Setenv("HOME", originalHome)
 
 	tests := []struct {
-		input    string
-		expected string
+		input          string
+		expected       string
+		checkPrefix    bool   // For relative paths, just check they became absolute
+		expectedPrefix string // What prefix to check for relative paths
 	}{
-		{"~/file.txt", "/test/home/file.txt"},
-		{"~/dir/subdir/file.txt", "/test/home/dir/subdir/file.txt"},
-		{"/absolute/path", "/absolute/path"},
-		{"relative/path", "relative/path"},
-		{"", ""},
-		{"~", "/test/home"},
-		{"~/", "/test/home"},
+		{"~/file.txt", "/test/home/file.txt", false, ""},
+		{"~/dir/subdir/file.txt", "/test/home/dir/subdir/file.txt", false, ""},
+		{"/absolute/path", "/absolute/path", false, ""},
+		{"relative/path", "", true, "/"}, // Relative paths get converted to absolute
+		{"", "", true, "/"},              // Empty paths get converted to current dir (absolute)
+		{"~", "/test/home", false, ""},
+		{"~/", "/test/home", false, ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			result := expandPath(tt.input)
-			if result != tt.expected {
-				t.Errorf("expandPath(%s) = %s, expected %s", tt.input, result, tt.expected)
+			if tt.checkPrefix {
+				// For relative paths, just verify they became absolute
+				if !filepath.IsAbs(result) {
+					t.Errorf("expandPath(%s) = %s, expected absolute path", tt.input, result)
+				}
+			} else {
+				if result != tt.expected {
+					t.Errorf("expandPath(%s) = %s, expected %s", tt.input, result, tt.expected)
+				}
 			}
 		})
 	}

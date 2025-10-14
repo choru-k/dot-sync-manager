@@ -93,9 +93,16 @@ func isDaemonRunning() bool {
 		return false
 	}
 
-	// On Unix systems, we can signal 0 to check if process exists
-	// On Windows, this check is more limited
-	return process != nil
+	// On Unix systems, os.FindProcess always succeeds even for non-existent PIDs
+	// We need to send signal 0 to actually check if the process exists
+	// On Windows, signal 0 isn't supported, so we rely on FindProcess
+	if runtime.GOOS == "windows" {
+		return process != nil
+	}
+
+	// On Unix: Send signal 0 (doesn't actually signal, just checks existence)
+	err = process.Signal(os.Signal(nil))
+	return err == nil
 }
 
 // getDaemonPID finds the PID of the running daemon using platform-appropriate methods

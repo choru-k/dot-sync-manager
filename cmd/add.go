@@ -35,9 +35,16 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	// Expand path
 	filePath = expandPath(filePath)
 
-	// Check if file exists
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+	// Check if file exists and validate it's a file (not a directory)
+	fileInfo, err := os.Stat(filePath)
+	if os.IsNotExist(err) {
 		return fmt.Errorf("file does not exist: %s", filePath)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to stat file: %w", err)
+	}
+	if fileInfo.IsDir() {
+		return fmt.Errorf("path is a directory, not a file: %s\nHint: Use symlinks for directories or add individual files within the directory", filePath)
 	}
 
 	// Load configuration
@@ -69,6 +76,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create target directory: %w", err)
 	}
 
+	// Track backup path for potential rollback
+	var backupPath string
+
 	// Backup original file if it exists and is not a symlink
 	if fileInfo, err := os.Lstat(filePath); err == nil && fileInfo.Mode()&os.ModeSymlink == 0 {
 		// Use configured backup directory if available
@@ -85,7 +95,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		// Generate backup filename with timestamp
 		timestamp := time.Now().Format("20060102-150405")
 		filename := filepath.Base(filePath)
-		backupPath := filepath.Join(backupDir, fmt.Sprintf("%s-%s", filename, timestamp))
+		backupPath = filepath.Join(backupDir, fmt.Sprintf("%s-%s", filename, timestamp))
 
 		if err := os.Rename(filePath, backupPath); err != nil {
 			return fmt.Errorf("failed to backup original file: %w", err)
@@ -95,14 +105,27 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	// Move file to dotfiles directory
 	if err := os.Rename(filePath, targetPath); err != nil {
+		// Rollback: Restore backup if it was created
+		if backupPath != "" {
+			_ = os.Rename(backupPath, filePath)
+		}
 		return fmt.Errorf("failed to move file to dotfiles: %w", err)
 	}
 
 	// Create symlink
 	if err := os.Symlink(targetPath, filePath); err != nil {
-		// Try to rollback the move if symlink fails
+		// Rollback: Move file back from dotfiles
 		_ = os.Rename(targetPath, filePath)
+		// Rollback: Restore the original backup if it was created
+		if backupPath != "" {
+			_ = os.Rename(filePath, backupPath)
+		}
 		return fmt.Errorf("failed to create symlink: %w", err)
+	}
+
+	// Success! Clean up the backup since operation completed successfully
+	if backupPath != "" {
+		_ = os.Remove(backupPath)
 	}
 
 	// Update mappings in configuration
