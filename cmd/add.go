@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -70,7 +71,22 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	// Backup original file if it exists and is not a symlink
 	if fileInfo, err := os.Lstat(filePath); err == nil && fileInfo.Mode()&os.ModeSymlink == 0 {
-		backupPath := filePath + ".backup"
+		// Use configured backup directory if available
+		backupDir := cfg.ConflictResolution.BackupDir
+		if backupDir == "" {
+			backupDir = filepath.Join(cfg.Git.RepoPath, ".backup")
+		}
+
+		// Create backup directory if needed
+		if err := os.MkdirAll(backupDir, 0755); err != nil {
+			return fmt.Errorf("failed to create backup directory: %w", err)
+		}
+
+		// Generate backup filename with timestamp
+		timestamp := time.Now().Format("20060102-150405")
+		filename := filepath.Base(filePath)
+		backupPath := filepath.Join(backupDir, fmt.Sprintf("%s-%s", filename, timestamp))
+
 		if err := os.Rename(filePath, backupPath); err != nil {
 			return fmt.Errorf("failed to backup original file: %w", err)
 		}

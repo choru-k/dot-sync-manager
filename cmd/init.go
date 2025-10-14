@@ -76,9 +76,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 		// Clone existing repository
 		fmt.Printf("Cloning repository from %s...\n", gitURL)
 
-		// Clone repository
-		// Note: This would need to be implemented in gitmanager
-		fmt.Printf("Would clone %s to %s\n", gitURL, repoPath)
+		// TODO: Integrate with gitmanager to clone repository
+		// This should call gitmanager.Clone(ctx, gitURL, repoPath, auth)
+		fmt.Printf("⚠️  Git cloning not yet implemented - please clone manually:\n")
+		fmt.Printf("   git clone %s %s\n", gitURL, repoPath)
 	} else {
 		// Create new repository
 		fmt.Printf("Creating new repository in %s...\n", repoPath)
@@ -88,9 +89,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to create directory: %w", err)
 		}
 
-		// Initialize git repository
-		// Note: This would need to be implemented in gitmanager
-		fmt.Printf("Would initialize git repository in %s\n", repoPath)
+		// TODO: Integrate with gitmanager to initialize repository
+		// This should call gitmanager.Init(ctx, repoPath)
+		fmt.Printf("⚠️  Git initialization not yet implemented - please initialize manually:\n")
+		fmt.Printf("   cd %s && git init\n", repoPath)
 	}
 
 	// Create configuration

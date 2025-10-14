@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"syscall"
+	"runtime"
 
 	"github.com/spf13/cobra"
 )
@@ -53,8 +53,8 @@ func runStop(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to find process: %w", err)
 	}
 
-	// Send SIGTERM signal for graceful shutdown
-	if err := process.Signal(syscall.SIGTERM); err != nil {
+	// Send termination signal using platform-appropriate method
+	if err := terminateProcess(process); err != nil {
 		if stopForce {
 			fmt.Printf("⚠️  Failed to send graceful shutdown signal: %v\n", err)
 			fmt.Println("Attempting force shutdown...")
@@ -70,13 +70,41 @@ func runStop(cmd *cobra.Command, args []string) error {
 }
 
 
-// stopAllDaemons attempts to stop all dotfile-sync-manager processes
+// terminateProcess sends appropriate termination signal based on platform
+func terminateProcess(process *os.Process) error {
+	switch runtime.GOOS {
+	case "windows":
+		// On Windows, we can only use process.Kill() as there's no graceful shutdown signal
+		return process.Kill()
+	default:
+		// On Unix-like systems, we can use SIGTERM for graceful shutdown
+		return process.Signal(os.Interrupt) // Use SIGINT (Ctrl+C) instead of SIGTERM
+	}
+}
+
+// stopAllDaemons attempts to stop all dotfile-sync-manager processes using platform-appropriate method
 func stopAllDaemons() error {
-	// Use pkill to stop all dotfile-sync-manager processes
-	cmd := exec.Command("pkill", "-f", "dotfile-sync-manager")
-	err := cmd.Run()
-	if err != nil {
-		return fmt.Errorf("failed to stop daemon processes: %w", err)
+	switch runtime.GOOS {
+	case "windows":
+		// Use taskkill to stop all dotfile-sync-manager processes
+		cmd := exec.Command("taskkill", "/F", "/IM", "dotfile-sync-manager.exe")
+		if err := cmd.Run(); err != nil {
+			// Try without .exe extension
+			cmd = exec.Command("taskkill", "/F", "/IM", "dotfile-sync-manager")
+			if err := cmd.Run(); err != nil {
+				return fmt.Errorf("failed to stop daemon processes: %w", err)
+			}
+		}
+	default:
+		// Use pkill to stop all dotfile-sync-manager processes
+		cmd := exec.Command("pkill", "-f", "dotfile-sync-manager")
+		if err := cmd.Run(); err != nil {
+			// Fallback to kill command
+			cmd = exec.Command("killall", "dotfile-sync-manager")
+			if err := cmd.Run(); err != nil {
+				return fmt.Errorf("failed to stop daemon processes: %w", err)
+			}
+		}
 	}
 
 	fmt.Println("✅ Sent stop signal to all dotfile-sync-manager processes")

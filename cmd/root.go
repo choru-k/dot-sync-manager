@@ -5,7 +5,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
+	"strings"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
 	"github.com/spf13/cobra"
@@ -86,28 +88,122 @@ func isDaemonRunning() bool {
 	// 2. Verify the process is still running
 	// 3. Check that it's the correct process
 
-	// For now, we'll use a simple approach by checking if we can find the process
-	cmd := exec.Command("pgrep", "-f", "dotfile-sync-manager")
-	err := cmd.Run()
-	return err == nil
+	// Try to find the process using platform-appropriate method
+	pid, err := getDaemonPID()
+	if err != nil {
+		return false
+	}
+
+	// Verify the process is actually running
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+
+	// On Unix systems, we can signal 0 to check if process exists
+	// On Windows, this check is more limited
+	return process != nil
 }
 
-// getDaemonPID finds the PID of the running daemon
+// getDaemonPID finds the PID of the running daemon using platform-appropriate methods
 func getDaemonPID() (int, error) {
-	// Use pgrep to find the dotfile-sync-manager process
-	cmd := exec.Command("pgrep", "-f", "dotfile-sync-manager")
+	// Try to use PID file first (most reliable method)
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		pidFile := filepath.Join(homeDir, ".dotfile-sync-manager.pid")
+		if data, err := os.ReadFile(pidFile); err == nil {
+			pidStr := strings.TrimSpace(string(data))
+			if pid, err := strconv.Atoi(pidStr); err == nil {
+				return pid, nil
+			}
+		}
+	}
+
+	// Fallback to platform-specific process detection
+	return findProcessByName("dotfile-sync-manager")
+}
+
+// findProcessByName uses platform-appropriate methods to find a process by name
+func findProcessByName(name string) (int, error) {
+	switch runtime.GOOS {
+	case "windows":
+		return findProcessWindows(name)
+	case "linux", "darwin", "freebsd", "openbsd":
+		return findProcessUnix(name)
+	default:
+		return 0, fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+	}
+}
+
+// findProcessUnix uses pgrep or ps to find processes on Unix-like systems
+func findProcessUnix(name string) (int, error) {
+	// Try pgrep first (more reliable)
+	if cmd := exec.Command("pgrep", "-f", name); cmd.Run() == nil {
+		if output, err := cmd.Output(); err == nil {
+			pidStr := strings.TrimSpace(string(output))
+			if strings.Contains(pidStr, "\n") {
+				// Take first PID if multiple found
+				pidStr = strings.Split(pidStr, "\n")[0]
+			}
+			if pid, err := strconv.Atoi(pidStr); err == nil {
+				return pid, nil
+			}
+		}
+	}
+
+	// Fallback to ps command
+	if cmd := exec.Command("ps", "aux"); cmd.Run() == nil {
+		if output, err := cmd.Output(); err == nil {
+			lines := strings.Split(string(output), "\n")
+			for _, line := range lines {
+				if strings.Contains(line, name) && !strings.Contains(line, "grep") {
+					fields := strings.Fields(line)
+					if len(fields) >= 2 {
+						if pid, err := strconv.Atoi(fields[1]); err == nil {
+							return pid, nil
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return 0, fmt.Errorf("process not found: %s", name)
+}
+
+// findProcessWindows uses tasklist to find processes on Windows
+func findProcessWindows(name string) (int, error) {
+	// Use tasklist command to find processes
+	cmd := exec.Command("tasklist", "/FI", "IMAGENAME eq "+name+".exe", "/FO", "CSV")
 	output, err := cmd.Output()
 	if err != nil {
-		return 0, fmt.Errorf("failed to find daemon process: %w", err)
+		// Try without .exe extension
+		cmd = exec.Command("tasklist", "/FI", "IMAGENAME eq "+name, "/FO", "CSV")
+		output, err = cmd.Output()
+		if err != nil {
+			return 0, fmt.Errorf("failed to run tasklist: %w", err)
+		}
 	}
 
-	pidStr := string(output)
-	pidStr = pidStr[:len(pidStr)-1] // Remove trailing newline
-
-	pid, err := strconv.Atoi(pidStr)
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse PID: %w", err)
+	lines := strings.Split(string(output), "\n")
+	if len(lines) < 2 {
+		return 0, fmt.Errorf("process not found: %s", name)
 	}
 
-	return pid, nil
+	// Parse CSV output (skip header)
+	for _, line := range lines[1:] {
+		if line == "" {
+			continue
+		}
+		// CSV format: "imagename","pid","sessionname","session#","memusage"
+		fields := strings.Split(line, "\",\"")
+		if len(fields) >= 2 {
+			pidStr := strings.Trim(fields[1], "\"")
+			if pid, err := strconv.Atoi(pidStr); err == nil {
+				return pid, nil
+			}
+		}
+	}
+
+	return 0, fmt.Errorf("process not found: %s", name)
 }
