@@ -59,16 +59,26 @@ func (gm *GitManager) bootstrapRepo(ctx context.Context) error {
 			return fmt.Errorf("gitmanager: create parent dir: %w", err)
 		}
 
-		repo, err := git.PlainCloneContext(ctx, gm.cfg.RepoPath, false, &git.CloneOptions{
-			URL:               gm.cfg.RemoteURL,
-			RemoteName:        gm.cfg.RemoteName,
-			Auth:              gm.auth,
-			RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
-		})
-		if err != nil {
-			return fmt.Errorf("gitmanager: clone: %w", err)
+		// Clone from remote if URL provided, otherwise init empty repo
+		if gm.cfg.RemoteURL != "" {
+			repo, err := git.PlainCloneContext(ctx, gm.cfg.RepoPath, false, &git.CloneOptions{
+				URL:               gm.cfg.RemoteURL,
+				RemoteName:        gm.cfg.RemoteName,
+				Auth:              gm.auth,
+				RecurseSubmodules: git.DefaultSubmoduleRecursionDepth,
+			})
+			if err != nil {
+				return fmt.Errorf("gitmanager: clone: %w", err)
+			}
+			gm.repo = repo
+		} else {
+			// Local-only repo: initialize without remote
+			repo, err := git.PlainInit(gm.cfg.RepoPath, false)
+			if err != nil {
+				return fmt.Errorf("gitmanager: init: %w", err)
+			}
+			gm.repo = repo
 		}
-		gm.repo = repo
 		return nil
 	}
 
@@ -80,11 +90,14 @@ func (gm *GitManager) bootstrapRepo(ctx context.Context) error {
 			if initErr != nil {
 				return fmt.Errorf("gitmanager: init repo: %w", initErr)
 			}
-			if _, err := repo.CreateRemote(&config.RemoteConfig{
-				Name: gm.cfg.RemoteName,
-				URLs: []string{gm.cfg.RemoteURL},
-			}); err != nil {
-				return fmt.Errorf("gitmanager: configure remote: %w", err)
+			// Only create remote if URL provided
+			if gm.cfg.RemoteURL != "" {
+				if _, err := repo.CreateRemote(&config.RemoteConfig{
+					Name: gm.cfg.RemoteName,
+					URLs: []string{gm.cfg.RemoteURL},
+				}); err != nil {
+					return fmt.Errorf("gitmanager: configure remote: %w", err)
+				}
 			}
 			gm.repo = repo
 			return nil
@@ -93,7 +106,11 @@ func (gm *GitManager) bootstrapRepo(ctx context.Context) error {
 	}
 
 	gm.repo = repo
-	return gm.ensureRemote()
+	// Only ensure remote if RemoteURL is configured
+	if gm.cfg.RemoteURL != "" {
+		return gm.ensureRemote()
+	}
+	return nil
 }
 
 // ensureRemote keeps remote configuration aligned with Config.
