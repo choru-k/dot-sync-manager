@@ -254,7 +254,7 @@ func LoadFromFile(filename string) (*SyncConfig, error) {
 	// Store the config path (resolve to absolute path)
 	absPath, err := filepath.Abs(filename)
 	if err != nil {
-		absPath = filename // Fallback to original if abs fails
+		return nil, fmt.Errorf("config: failed to resolve absolute path for %s: %w", filename, err)
 	}
 	config.ConfigPath = absPath
 
@@ -578,8 +578,8 @@ func (c *SyncConfig) Validate() error {
 			}
 		}
 
-		// Validate manual sync timeout only if explicitly set (since it's optional with omitempty)
-		// The ToSyncServiceConfig() function provides a default of 10 seconds if not set
+		// If manual sync timeout is not set (or is 0), a default of 10 seconds is used.
+		// A negative value is invalid.
 		if c.Sync.Backoff.ManualSyncTimeoutSeconds < 0 {
 			return fmt.Errorf("backoff manual sync timeout cannot be negative")
 		}
