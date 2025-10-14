@@ -42,11 +42,6 @@ func runStart(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Check if daemon is already running
-	if isDaemonRunning() {
-		return fmt.Errorf("dotfile sync daemon is already running")
-	}
-
 	// Prepare command arguments
 	flagArgs := []string{"--config", cfg.GetConfigPath()}
 	if verbose {
@@ -55,6 +50,12 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	if foreground {
 		return runForegroundDaemon(cfg)
+	}
+
+	// Check if daemon is already running (only for non-foreground mode)
+	// Foreground mode is spawned by the parent process, so we skip this check
+	if isDaemonRunning() {
+		return fmt.Errorf("dotfile sync daemon is already running")
 	}
 
 	// Run as daemon
