@@ -3,6 +3,9 @@
 ## Purpose
 This guide defines how we track work for the Dotfile Sync Manager (DSM) project using GitHub issues, labels, and the `DSM Roadmap` project board.
 
+## Tooling
+- Use the `gh` CLI for GitHub lookups and updates; do not rely on generic `fetch` or browser-based commands when GitHub data is needed.
+
 ## Daily Triage
 - Check new notifications and confirm any newly created issues are added to the `DSM Roadmap` board.
 - Assign the `Phase` field to match the PRD timeline and set `Status` to `Todo` unless work has started.
