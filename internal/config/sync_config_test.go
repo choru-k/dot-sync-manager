@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
+	"github.com/choru-k/dot-sync-manager/internal/util"
 )
 
 func TestDefaultConfig(t *testing.T) {
@@ -671,18 +672,18 @@ func TestExpandPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			result, err := expandPath(tt.input)
+			result, err := util.ExpandPath(tt.input)
 			if err != nil {
-				t.Fatalf("expandPath(%s) returned error: %v", tt.input, err)
+				t.Fatalf("util.ExpandPath(%s) returned error: %v", tt.input, err)
 			}
 			if tt.checkPrefix {
 				// For relative paths, just verify they became absolute
 				if !filepath.IsAbs(result) {
-					t.Errorf("expandPath(%s) = %s, expected absolute path", tt.input, result)
+					t.Errorf("util.ExpandPath(%s) = %s, expected absolute path", tt.input, result)
 				}
 			} else {
 				if result != tt.expected {
-					t.Errorf("expandPath(%s) = %s, expected %s", tt.input, result, tt.expected)
+					t.Errorf("util.ExpandPath(%s) = %s, expected %s", tt.input, result, tt.expected)
 				}
 			}
 		})

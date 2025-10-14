@@ -275,6 +275,15 @@ func LoadFromFile(filename string) (*SyncConfig, error) {
 		return nil, fmt.Errorf("config: failed to parse config file: %w", err)
 	}
 
+	// Expand user-provided paths for consistency
+	if config.Git.RepoPath != "" {
+		expandedPath, err := util.ExpandPath(config.Git.RepoPath)
+		if err != nil {
+			return nil, fmt.Errorf("config: failed to expand git.repo_path: %w", err)
+		}
+		config.Git.RepoPath = expandedPath
+	}
+
 	// Validate configuration
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("config: invalid configuration: %w", err)
@@ -296,7 +305,7 @@ func FindConfigFile(explicitPath string) (string, bool, error) {
 
 	// If explicit path provided, use it
 	if explicitPath != "" {
-		path, err := expandPath(explicitPath)
+		path, err := util.ExpandPath(explicitPath)
 		if err != nil {
 			return "", false, fmt.Errorf("config: failed to expand explicit path: %w", err)
 		}
@@ -344,11 +353,6 @@ func LoadFromDefaultLocation() (*SyncConfig, error) {
 	cfg := DefaultConfig()
 	cfg.ConfigPath = configPath
 	return cfg, nil
-}
-
-// expandPath expands ~ to user home directory using shared utility
-func expandPath(path string) (string, error) {
-	return util.ExpandPath(path)
 }
 
 // SaveToFile saves configuration to a JSON file
