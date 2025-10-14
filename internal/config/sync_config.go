@@ -314,7 +314,7 @@ func FindConfigFile(explicitPath string) (string, bool, error) {
 		return path, false, nil
 	}
 
-	// Check standard locations in order of priority
+// Check standard locations in order of priority
 	prdPath := filepath.Join(homeDir, "dotfiles", ".sync-config.json")
 	searchPaths := []string{
 		prdPath,                                       // PRD location
