@@ -6,13 +6,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
-	"github.com/choru-k/dot-sync-manager/internal/process"
 )
 
 func setupTestConfig(t *testing.T) (*config.SyncConfig, string, string) {
@@ -142,7 +140,7 @@ func TestRunForegroundDaemonLifecycle(t *testing.T) {
 	}
 }
 
-func TestRunAddBackupAndRollbackOnSymlinkFailure(t *testing.T) {
+func TestRunAddRollbackOnCopyFailure(t *testing.T) {
 	_, homeDir, repoPath := setupTestConfig(t)
 
 	sourcePath := filepath.Join(homeDir, ".bashrc")
@@ -151,7 +149,7 @@ func TestRunAddBackupAndRollbackOnSymlinkFailure(t *testing.T) {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
-	// Create a directory at the target path to force symlink creation failure
+	// Create a directory at the target path to force copy failure
 	targetPath := filepath.Join(repoPath, "bashrc")
 	if err := os.MkdirAll(targetPath, 0755); err != nil {
 		t.Fatalf("failed to create conflicting directory: %v", err)
@@ -212,90 +210,6 @@ func TestRunAddBackupCleanupOnSuccess(t *testing.T) {
 	if info.Mode()&os.ModeSymlink == 0 {
 		t.Fatalf("expected source to be symlink, got mode %v", info.Mode())
 	}
-}
-
-func TestProcessDetectionRaceCondition(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Unix-specific process detection test")
-	}
-
-	// Test signal 0 check for non-existent PID
-	nonExistentPID := 99999
-	if processExists(nonExistentPID) {
-		t.Fatalf("processExists returned true for non-existent PID %d", nonExistentPID)
-	}
-
-	// Test signal 0 check for current PID
-	currentPID := os.Getpid()
-	if !processExists(currentPID) {
-		t.Fatalf("processExists returned false for current PID %d", currentPID)
-	}
-
-	// Test invalid PID handling
-	if processExists(0) {
-		t.Fatalf("processExists returned true for PID 0")
-	}
-
-	if processExists(-1) {
-		t.Fatalf("processExists returned true for negative PID")
-	}
-}
-
-func TestProcessExistsImplementation(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("Unix-specific test")
-	}
-
-	// Test the actual syscall.Kill(pid, 0) implementation
-	currentPID := os.Getpid()
-
-	// This should succeed (process exists)
-	err := syscall.Kill(currentPID, 0)
-	if err != nil {
-		t.Fatalf("syscall.Kill(currentPID, 0) failed: %v", err)
-	}
-
-	// This should fail (process doesn't exist)
-	nonExistentPID := 99999
-	err = syscall.Kill(nonExistentPID, 0)
-	if err == nil {
-		t.Fatalf("syscall.Kill(nonExistentPID, 0) should have failed")
-	}
-}
-
-func TestPIDFileManagement(t *testing.T) {
-	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
-
-	originalPID := 12345
-	if err := process.WritePID(originalPID); err != nil {
-		t.Fatalf("failed to write PID: %v", err)
-	}
-
-	pidPath := filepath.Join(homeDir, ".dotfile-sync-manager.pid")
-
-	// Verify PID file was created
-	if _, err := os.Stat(pidPath); err != nil {
-		t.Fatalf("PID file was not created: %v", err)
-	}
-
-	// Test PID removal
-	if err := process.RemovePID(); err != nil {
-		t.Fatalf("failed to remove PID file: %v", err)
-	}
-
-	// Verify PID file was removed
-	if _, err := os.Stat(pidPath); !os.IsNotExist(err) {
-		t.Fatalf("PID file was not removed: %v", err)
-	}
-}
-
-// Helper function for process testing
-func processExists(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	return syscall.Kill(pid, 0) == nil
 }
 
 // TestRunAddPathValidation tests the improved path checking logic

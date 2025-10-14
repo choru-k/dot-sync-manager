@@ -153,7 +153,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		},
 		Advanced: config.AdvancedConfig{
 			DebugLogging: false,
-			LogFile:      filepath.Join(os.Getenv("HOME"), ".dotfile-sync.log"),
+			LogFile:      expandPath("~/.dotfile-sync.log"),
 			MaxLogSizeMB: 10,
 		},
 	}

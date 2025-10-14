@@ -246,7 +246,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	// Save updated configuration to the original location
 	configPath := cfg.GetConfigPath()
 	if err := cfg.SaveToFile(configPath); err != nil {
-		fmt.Printf("⚠️  Warning: failed to update configuration: %v\n", err)
+		return fmt.Errorf("file moved and symlinked, but failed to update configuration: %w. Please check %s for correctness", err, configPath)
 	}
 
 	fmt.Printf("✅ Added file to dotfiles\n")
