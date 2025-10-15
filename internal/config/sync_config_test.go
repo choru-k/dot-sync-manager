@@ -631,18 +631,17 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			errMsg:  "maximum log size must not exceed 1000 MB",
 		},
 		{
-			name: "mapping target gets expanded to absolute",
+			name: "mapping target requires absolute path",
 			config: func() *SyncConfig {
 				c, err := DefaultConfig()
 				if err != nil { t.Fatal(err) }
 				c.Mappings = map[string]string{
-					"bashrc": "relative/path", // This will be expanded to absolute path
+					"bashrc": "relative/path", // Relative path should fail validation
 				}
-				// Call expandPaths to simulate the normal loading process
-				_ = c.expandPaths()
 				return c
 			}(),
-			wantErr: false, // No error because expandPath converts to absolute
+			wantErr: true,
+			errMsg:  "mapping target for 'bashrc' must be an absolute path",
 		},
 		{
 			name: "valid mapping target with absolute path",
