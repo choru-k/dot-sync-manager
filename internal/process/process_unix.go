@@ -13,6 +13,9 @@ import (
 	"syscall"
 )
 
+// processExists checks if a process with the given PID exists using syscall.Kill(pid, 0).
+// This is a lightweight check that doesn't actually send a signal.
+// Returns false for invalid PIDs (<= 0) or non-existent processes.
 func processExists(pid int) bool {
 	if pid <= 0 {
 		return false
@@ -20,7 +23,11 @@ func processExists(pid int) bool {
 	return syscall.Kill(pid, 0) == nil
 }
 
-// verifyProcessName checks if the given PID belongs to a process with the expected name
+// verifyProcessName checks if the given PID belongs to a process with the expected name.
+// Uses multiple methods for reliability:
+// 1. ps command with full command line args
+// 2. Linux /proc/<pid>/exe symlink (faster when available)
+// Returns true if any method finds a match containing the expected name.
 func verifyProcessName(pid int, expectedName string) bool {
 	if pid <= 0 {
 		return false
@@ -68,6 +75,10 @@ func stopAllDaemons(name string) error {
 	return nil
 }
 
+// findProcessByName searches for a process by name using multiple methods.
+// Tries pgrep first (fastest), falls back to parsing ps output.
+// This may be slow as it involves process enumeration when pgrep fails.
+// Returns the first matching PID or an error if not found.
 func findProcessByName(name string) (int, error) {
 	if output, err := exec.Command("pgrep", "-f", name).Output(); err == nil {
 		pids := strings.Fields(string(output))
@@ -79,21 +90,32 @@ func findProcessByName(name string) (int, error) {
 		}
 	}
 
-	psOutput, err := exec.Command("ps", "-eo", "pid,command").Output()
+	// Fallback: parse ps output more carefully to handle command names with spaces
+	// Using ps with specific format to avoid parsing issues
+	psOutput, err := exec.Command("ps", "-eo", "pid=,command=").Output()
 	if err != nil {
 		return 0, fmt.Errorf("process: list processes: %w", err)
 	}
 	lines := strings.Split(string(psOutput), "\n")
 	for _, line := range lines {
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
+		line = strings.TrimSpace(line)
+		if line == "" {
 			continue
 		}
-		pid, convErr := strconv.Atoi(fields[0])
+		// Find first space to separate PID from command
+		spaceIdx := strings.Index(line, " ")
+		if spaceIdx == -1 {
+			continue
+		}
+		pidStr := line[:spaceIdx]
+		command := line[spaceIdx+1:]
+
+		pid, convErr := strconv.Atoi(strings.TrimSpace(pidStr))
 		if convErr != nil {
 			continue
 		}
-		if strings.Contains(line, name) {
+		// Check if the command contains our expected name
+		if strings.Contains(command, name) {
 			return pid, nil
 		}
 	}

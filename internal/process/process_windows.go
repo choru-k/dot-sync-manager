@@ -11,7 +11,9 @@ import (
 	"strings"
 )
 
-// getProcessInfo queries tasklist for process information by PID
+// getProcessInfo queries tasklist for process information by PID.
+// Uses CSV format for robust parsing and includes bounds checking to prevent panics.
+// Returns the image name and whether the process exists.
 func getProcessInfo(pid int) (imageName string, exists bool) {
 	if pid <= 0 {
 		return "", false
@@ -38,15 +40,20 @@ func processExists(pid int) bool {
 	return exists
 }
 
-// verifyProcessName checks if the given PID belongs to a process with the expected name
+// verifyProcessName checks if the given PID belongs to a process with the expected name.
+// Uses exact matching (case-insensitive) to avoid false positives from partial name matches.
+// For example, it won't match "chrome-sync-service.exe" when looking for "sync".
 func verifyProcessName(pid int, expectedName string) bool {
 	imageName, exists := getProcessInfo(pid)
 	if !exists {
 		return false
 	}
 
-	return strings.Contains(imageName, expectedName) ||
-		strings.Contains(imageName, expectedName+".exe")
+	// Remove .exe extension from imageName if present for comparison
+	cleanImageName := strings.TrimSuffix(imageName, ".exe")
+
+	// Use exact matching (case-insensitive) to avoid false positives
+	return strings.EqualFold(cleanImageName, expectedName)
 }
 
 func terminateProcess(proc *os.Process) error {
@@ -64,6 +71,9 @@ func stopAllDaemons(name string) error {
 	return nil
 }
 
+// findProcessByName searches for a process by image name using tasklist command.
+// Tries both with and without .exe extension. This may be slow as it lists all processes.
+// Returns the first matching PID or an error if not found.
 func findProcessByName(name string) (int, error) {
 	// Use /NH (No Header) to simplify parsing
 	cmd := exec.Command("tasklist", "/FI", "IMAGENAME eq "+name+".exe", "/FO", "CSV", "/NH")

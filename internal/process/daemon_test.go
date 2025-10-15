@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"syscall"
 	"testing"
 )
@@ -93,5 +94,58 @@ func TestPIDFileManagement(t *testing.T) {
 	// Verify PID file was removed
 	if _, err := os.Stat(pidPath); !os.IsNotExist(err) {
 		t.Fatalf("PID file was not removed: %v", err)
+	}
+}
+
+func TestConcurrentPIDFileOperations(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	const numGoroutines = 10
+	const numOperations = 50
+
+	var wg sync.WaitGroup
+	errChan := make(chan error, numGoroutines*numOperations)
+
+	// Test concurrent WritePID operations
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func(goroutineID int) {
+			defer wg.Done()
+			for j := 0; j < numOperations; j++ {
+				pid := goroutineID*1000 + j
+				if err := WritePID(pid); err != nil {
+					errChan <- err
+					return
+				}
+			}
+		}(i)
+	}
+
+	// Test concurrent RemovePID operations
+	for i := 0; i < numGoroutines/2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < numOperations; j++ {
+				if err := RemovePID(); err != nil && !os.IsNotExist(err) {
+					errChan <- err
+					return
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	// Check for any errors
+	for err := range errChan {
+		t.Errorf("concurrent operation failed: %v", err)
+	}
+
+	// Final cleanup
+	if err := RemovePID(); err != nil && !os.IsNotExist(err) {
+		t.Errorf("final cleanup failed: %v", err)
 	}
 }

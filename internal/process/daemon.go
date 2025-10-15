@@ -2,6 +2,7 @@ package process
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -10,6 +11,9 @@ import (
 
 const pidFileName = ".dotfile-sync-manager.pid"
 
+// pidFilePath returns the absolute path to the PID file in the user's home directory.
+// The PID file is used to track the running daemon process across sessions.
+// Uses 0600 permissions to ensure only the owner can read/write the file.
 func pidFilePath() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -39,6 +43,8 @@ func RemovePID() error {
 	return nil
 }
 
+// readPID reads and parses the PID from the PID file.
+// Returns an error if the file doesn't exist, can't be read, or contains invalid data.
 func readPID() (int, error) {
 	path, err := pidFilePath()
 	if err != nil {
@@ -57,6 +63,14 @@ func readPID() (int, error) {
 }
 
 // IsDaemonRunning checks if the daemon associated with the stored PID is running.
+//
+// This function implements a two-phase approach to daemon detection:
+// 1. Check PID file for stored daemon PID
+// 2. Fall back to process discovery by name if PID file is missing/invalid
+//
+// Note: This function contains benign race conditions where a process could
+// terminate between checking existence and verifying name. These are acceptable
+// for daemon management purposes and don't affect correctness.
 func IsDaemonRunning() bool {
 	expectedName := defaultProcessName()
 	pid, err := readPID()
@@ -67,9 +81,13 @@ func IsDaemonRunning() bool {
 				return true
 			}
 			// Stale PID file - clean it up
-			_ = RemovePID()
+			if err := RemovePID(); err != nil {
+				log.Printf("process: warning - failed to remove stale PID file: %v", err)
+			}
 		} else {
-			_ = RemovePID()
+			if err := RemovePID(); err != nil {
+				log.Printf("process: warning - failed to remove invalid PID file: %v", err)
+			}
 		}
 	}
 
@@ -77,7 +95,7 @@ func IsDaemonRunning() bool {
 		if pid == os.Getpid() {
 			return false
 		}
-		if processExists(pid) {
+		if processExists(pid) && verifyProcessName(pid, expectedName) {
 			return true
 		}
 	}
@@ -85,6 +103,8 @@ func IsDaemonRunning() bool {
 }
 
 // GetDaemonPID retrieves the PID from the pidfile or falls back to process discovery.
+// Returns the PID of a running daemon process that matches the expected binary name.
+// This function may be slow as it involves process enumeration on failure.
 func GetDaemonPID() (int, error) {
 	expectedName := defaultProcessName()
 
@@ -92,7 +112,9 @@ func GetDaemonPID() (int, error) {
 		if processExists(pid) && verifyProcessName(pid, expectedName) {
 			return pid, nil
 		}
-		_ = RemovePID()
+		if err := RemovePID(); err != nil {
+			log.Printf("process: warning - failed to remove PID file during cleanup: %v", err)
+		}
 	}
 
 	pid, err := findProcessByName(expectedName)
@@ -105,6 +127,10 @@ func GetDaemonPID() (int, error) {
 	return 0, fmt.Errorf("process: pid %d not running", pid)
 }
 
+// defaultProcessName returns the expected binary name for daemon detection.
+// Uses os.Executable() to get the actual running binary name, falling back
+// to "dot-sync-manager" if that fails. This ensures we can find the daemon
+// even if the binary was renamed or executed from a different path.
 func defaultProcessName() string {
 	// The actual binary name is dot-sync-manager (or dsm as the command)
 	// Use the executable name to ensure we match the actual running process
