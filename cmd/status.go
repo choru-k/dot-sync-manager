@@ -82,19 +82,19 @@ func runStatus(cmd *cobra.Command, args []string) error {
 func showGitStatus(repoPath string) {
 	r, err := git.PlainOpen(repoPath)
 	if err != nil {
-		fmt.Printf("❓ Git status unavailable (repository may not be initialized: %v)\n", err)
+		fmt.Printf("❓ Git status unavailable: %v\n", err)
 		return
 	}
 
 	w, err := r.Worktree()
 	if err != nil {
-		fmt.Printf("❓ Git status unavailable (could not get worktree: %v)\n", err)
+		fmt.Printf("❓ Git status unavailable: %v\n", err)
 		return
 	}
 
 	status, err := w.Status()
 	if err != nil {
-		fmt.Printf("❓ Git status unavailable (could not get status: %v)\n", err)
+		fmt.Printf("❓ Git status unavailable: %v\n", err)
 		return
 	}
 

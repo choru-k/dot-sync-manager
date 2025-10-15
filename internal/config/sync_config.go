@@ -470,14 +470,35 @@ func (c *SyncConfig) GetConfigPath() string {
 	return c.ConfigPath
 }
 
-// validateInclusion checks if a value is in a list of allowed options
-func validateInclusion(value string, options []string, fieldName string) error {
-	for _, opt := range options {
-		if value == opt {
-			return nil
-		}
+// validThemes contains allowed UI theme values for O(1) validation
+var validThemes = map[string]struct{}{
+	"auto":  {},
+	"light": {},
+	"dark":  {},
+}
+
+// validConflictStrategies contains allowed conflict resolution strategy values for O(1) validation
+var validConflictStrategies = map[string]struct{}{
+	"manual":            {},
+	"auto_keep_local":   {},
+	"auto_keep_remote":  {},
+}
+
+// validateTheme checks if a UI theme value is valid using O(1) map lookup
+func validateTheme(value string) error {
+	if _, ok := validThemes[value]; !ok {
+		return fmt.Errorf("invalid UI theme: %s (must be one of: %s)", value, getValidThemeKeys())
 	}
-	return fmt.Errorf("invalid %s: %s (must be one of: %v)", fieldName, value, options)
+	return nil
+}
+
+// getValidThemeKeys returns the valid theme keys as a slice for error messages
+func getValidThemeKeys() []string {
+	keys := make([]string, 0, len(validThemes))
+	for theme := range validThemes {
+		keys = append(keys, theme)
+	}
+	return keys
 }
 
 // Validate checks if the configuration is valid
@@ -534,13 +555,8 @@ func (c *SyncConfig) Validate() error {
 		return fmt.Errorf("conflict resolution strategy is required")
 	}
 
-	// Use map for O(1) strategy validation
-	validStrategies := map[string]struct{}{
-		"manual":            {},
-		"auto_keep_local":   {},
-		"auto_keep_remote":  {},
-	}
-	if _, ok := validStrategies[c.ConflictResolution.Strategy]; !ok {
+	// Use package-level map for O(1) strategy validation
+	if _, ok := validConflictStrategies[c.ConflictResolution.Strategy]; !ok {
 		return fmt.Errorf("invalid conflict resolution strategy: %s (must be one of: manual, auto_keep_local, auto_keep_remote)", c.ConflictResolution.Strategy)
 	}
 
@@ -557,7 +573,7 @@ func (c *SyncConfig) Validate() error {
 		return fmt.Errorf("UI theme is required")
 	}
 
-	if err := validateInclusion(c.UI.Theme, []string{"auto", "light", "dark"}, "UI theme"); err != nil {
+	if err := validateTheme(c.UI.Theme); err != nil {
 		return err
 	}
 

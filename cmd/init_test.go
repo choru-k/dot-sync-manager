@@ -37,7 +37,9 @@ func TestPromptForNonEmpty(t *testing.T) {
 
 		go func() {
 			defer func() {
-				_ = w.Close() // Ignore error in cleanup
+				if err := w.Close(); err != nil {
+					t.Errorf("failed to close pipe: %v", err)
+				}
 			}()
 			if _, err := w.Write([]byte("valid-input\n")); err != nil {
 				t.Errorf("failed to write to pipe: %v", err)
@@ -67,7 +69,9 @@ func TestPromptForNonEmpty(t *testing.T) {
 
 		go func() {
 			defer func() {
-				_ = w.Close() // Ignore error in cleanup
+				if err := w.Close(); err != nil {
+					t.Errorf("failed to close pipe: %v", err)
+				}
 			}()
 			if _, err := w.Write([]byte("  valid-input  \n")); err != nil {
 				t.Errorf("failed to write to pipe: %v", err)
@@ -130,7 +134,9 @@ func TestPromptForInput(t *testing.T) {
 			// Write test input
 			go func() {
 				defer func() {
-					_ = w.Close() // Ignore error in cleanup
+					if err := w.Close(); err != nil {
+						t.Errorf("failed to close pipe: %v", err)
+					}
 				}()
 				if _, err := w.Write([]byte(tt.input)); err != nil {
 					t.Errorf("failed to write to pipe: %v", err)

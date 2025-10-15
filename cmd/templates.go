@@ -1,5 +1,11 @@
 package cmd
 
+// Configuration filename constants
+const (
+	// ConfigFileName is the name of the configuration file
+	ConfigFileName = ".sync-config.json"
+)
+
 // Default .syncignore content
 const defaultSyncIgnoreContent = `# Sensitive authentication files
 .ssh/id_rsa
@@ -8,6 +14,9 @@ const defaultSyncIgnoreContent = `# Sensitive authentication files
 .ssh/id_ed25519.pub
 *.pem
 *.key
+
+# DSM configuration (contains sensitive data)
+.sync-config.json
 
 # Cloud credentials
 .aws/credentials

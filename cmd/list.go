@@ -67,6 +67,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("\n📁 Repository: %s\n", cfg.Git.RepoPath)
+	fmt.Printf("📊 Total tracked files: %d\n", len(cfg.Mappings))
 	return nil
 }
 

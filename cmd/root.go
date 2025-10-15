@@ -33,13 +33,13 @@ func Execute() error {
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&configFile, "config", "", "Path to configuration file")
-	// TODO(future): Implement verbose logging throughout commands
+	// TODO(future): Implement verbose logging throughout commands when verbose flag is set
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
 }
 
 // getConfig loads configuration using proper discovery logic.
 // If --config flag is provided, it loads from that path (with tilde expansion).
-// Otherwise, it searches default locations (~/dotfiles/.sync-config.json, ~/.dotfile-sync.json).
+// Otherwise, it searches default locations (~/dotfiles/{ConfigFileName}, ~/.dotfile-sync.json).
 // Returns error if explicit config file doesn't exist or has invalid JSON.
 func getConfig() (*config.SyncConfig, error) {
 	var cfg *config.SyncConfig
@@ -82,7 +82,7 @@ func formatConfigNotFoundError(err error) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	prdPath := filepath.Join(homeDir, "dotfiles", ".sync-config.json")
+	prdPath := filepath.Join(homeDir, "dotfiles", ConfigFileName)
 	legacyPath := filepath.Join(homeDir, ".dotfile-sync.json")
 
 	return fmt.Errorf(`failed to load configuration: %w

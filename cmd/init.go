@@ -108,30 +108,25 @@ Options:
 			return err
 		}
 	}
+	
+	// Get email from flag or prompt, then validate once
 	if authorEmail == "" {
-		for {
-			authorEmail, err = promptForInput("Enter your email: ", "")
-			if err != nil {
-				return fmt.Errorf("failed to read author email: %w", err)
-			}
-			if authorEmail == "" {
-				fmt.Println("Author email cannot be empty. Please try again.")
-				continue
-			}
-			// Validate email format
-			if _, err := mail.ParseAddress(authorEmail); err != nil {
-				fmt.Printf("Invalid email format: %v\nExample: user@example.com\nPlease try again.\n", err)
-				continue
-			}
-			break
+		authorEmail, err = promptForInput("Enter your email: ", "")
+		if err != nil {
+			return fmt.Errorf("failed to read author email: %w", err)
+		}
+		if authorEmail == "" {
+			return fmt.Errorf("author email cannot be empty")
 		}
 	}
 	
-	// Validate email format for flag input (prompt already validated above)
-	if authorEmail != "" {
-		if _, err := mail.ParseAddress(authorEmail); err != nil {
-			return fmt.Errorf("invalid --email flag value %q: %w\nExample: user@example.com", authorEmail, err)
+	// Validate email format once for both flag and prompt inputs
+	if _, err := mail.ParseAddress(authorEmail); err != nil {
+		inputSource := "prompt"
+		if cmd.Flags().Changed("email") {
+			inputSource = "--email flag"
 		}
+		return fmt.Errorf("invalid email from %s %q: %w\nExample: user@example.com", inputSource, authorEmail, err)
 	}
 
 	ctx := cmd.Context()
@@ -163,7 +158,7 @@ Options:
 	}
 
 	// Check if cloning an existing repo with config already present
-	configPath := filepath.Join(repoPath, ".sync-config.json")
+	configPath := filepath.Join(repoPath, ConfigFileName)
 	ignorePath := filepath.Join(repoPath, ".syncignore")
 	configExists := false
 	ignoreExists := false
@@ -236,8 +231,9 @@ Options:
 
 	fmt.Printf("\n✅ Dotfiles repository initialized successfully!\n")
 	fmt.Printf("📁 Repository: %s\n", repoPath)
+	
 	fmt.Printf("\n⚠️  SECURITY WARNING: Configuration file may contain sensitive data.\n")
-	fmt.Printf("   Never commit .sync-config.json to version control repositories.\n")
+	fmt.Printf("   Never commit %s to version control repositories.\n", ConfigFileName)
 
 	if gitURL == "" {
 		fmt.Printf("\n📝 Next steps:\n")
