@@ -200,6 +200,11 @@ type AdvancedConfig struct {
 
 // DefaultConfig returns a default configuration.
 // Returns an error if the user's home directory cannot be determined.
+//
+// SECURITY WARNING: This configuration can store sensitive data including passwords,
+// SSH key passphrases, and authentication credentials in plain text. Never commit
+// .sync-config.json files to version control repositories. Consider using a
+// system keychain/credential manager for sensitive authentication data.
 func DefaultConfig() (*SyncConfig, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {

@@ -31,43 +31,7 @@ const (
 	defaultFilePerms           = 0644 // owner rw, group/others read (for normal files)
 )
 
-// Default .syncignore content
-const defaultSyncIgnoreContent = `# Sensitive authentication files
-.ssh/id_rsa
-.ssh/id_rsa.pub
-.ssh/id_ed25519
-.ssh/id_ed25519.pub
-*.pem
-*.key
 
-# Cloud credentials
-.aws/credentials
-.aws/config
-.gcp/credentials
-.azure/credentials
-
-# GPG keys
-.gnupg/private-keys-v1.d/
-.gnupg/*.key
-
-# Other sensitive
-.env
-.env.local
-secrets/
-
-# Temporary files
-*.tmp
-*.log
-*.swp
-*~
-.DS_Store
-Thumbs.db
-
-# Cache directories
-.cache/
-cache/
-node_modules/
-`
 
 // initCmd represents the init command
 var initCmd = &cobra.Command{
@@ -163,9 +127,11 @@ Options:
 		}
 	}
 	
-	// Validate email format regardless of source (flag or prompt)
-	if _, err := mail.ParseAddress(authorEmail); err != nil {
-		return fmt.Errorf("invalid email format %q: %w\nExample: user@example.com", authorEmail, err)
+	// Validate email format for flag input (prompt already validated above)
+	if authorEmail != "" {
+		if _, err := mail.ParseAddress(authorEmail); err != nil {
+			return fmt.Errorf("invalid --email flag value %q: %w\nExample: user@example.com", authorEmail, err)
+		}
 	}
 
 	ctx := cmd.Context()
@@ -235,8 +201,13 @@ Options:
 	// Update machine-specific fields for new location/machine
 	cfg.Machine.Name = machineName
 	cfg.Git.RepoPath = repoPath
-	cfg.Git.RemoteURL = gitURL
-	cfg.Git.RemoteName = gitmanager.DefaultRemoteName
+	
+	// Only override RemoteURL if gitURL is provided (preserve existing remote config)
+	if gitURL != "" {
+		cfg.Git.RemoteURL = gitURL
+		cfg.Git.RemoteName = gitmanager.DefaultRemoteName
+	}
+	
 	cfg.Git.AuthorName = authorName
 	cfg.Git.AuthorEmail = authorEmail
 	
@@ -265,6 +236,8 @@ Options:
 
 	fmt.Printf("\n✅ Dotfiles repository initialized successfully!\n")
 	fmt.Printf("📁 Repository: %s\n", repoPath)
+	fmt.Printf("\n⚠️  SECURITY WARNING: Configuration file may contain sensitive data.\n")
+	fmt.Printf("   Never commit .sync-config.json to version control repositories.\n")
 
 	if gitURL == "" {
 		fmt.Printf("\n📝 Next steps:\n")

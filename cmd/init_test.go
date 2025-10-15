@@ -174,3 +174,5 @@ func TestPromptForInputError(t *testing.T) {
 		t.Errorf("Expected error message to contain 'reading input', got: %v", err)
 	}
 }
+
+
