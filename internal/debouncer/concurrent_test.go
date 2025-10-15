@@ -105,7 +105,7 @@ func TestAdvancedDebouncer_ConcurrentMixedOperations(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
 			key := fmt.Sprintf("manual-%d", i)
-			debouncer.TriggerManualSync(key, func() {
+			_ = debouncer.TriggerManualSync(key, func() {
 				mu.Lock()
 				manualCount++
 				mu.Unlock()
@@ -264,7 +264,7 @@ func TestAdvancedDebouncer_ConcurrentStatsAccess(t *testing.T) {
 			for j := 0; j < operationsPerGoroutine; j++ {
 				key := fmt.Sprintf("stats-test-%d-%d", id, j)
 				if j%3 == 0 {
-					debouncer.TriggerManualSync(key, func() {})
+					_ = debouncer.TriggerManualSync(key, func() {})
 				} else {
 					debouncer.Add(key, func() {})
 				}

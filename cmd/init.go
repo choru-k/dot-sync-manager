@@ -25,6 +25,10 @@ var (
 const (
 	// forceConfirmationKeyword is the exact string users must type to confirm destructive operations
 	forceConfirmationKeyword = "DELETE"
+
+	// File permission constants
+	restrictiveConfigFilePerms = 0600 // owner read/write only (for sensitive config data)
+	defaultFilePerms           = 0644 // owner rw, group/others read (for normal files)
 )
 
 // Default .syncignore content
@@ -152,7 +156,7 @@ Options:
 			}
 			// Validate email format
 			if _, err := mail.ParseAddress(authorEmail); err != nil {
-				fmt.Printf("Invalid email format: %v. Please try again.\n", err)
+				fmt.Printf("Invalid email format: %v\nExample: user@example.com\nPlease try again.\n", err)
 				continue
 			}
 			break
@@ -161,7 +165,7 @@ Options:
 	
 	// Validate email format regardless of source (flag or prompt)
 	if _, err := mail.ParseAddress(authorEmail); err != nil {
-		return fmt.Errorf("invalid email format %q: %w", authorEmail, err)
+		return fmt.Errorf("invalid email format %q: %w\nExample: user@example.com", authorEmail, err)
 	}
 
 	ctx := cmd.Context()
@@ -207,7 +211,7 @@ Options:
 
 	// Create or update config for this machine
 	var cfg *config.SyncConfig
-	
+
 	if !configExists {
 		// Create new configuration using defaults
 		cfg, err = config.DefaultConfig()
@@ -215,6 +219,9 @@ Options:
 			return fmt.Errorf("failed to create default config: %w", err)
 		}
 		fmt.Printf("✅ Configuration created: %s\n", configPath)
+
+		// For new configs, set auth to None (can be updated later)
+		cfg.Git.AuthType = gitmanager.AuthStrategyNone
 	} else {
 		// Load existing config and update for this machine
 		cfg, err = config.LoadFromFile(configPath)
@@ -222,8 +229,9 @@ Options:
 			return fmt.Errorf("failed to load existing config: %w", err)
 		}
 		fmt.Printf("✅ Loaded existing configuration, updating for this machine\n")
+		// Preserve existing AuthType when loading from cloned repo
 	}
-	
+
 	// Update machine-specific fields for new location/machine
 	cfg.Machine.Name = machineName
 	cfg.Git.RepoPath = repoPath
@@ -231,7 +239,6 @@ Options:
 	cfg.Git.RemoteName = gitmanager.DefaultRemoteName
 	cfg.Git.AuthorName = authorName
 	cfg.Git.AuthorEmail = authorEmail
-	cfg.Git.AuthType = gitmanager.AuthStrategyNone // Override default SSH for init
 	
 	// Adjust paths relative to the new repo location
 	cfg.ConflictResolution.BackupDir = filepath.Join(repoPath, ".backup")
@@ -240,15 +247,15 @@ Options:
 	if err := cfg.SaveToFile(configPath); err != nil {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
-	
+
 	// Set restrictive permissions on config file (may contain sensitive data)
-	if err := os.Chmod(configPath, 0600); err != nil {
+	if err := os.Chmod(configPath, restrictiveConfigFilePerms); err != nil {
 		return fmt.Errorf("failed to set config file permissions: %w", err)
 	}
 
 	// Only create .syncignore if it doesn't exist
 	if !ignoreExists {
-		if err := os.WriteFile(ignorePath, []byte(defaultSyncIgnoreContent), 0644); err != nil {
+		if err := os.WriteFile(ignorePath, []byte(defaultSyncIgnoreContent), defaultFilePerms); err != nil {
 			return fmt.Errorf("failed to create .syncignore file: %w", err)
 		}
 		fmt.Printf("✅ Ignore file created: %s\n", ignorePath)

@@ -352,9 +352,60 @@ func (c *Config) Validate() error {
     }
     return nil
 }
+
+// ALSO BAD: Setting defaults during validation
+func (c *Config) validate() error {
+    // This is normalization, not validation!
+    if c.RemoteURL != "" && c.RemoteName == "" {
+        c.RemoteName = "origin"  // Mutating state!
+    }
+    return nil
+}
 ```
 
-**Rationale**: Validation should only verify, not transform. Normalization happens separately.
+**Rationale**: Validation should only verify, not transform. Normalization happens separately. Mixing concerns makes code harder to reason about and test.
+
+### Rule 12: Use Maps for Validation Lookups
+**Context**: Checking if a value is in a set of allowed values.
+
+**✅ DO:**
+```go
+var validStrategies = map[string]struct{}{
+    "manual":            {},
+    "auto_keep_local":   {},
+    "auto_keep_remote":  {},
+}
+
+func (c *Config) Validate() error {
+    if _, ok := validStrategies[c.ConflictResolution.Strategy]; !ok {
+        validKeys := []string{"manual", "auto_keep_local", "auto_keep_remote"}
+        return fmt.Errorf("invalid conflict resolution strategy: %s (must be one of: %s)",
+            c.ConflictResolution.Strategy, strings.Join(validKeys, ", "))
+    }
+    return nil
+}
+```
+
+**❌ DON'T:**
+```go
+// BAD: O(n) validation loop
+func (c *Config) Validate() error {
+    validStrategies := []string{"manual", "auto_keep_local", "auto_keep_remote"}
+    valid := false
+    for _, strategy := range validStrategies {
+        if c.ConflictResolution.Strategy == strategy {
+            valid = true
+            break
+        }
+    }
+    if !valid {
+        return fmt.Errorf("invalid conflict resolution strategy: %s", c.ConflictResolution.Strategy)
+    }
+    return nil
+}
+```
+
+**Rationale**: Map lookups are O(1) vs O(n) for loops. More importantly, maps express intent better: "is this value in the valid set?" The performance benefit is minor for small sets, but the code clarity improvement is significant.
 
 ## Testing Standards
 
@@ -475,6 +526,47 @@ if err := expand(&c.Git.SSHKeyPath, "git.ssh_key_path"); err != nil { return err
 ```
 
 **Rationale**: Logical grouping improves code readability.
+
+### Rule 17: Extract File Permissions to Named Constants
+**Context**: File permission modes (0600, 0644, etc.) are magic numbers.
+
+**✅ DO:**
+```go
+const (
+    // configFilePerms restricts config file access to owner only (sensitive data like credentials)
+    configFilePerms = 0600  // -rw-------
+    
+    // defaultFilePerms allows owner write, all read (standard files like .gitignore)
+    defaultFilePerms = 0644 // -rw-r--r--
+    
+    // executablePerms for scripts that need to be executed
+    executablePerms = 0755  // -rwxr-xr-x
+)
+
+// Set restrictive permissions on config file
+if err := os.Chmod(configPath, configFilePerms); err != nil {
+    return fmt.Errorf("failed to set config file permissions: %w", err)
+}
+
+// Create ignore file with standard permissions
+if err := os.WriteFile(ignorePath, data, defaultFilePerms); err != nil {
+    return fmt.Errorf("failed to create ignore file: %w", err)
+}
+```
+
+**❌ DON'T:**
+```go
+// BAD: Magic numbers without explanation
+if err := os.Chmod(configPath, 0600); err != nil {
+    return fmt.Errorf("failed to set config file permissions: %w", err)
+}
+
+if err := os.WriteFile(ignorePath, data, 0644); err != nil {
+    return fmt.Errorf("failed to create ignore file: %w", err)
+}
+```
+
+**Rationale**: Octal permission numbers are not self-documenting. Named constants with comments explain *why* those permissions are chosen (e.g., 0600 for sensitive data). Makes security intent explicit.
 
 ### Rule 17: Comment Accuracy with JSON Tags
 **Context**: Comments about optional fields with `omitempty` can be misleading with primitive types.
@@ -715,6 +807,71 @@ func TestCheckSymlinkStatusPathExpansionError(t *testing.T) {
 
 **Rationale**: Clear test names help future maintainers understand what behavior is being verified without reading implementation.
 
+### Rule 26: Preserve Existing Configuration Values
+**Context**: When updating configuration files, preserve user settings that shouldn't change.
+
+**✅ DO:**
+```go
+func initCommand(gitURL, repoPath string) error {
+    configPath := filepath.Join(repoPath, ".sync-config.json")
+    
+    var cfg *config.SyncConfig
+    var isNewConfig bool
+    
+    // Check if config already exists (e.g., from cloned repo)
+    if _, err := os.Stat(configPath); err == nil {
+        // Load existing config
+        cfg, err = config.LoadFromFile(configPath)
+        if err != nil {
+            return fmt.Errorf("failed to load existing config: %w", err)
+        }
+        isNewConfig = false
+        fmt.Println("✅ Using existing configuration, updating for this machine")
+    } else {
+        // Create new config
+        cfg = config.DefaultConfig()
+        isNewConfig = true
+        fmt.Println("✅ Creating new configuration")
+    }
+    
+    // Update machine-specific fields
+    cfg.Machine.Name = getMachineName()
+    cfg.Git.RepoPath = repoPath
+    cfg.Git.RemoteURL = gitURL
+    cfg.Git.AuthorName = authorName
+    cfg.Git.AuthorEmail = authorEmail
+    
+    // Only set default auth for new configs; preserve existing auth settings
+    if isNewConfig {
+        cfg.Git.AuthType = gitmanager.AuthStrategyNone
+    }
+    // If loading existing config, AuthType (SSH/HTTPS/etc.) is preserved
+    
+    return cfg.SaveToFile(configPath)
+}
+```
+
+**❌ DON'T:**
+```go
+// BAD: Unconditionally overwrites all fields
+func initCommand(gitURL, repoPath string) error {
+    configPath := filepath.Join(repoPath, ".sync-config.json")
+    
+    cfg := config.DefaultConfig()
+    cfg.Machine.Name = getMachineName()
+    cfg.Git.RepoPath = repoPath
+    cfg.Git.RemoteURL = gitURL
+    cfg.Git.AuthorName = authorName
+    cfg.Git.AuthorEmail = authorEmail
+    cfg.Git.AuthType = gitmanager.AuthStrategyNone  // DESTROYS existing SSH config!
+    
+    // Overwrites existing config, losing user's mappings, auth settings, etc.
+    return cfg.SaveToFile(configPath)
+}
+```
+
+**Rationale**: When cloning an existing dotfiles repository, it already contains a `.sync-config.json` with the user's mappings, auth configuration, and preferences. Unconditionally overwriting these settings destroys user data. Only update fields that *must* change for the new machine (paths, machine name), and preserve everything else.
+
 ## Summary Checklist
 
 When writing configuration-related code, ensure:
@@ -726,15 +883,18 @@ When writing configuration-related code, ensure:
 - [ ] Path resolution errors propagated immediately (no silent fallbacks)
 
 **Validation:**
-- [ ] Validation only checks, never modifies state
+- [ ] Validation only checks, never modifies state (no setting defaults in validate())
 - [ ] Validation messages use "must" not "should"
-- [ ] Magic numbers are extracted to named constants
+- [ ] Magic numbers are extracted to named constants (including file permissions)
 - [ ] Duplicated validation logic uses helper functions
+- [ ] Validation uses maps for set membership checks (not loops)
 
 **Configuration:**
 - [ ] Used `DefaultConfig()` instead of manually creating config structs
 - [ ] Checked file existence before overwriting
 - [ ] User confirmation required for destructive operations
+- [ ] Preserved existing config values when updating (don't clobber auth, mappings, etc.)
+- [ ] File permissions extracted to named constants (0600, 0644, etc.)
 
 **Code Quality:**
 - [ ] Raw string literals (backticks) for multi-line error messages
@@ -742,6 +902,7 @@ When writing configuration-related code, ensure:
 - [ ] TODO comments on stub implementations (TODO(PRx))
 - [ ] Error messages include context via wrapping
 - [ ] Comments accurately reflect behavior (especially with `omitempty`)
+- [ ] Validation uses maps for lookups instead of loops (better performance and clarity)
 
 **Testing:**
 - [ ] Tests use `t.Cleanup` instead of `defer`

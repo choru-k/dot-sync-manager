@@ -25,6 +25,9 @@ type GitManager struct {
 
 // NewGitManager boots the repository (clone or open) and prepares authentication.
 func NewGitManager(ctx context.Context, cfg Config) (*GitManager, error) {
+	// Normalize config (apply defaults) before validation
+	cfg.normalize()
+
 	if err := cfg.validate(); err != nil {
 		return nil, err
 	}

@@ -649,7 +649,10 @@ func TestConfigValidationEnhanced(t *testing.T) {
 				c, err := DefaultConfig()
 				if err != nil { t.Fatal(err) }
 				// Use absolute paths (as they would be after expandPaths())
-				homeDir, _ := os.UserHomeDir()
+				homeDir, err := os.UserHomeDir()
+				if err != nil {
+					t.Fatalf("could not get user home dir: %v", err)
+				}
 				c.Mappings = map[string]string{
 					"bashrc": filepath.Join(homeDir, ".bashrc"),
 					"config": filepath.Join(homeDir, ".config"),

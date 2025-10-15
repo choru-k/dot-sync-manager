@@ -52,6 +52,15 @@ type Config struct {
 	KnownHostsPath string
 }
 
+// normalize applies default values to optional config fields.
+// This should be called before validate().
+func (c *Config) normalize() {
+	// Set default remote name if remote URL is provided but name is empty
+	if c.RemoteURL != "" && c.RemoteName == "" {
+		c.RemoteName = defaultRemoteName
+	}
+}
+
 func (c *Config) validate() error {
 	if c == nil {
 		return errors.New("gitmanager: config is nil")
@@ -63,8 +72,9 @@ func (c *Config) validate() error {
 		return fmt.Errorf("gitmanager: repo path must be absolute (%s)", c.RepoPath)
 	}
 	// RemoteURL is optional - local-only repos don't need a remote
+	// If remote URL is set, remote name must be set (normalized before validation)
 	if c.RemoteURL != "" && c.RemoteName == "" {
-		c.RemoteName = defaultRemoteName
+		return errors.New("gitmanager: remote name is required when remote URL is set")
 	}
 	if c.AuthorName == "" || c.AuthorEmail == "" {
 		return errors.New("gitmanager: author name and email are required")

@@ -219,7 +219,7 @@ cache/
 				t.Errorf("Failed to get log: %v", logErr)
 			} else {
 				commitCount := 0
-				commitIter.ForEach(func(c *object.Commit) error {
+				_ = commitIter.ForEach(func(c *object.Commit) error {
 					commitCount++
 					return nil
 				})

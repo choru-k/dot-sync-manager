@@ -4,59 +4,37 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/choru-k/dot-sync-manager/internal/config"
 )
 
-// testConfig is a sample configuration used for testing
-const testConfig = `{
-	"version": "1.0",
-	"machine": {"name": "test-machine"},
-	"git": {
-		"repo_path": "/tmp/test-repo",
-		"remote_url": "",
-		"remote_name": "origin",
-		"branch": "main",
-		"author_name": "Test User",
-		"author_email": "test@example.com",
-		"auth_type": "ssh"
-	},
-	"sync": {
-		"auto_sync_enabled": true,
-		"pull_interval_seconds": 300,
-		"debounce_seconds": 30,
-		"auto_commit": true,
-		"auto_push": true,
-		"auto_pull": true
-	},
-	"notifications": {
-		"enabled": true,
-		"show_success": false,
-		"show_pulls": true,
-		"play_sound_on_conflict": false
-	},
-	"conflict_resolution": {
-		"strategy": "manual",
-		"backup_dir": "/tmp/backup",
-		"keep_backups_days": 7
-	},
-	"mappings": {},
-	"ui": {
-		"start_at_boot": false,
-		"minimize_to_tray": true,
-		"theme": "auto"
-	},
-	"advanced": {
-		"debug_logging": false,
-		"log_file": "/tmp/test.log",
-		"max_log_size_mb": 10
+// createTestConfig creates a test configuration based on DefaultConfig with test-specific overrides.
+// This is more maintainable than hardcoded JSON as it adapts to config schema changes.
+func createTestConfig(t *testing.T) *config.SyncConfig {
+	t.Helper()
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("Failed to create default config: %v", err)
 	}
-}`
+
+	// Override with test-specific values
+	cfg.Machine.Name = "test-machine"
+	cfg.Git.RepoPath = "/tmp/test-repo"
+	cfg.Git.AuthorName = "Test User"
+	cfg.Git.AuthorEmail = "test@example.com"
+	cfg.ConflictResolution.BackupDir = "/tmp/backup"
+	cfg.Advanced.LogFile = "/tmp/test.log"
+
+	return cfg
+}
 
 func TestGetConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Create a test config file
+	// Create a test config file using helper
+	testCfg := createTestConfig(t)
 	configPath := filepath.Join(tmpDir, ".sync-config.json")
-	if err := os.WriteFile(configPath, []byte(testConfig), 0644); err != nil {
+	if err := testCfg.SaveToFile(configPath); err != nil {
 		t.Fatalf("Failed to create test config: %v", err)
 	}
 
@@ -117,7 +95,8 @@ func TestGetConfig(t *testing.T) {
 			t.Fatalf("Failed to create dotfiles dir: %v", err)
 		}
 		defaultConfigPath := filepath.Join(dotfilesDir, ".sync-config.json")
-		if err := os.WriteFile(defaultConfigPath, []byte(testConfig), 0644); err != nil {
+		testCfg := createTestConfig(t)
+		if err := testCfg.SaveToFile(defaultConfigPath); err != nil {
 			t.Fatalf("Failed to create default config: %v", err)
 		}
 

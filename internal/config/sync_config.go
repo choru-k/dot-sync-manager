@@ -529,8 +529,14 @@ func (c *SyncConfig) Validate() error {
 		return fmt.Errorf("conflict resolution strategy is required")
 	}
 
-	if err := validateInclusion(c.ConflictResolution.Strategy, []string{"manual", "auto_keep_local", "auto_keep_remote"}, "conflict resolution strategy"); err != nil {
-		return err
+	// Use map for O(1) strategy validation
+	validStrategies := map[string]struct{}{
+		"manual":            {},
+		"auto_keep_local":   {},
+		"auto_keep_remote":  {},
+	}
+	if _, ok := validStrategies[c.ConflictResolution.Strategy]; !ok {
+		return fmt.Errorf("invalid conflict resolution strategy: %s (must be one of: manual, auto_keep_local, auto_keep_remote)", c.ConflictResolution.Strategy)
 	}
 
 	if c.ConflictResolution.KeepBackupsDays < 0 {

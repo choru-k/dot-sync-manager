@@ -33,6 +33,7 @@ func Execute() error {
 
 func init() {
 	rootCmd.PersistentFlags().StringVar(&configFile, "config", "", "Path to configuration file")
+	// TODO(future): Implement verbose logging throughout commands
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
 }
 
@@ -64,18 +65,33 @@ func getConfig() (*config.SyncConfig, error) {
 	} else {
 		cfg, err = config.LoadFromDefaultLocation()
 		if err != nil {
-			homeDir, homeErr := os.UserHomeDir()
-			if homeErr != nil {
-				// Can't show expected paths if we can't get home directory
-				return nil, fmt.Errorf("failed to load configuration: %w", err)
-			}
-			prdPath := filepath.Join(homeDir, "dotfiles", ".sync-config.json")
-			legacyPath := filepath.Join(homeDir, ".dotfile-sync.json")
-			return nil, fmt.Errorf("failed to load configuration: %w\n\nExpected config at:\n  - %s (PRD location)\n  - %s (legacy location)\n\nRun 'dsm init' to create a new configuration", err, prdPath, legacyPath)
+			return nil, formatConfigNotFoundError(err)
 		}
 	}
 
 	return cfg, nil
+}
+
+// formatConfigNotFoundError formats a helpful error message when config is not found.
+// It attempts to show expected config locations, falling back to a generic message
+// if the home directory cannot be determined.
+func formatConfigNotFoundError(err error) error {
+	homeDir, homeErr := os.UserHomeDir()
+	if homeErr != nil {
+		// Can't show expected paths if we can't get home directory
+		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	prdPath := filepath.Join(homeDir, "dotfiles", ".sync-config.json")
+	legacyPath := filepath.Join(homeDir, ".dotfile-sync.json")
+
+	return fmt.Errorf(`failed to load configuration: %w
+
+Expected config at:
+  - %s (PRD location)
+  - %s (legacy location)
+
+Run 'dsm init' to create a new configuration`, err, prdPath, legacyPath)
 }
 
 // isDaemonRunning checks if the daemon is already running.

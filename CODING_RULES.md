@@ -29,6 +29,9 @@ Quick reference guide for maintaining code quality and consistency in this proje
 17. **Use raw string literals for multiline** - Use backticks for error messages with newlines
 18. **Add godoc to exported functions** - All exported functions need documentation comments
 19. **Add TODO comments to stubs** - Mark incomplete implementations with TODO(PRx) comments
+20. **Extract file permissions to constants** - Use named constants for octal permissions (0600, 0644, etc.)
+21. **Use maps for validation lookups** - Replace validation loops with map lookups for O(1) performance
+22. **Preserve existing config values** - When updating config, only override fields you intend to change
 
 ## Testing Rules
 
@@ -336,6 +339,89 @@ func TestConfigHasVersion(t *testing.T) {
 }
 ```
 
+### ❌ Don't Use Magic Numbers for File Permissions
+```go
+// BAD - What does 0600 mean?
+if err := os.Chmod(configPath, 0600); err != nil {
+    return err
+}
+if err := os.WriteFile(ignorePath, data, 0644); err != nil {
+    return err
+}
+
+// GOOD - Named constants are self-documenting
+const (
+    configFilePerms = 0600 // owner read/write only (sensitive data)
+    defaultFilePerms = 0644 // owner rw, group/others read
+)
+
+if err := os.Chmod(configPath, configFilePerms); err != nil {
+    return err
+}
+if err := os.WriteFile(ignorePath, data, defaultFilePerms); err != nil {
+    return err
+}
+```
+
+### ❌ Don't Use Loops for Validation When Maps Are Better
+```go
+// BAD - O(n) validation
+func (c *Config) Validate() error {
+    validStrategies := []string{"manual", "auto_keep_local", "auto_keep_remote"}
+    valid := false
+    for _, s := range validStrategies {
+        if c.Strategy == s {
+            valid = true
+            break
+        }
+    }
+    if !valid {
+        return fmt.Errorf("invalid strategy: %s", c.Strategy)
+    }
+    return nil
+}
+
+// GOOD - O(1) validation with map
+var validStrategies = map[string]struct{}{
+    "manual":            {},
+    "auto_keep_local":   {},
+    "auto_keep_remote":  {},
+}
+
+func (c *Config) Validate() error {
+    if _, ok := validStrategies[c.Strategy]; !ok {
+        return fmt.Errorf("invalid strategy: %s (must be one of: %s)",
+            c.Strategy, strings.Join(getKeys(validStrategies), ", "))
+    }
+    return nil
+}
+```
+
+### ❌ Don't Clobber Existing Config Values
+```go
+// BAD - Unconditionally overwrites AuthType
+func updateConfig(cfg *Config) error {
+    cfg.Machine.Name = newMachineName
+    cfg.Git.RepoPath = newRepoPath
+    cfg.Git.AuthType = gitmanager.AuthStrategyNone  // Destroys SSH config!
+    return cfg.SaveToFile(configPath)
+}
+
+// GOOD - Only override when creating new config
+func updateConfig(cfg *Config, isNewConfig bool) error {
+    cfg.Machine.Name = newMachineName
+    cfg.Git.RepoPath = newRepoPath
+    
+    // Only set default auth for new configs
+    if isNewConfig {
+        cfg.Git.AuthType = gitmanager.AuthStrategyNone
+    }
+    // Existing configs preserve their auth settings
+    
+    return cfg.SaveToFile(configPath)
+}
+```
+
 ## Review Checklist
 
 Before submitting code, verify:
@@ -346,7 +432,7 @@ Before submitting code, verify:
 - [ ] Path resolution errors propagated immediately (fail fast)
 - [ ] Validation only checks, doesn't modify
 - [ ] Error messages use "must" language
-- [ ] Magic numbers/strings extracted to constants
+- [ ] Magic numbers/strings extracted to constants (including file permissions)
 - [ ] Large multi-line strings (>10 lines) moved to package constants
 - [ ] Used `DefaultConfig()` instead of duplicating config creation
 - [ ] Raw string literals (backticks) for multi-line error messages
@@ -354,6 +440,8 @@ Before submitting code, verify:
 - [ ] TODO comments on stub implementations (TODO(PRx))
 - [ ] Function signatures don't return unused errors
 - [ ] Helper functions reduce duplication
+- [ ] Validation uses maps instead of loops where appropriate
+- [ ] Config updates preserve existing values (don't clobber auth, paths, etc.)
 - [ ] Tests use `t.Cleanup` for setup/teardown
 - [ ] All error returns checked (even in error handling code)
 - [ ] Test names clearly describe what is being tested

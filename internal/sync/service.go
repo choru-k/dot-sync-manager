@@ -174,7 +174,7 @@ func (s *SyncService) Stop() {
 
 	// Close watcher
 	if s.watcher != nil {
-		s.watcher.Close()
+		_ = s.watcher.Close()
 	}
 
 	log.Println("sync: stopped")
