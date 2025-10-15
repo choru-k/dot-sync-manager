@@ -58,6 +58,14 @@ GOOS=linux GOARCH=amd64 go build -v -o bin/dotfile-sync-manager-linux .
 GOOS=darwin GOARCH=arm64 go build -v -o bin/dotfile-sync-manager-darwin .
 ```
 
+### GitHub CLI
+IMPORTANT: USE GH TO GET GITHUB-PR AND COMMENT AND ISSUES
+EXAMPLE)
+```bash
+gh api repos/choru-k/dot-sync-manager/pulls/48/reviews/3339762081 | jq .
+gh api repos/choru-k/dot-sync-manager/pulls/48/reviews/3339762081/comments | jq .
+```
+
 ## Architecture
 
 ### Core Components

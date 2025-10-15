@@ -31,8 +31,6 @@ const (
 	defaultFilePerms           = 0644 // owner rw, group/others read (for normal files)
 )
 
-
-
 // initCmd represents the init command
 var initCmd = &cobra.Command{
 	Use:   "init [git-url]",
@@ -111,12 +109,9 @@ Options:
 	
 	// Get email from flag or prompt, then validate once
 	if authorEmail == "" {
-		authorEmail, err = promptForInput("Enter your email: ", "")
+		authorEmail, err = promptForNonEmpty("Enter your email: ", "author email")
 		if err != nil {
-			return fmt.Errorf("failed to read author email: %w", err)
-		}
-		if authorEmail == "" {
-			return fmt.Errorf("author email cannot be empty")
+			return err
 		}
 	}
 	
@@ -254,9 +249,13 @@ func getMachineName() string {
 	if hostname, err := os.Hostname(); err == nil {
 		return hostname
 	}
+	// Silently ignore hostname errors - fallback to "unknown-machine" is sufficient
 	return "unknown-machine"
 }
 
+// promptForNonEmpty repeatedly prompts the user until a non-empty value is entered.
+// It displays a friendly error message with the field name capitalized.
+// fieldName is used for error messages (e.g., "email" becomes "Email").
 func promptForNonEmpty(prompt, fieldName string) (string, error) {
 	for {
 		value, err := promptForInput(prompt, "")
@@ -275,6 +274,9 @@ func promptForNonEmpty(prompt, fieldName string) (string, error) {
 	}
 }
 
+// promptForInput reads a single line from stdin with support for default values.
+// If defaultValue is provided, it displays the default in brackets and returns it if user enters nothing.
+// Returns the trimmed input value (either user input or default).
 func promptForInput(prompt, defaultValue string) (string, error) {
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Print(prompt)

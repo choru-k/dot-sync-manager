@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"net/mail"
 	"os"
 	"strings"
 	"testing"
@@ -179,6 +180,43 @@ func TestPromptForInputError(t *testing.T) {
 	if !strings.Contains(err.Error(), "reading input") {
 		t.Errorf("Expected error message to contain 'reading input', got: %v", err)
 	}
+}
+
+func TestEmailValidation(t *testing.T) {
+	t.Run("valid email addresses", func(t *testing.T) {
+		validEmails := []string{
+			"user@example.com",
+			"test.email+tag@domain.co.uk",
+			"user_name@sub.domain.com",
+			"123@example.com",
+			"user@localhost",
+		}
+
+		for _, email := range validEmails {
+			if _, err := mail.ParseAddress(email); err != nil {
+				t.Errorf("Expected valid email '%s' to pass validation, got error: %v", email, err)
+			}
+		}
+	})
+
+	t.Run("invalid email addresses", func(t *testing.T) {
+		invalidEmails := []string{
+			"",
+			"invalid-email",
+			"user@",
+			"@domain.com",
+			"user..name@domain.com",
+			"user@.com",
+			"user space@domain.com",
+			"user@domain..com",
+		}
+
+		for _, email := range invalidEmails {
+			if _, err := mail.ParseAddress(email); err == nil {
+				t.Errorf("Expected invalid email '%s' to fail validation", email)
+			}
+		}
+	})
 }
 
 

@@ -34,6 +34,14 @@ This guide defines how we track work for the Dotfile Sync Manager (DSM) project 
 
 Before submitting code for review:
 
+## GitHub CLI
+IMPORTANT: USE GH TO GET GITHUB-PR AND COMMENT AND ISSUES
+EXAMPLE)
+```bash
+gh api repos/choru-k/dot-sync-manager/pulls/48/reviews/3339762081 | jq .
+gh api repos/choru-k/dot-sync-manager/pulls/48/reviews/3339762081/comments | jq .
+```
+
 ### Required Reading
 - **CODING_RULES.md** - Quick reference with 18 essential rules
 - **.gemini/styleguide.md** - Detailed guide with examples

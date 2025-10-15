@@ -557,7 +557,12 @@ func (c *SyncConfig) Validate() error {
 
 	// Use package-level map for O(1) strategy validation
 	if _, ok := validConflictStrategies[c.ConflictResolution.Strategy]; !ok {
-		return fmt.Errorf("invalid conflict resolution strategy: %s (must be one of: manual, auto_keep_local, auto_keep_remote)", c.ConflictResolution.Strategy)
+		// Generate error message dynamically from map keys
+		keys := make([]string, 0, len(validConflictStrategies))
+		for k := range validConflictStrategies {
+			keys = append(keys, k)
+		}
+		return fmt.Errorf("invalid conflict resolution strategy: %s (must be one of: %s)", c.ConflictResolution.Strategy, strings.Join(keys, ", "))
 	}
 
 	if c.ConflictResolution.KeepBackupsDays < 0 {

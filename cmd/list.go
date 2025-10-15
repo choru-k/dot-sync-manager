@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/choru-k/dot-sync-manager/internal/util"
@@ -48,7 +49,15 @@ func runList(cmd *cobra.Command, args []string) error {
 
 	if showMappings {
 		fmt.Printf("File Mappings (%d):\n\n", len(cfg.Mappings))
-		for source, target := range cfg.Mappings {
+		// Sort source keys for deterministic output
+		sources := make([]string, 0, len(cfg.Mappings))
+		for source := range cfg.Mappings {
+			sources = append(sources, source)
+		}
+		sort.Strings(sources)
+		
+		for _, source := range sources {
+			target := cfg.Mappings[source]
 			sourcePath := filepath.Join(cfg.Git.RepoPath, source)
 			status, statusIcon := checkSymlinkStatus(sourcePath, target)
 
@@ -61,7 +70,14 @@ func runList(cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		fmt.Printf("Files (%d):\n", len(cfg.Mappings))
+		// Sort target paths for deterministic output
+		targets := make([]string, 0, len(cfg.Mappings))
 		for _, target := range cfg.Mappings {
+			targets = append(targets, target)
+		}
+		sort.Strings(targets)
+		
+		for _, target := range targets {
 			fmt.Printf("📄 %s\n", target)
 		}
 	}

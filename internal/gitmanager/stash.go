@@ -132,10 +132,14 @@ func (gm *GitManager) createStash(status git.Status) (*stashSnapshot, error) {
 		return nil, fmt.Errorf("gitmanager: stash metadata create: %w", err)
 	}
 	if err := json.NewEncoder(fileHandle).Encode(meta); err != nil {
-		_ = fileHandle.Close()
+		if closeErr := fileHandle.Close(); closeErr != nil {
+			return nil, fmt.Errorf("gitmanager: stash metadata encode: %w (close error: %v)", err, closeErr)
+		}
 		return nil, fmt.Errorf("gitmanager: stash metadata encode: %w", err)
 	}
-	_ = fileHandle.Close()
+	if err := fileHandle.Close(); err != nil {
+		return nil, fmt.Errorf("gitmanager: stash metadata close: %w", err)
+	}
 
 	return &stashSnapshot{
 		Path:      snapshotDir,
