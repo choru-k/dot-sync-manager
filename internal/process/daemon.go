@@ -13,7 +13,6 @@ const pidFileName = ".dotfile-sync-manager.pid"
 
 // pidFilePath returns the absolute path to the PID file in the user's home directory.
 // The PID file is used to track the running daemon process across sessions.
-// pidFilePath returns the full path to the PID file in the user's home directory.
 // Uses 0600 permissions to ensure only the owner can read/write the file.
 func pidFilePath() (string, error) {
 	home, err := os.UserHomeDir()
@@ -27,7 +26,7 @@ func pidFilePath() (string, error) {
 func WritePID(pid int) error {
 	path, err := pidFilePath()
 	if err != nil {
-		return err
+		return fmt.Errorf("process: write pid: failed to get path: %w", err)
 	}
 	return os.WriteFile(path, []byte(strconv.Itoa(pid)), 0o600)
 }
@@ -36,7 +35,7 @@ func WritePID(pid int) error {
 func RemovePID() error {
 	path, err := pidFilePath()
 	if err != nil {
-		return err
+		return fmt.Errorf("process: remove pid: failed to get path: %w", err)
 	}
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("process: remove pid file: %w", err)
@@ -96,8 +95,11 @@ func IsDaemonRunning() bool {
 		if pid == os.Getpid() {
 			return false
 		}
-		if processExists(pid) && verifyProcessName(pid, expectedName) {
-			return true
+		if processExists(pid) {
+			if verifyProcessName(pid, expectedName) {
+				return true
+			}
+			log.Printf("process: found process %d but name verification failed for %q", pid, expectedName)
 		}
 	}
 	return false

@@ -70,11 +70,13 @@ func TestProcessExistsImplementation(t *testing.T) {
 	}
 }
 
+const testPID = 12345
+
 func TestPIDFileManagement(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
 
-	originalPID := 12345
+	originalPID := testPID
 	if err := WritePID(originalPID); err != nil {
 		t.Fatalf("failed to write PID: %v", err)
 	}

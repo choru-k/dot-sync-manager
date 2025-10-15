@@ -23,11 +23,6 @@ func processExists(pid int) bool {
 	return syscall.Kill(pid, 0) == nil
 }
 
-// verifyProcessName checks if the given PID belongs to a process with the expected name.
-// Uses multiple methods for reliability:
-// 1. ps command with full command line args
-// 2. Linux /proc/<pid>/exe symlink (faster when available)
-// Returns true if any method finds a match containing the expected name.
 // verifyProcessName checks if the process with the given PID matches the expected name.
 // Uses both ps command output and /proc/<pid>/exe (on Linux) to verify the process identity.
 // Returns false if the PID doesn't exist or if the process name doesn't match.
