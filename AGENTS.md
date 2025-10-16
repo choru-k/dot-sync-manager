@@ -35,11 +35,10 @@ This guide defines how we track work for the Dotfile Sync Manager (DSM) project 
 Before submitting code for review:
 
 ## GitHub CLI
-IMPORTANT: USE GH TO GET GITHUB-PR AND COMMENT AND ISSUES
-EXAMPLE)
+IMPORTANT: When responding to GitHub comment or review requests, use the helper script instead of hitting the API directly.
+Example:
 ```bash
-gh api repos/choru-k/dot-sync-manager/pulls/48/reviews/3339762081 | jq .
-gh api repos/choru-k/dot-sync-manager/pulls/48/reviews/3339762081/comments | jq .
+bin/review_report.sh https://github.com/choru-k/dot-sync-manager/pull/<n>
 ```
 
 ### Required Reading
