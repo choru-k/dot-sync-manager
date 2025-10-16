@@ -9,7 +9,10 @@ import (
 	"strings"
 )
 
-const pidFileName = ".dotfile-sync-manager.pid"
+const (
+	pidFileName  = ".dotfile-sync-manager.pid"
+	pidFilePerms = 0o600 // owner read/write only to protect daemon PID information
+)
 
 // pidFilePath returns the absolute path to the PID file in the user's home directory.
 // The PID file is used to track the running daemon process across sessions.
@@ -31,7 +34,7 @@ func WritePID(pid int) error {
 	if err != nil {
 		return fmt.Errorf("process: write pid: failed to get path: %w", err)
 	}
-	return os.WriteFile(path, []byte(strconv.Itoa(pid)), 0o600)
+	return os.WriteFile(path, []byte(strconv.Itoa(pid)), pidFilePerms)
 }
 
 // RemovePID deletes the stored PID file if it exists.
@@ -77,6 +80,8 @@ func readPID() (int, error) {
 // Note: This function contains benign race conditions where a process could
 // terminate between checking existence and verifying name. These are acceptable
 // for daemon management purposes and don't affect correctness.
+// When falling back to process enumeration the lookup may be slow on systems
+// with many processes; callers should treat this as an infrequent operation.
 func IsDaemonRunning() bool {
 	expectedName := defaultProcessName()
 

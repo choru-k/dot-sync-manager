@@ -110,32 +110,6 @@ if err != nil {
 }
 ```
 
-### ✅ Good Robust Parsing
-```go
-// Use CSV parser for CSV-formatted command output
-cmd := exec.Command("tasklist", "/FI", "IMAGENAME eq "+name+".exe", "/FO", "CSV", "/NH")
-output, err := cmd.Output()
-if err != nil {
-    return 0, fmt.Errorf("process: not found: %s", name)
-}
-
-reader := csv.NewReader(strings.NewReader(string(output)))
-records, err := reader.ReadAll()
-if err != nil || len(records) == 0 {
-    return 0, fmt.Errorf("process: not found: %s", name)
-}
-
-record := records[0]
-if len(record) < 2 {
-    return 0, fmt.Errorf("process: unexpected tasklist output format")
-}
-
-pid, err := strconv.Atoi(record[1])
-if err != nil {
-    return 0, fmt.Errorf("process: could not parse PID '%s': %w", record[1], err)
-}
-```
-
 ### ✅ Good Testing
 ```go
 func TestValidation(t *testing.T) {

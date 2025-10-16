@@ -94,7 +94,7 @@ func TestPIDFileManagement(t *testing.T) {
 		t.Fatalf("failed to stat PID file: %v", err)
 	}
 	if runtime.GOOS != "windows" {
-		expectedPerm := os.FileMode(0o600)
+		expectedPerm := os.FileMode(pidFilePerms)
 		if info.Mode().Perm() != expectedPerm {
 			t.Fatalf("expected PID file permissions %v, got %v", expectedPerm, info.Mode().Perm())
 		}
