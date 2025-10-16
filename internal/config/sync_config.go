@@ -7,12 +7,24 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/debouncer"
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
 	"github.com/choru-k/dot-sync-manager/internal/util"
+)
+
+// Configuration version
+const CurrentVersion = "1.0"
+
+// Default configuration values
+const (
+	DefaultPullIntervalSeconds = 300 // 5 minutes
+	DefaultDebounceSeconds     = 30  // 30 seconds
+	DefaultMaxLogSizeMB        = 10
+	DefaultKeepBackupsDays     = 7
 )
 
 // Validation constants
@@ -187,12 +199,21 @@ type AdvancedConfig struct {
 	MaxLogSizeMB int `json:"max_log_size_mb"`
 }
 
-// DefaultConfig returns a default configuration
-func DefaultConfig() *SyncConfig {
-	homeDir, _ := os.UserHomeDir()
+// DefaultConfig returns a default configuration.
+// Returns an error if the user's home directory cannot be determined.
+//
+// SECURITY WARNING: This configuration can store sensitive data including passwords,
+// SSH key passphrases, and authentication credentials in plain text. Never commit
+// .sync-config.json files to version control repositories. Consider using a
+// system keychain/credential manager for sensitive authentication data.
+func DefaultConfig() (*SyncConfig, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("could not determine home directory: %w", err)
+	}
 
 	return &SyncConfig{
-		Version: "1.0",
+		Version: CurrentVersion,
 		Machine: MachineConfig{
 			Name: getDefaultMachineName(),
 		},
@@ -207,8 +228,8 @@ func DefaultConfig() *SyncConfig {
 		},
 		Sync: SyncSettings{
 			AutoSyncEnabled:     true,
-			PullIntervalSeconds: 300, // 5 minutes
-			DebounceSeconds:     30,  // 30 seconds
+			PullIntervalSeconds: DefaultPullIntervalSeconds,
+			DebounceSeconds:     DefaultDebounceSeconds,
 			AutoCommit:          true,
 			AutoPush:            true,
 			AutoPull:            true,
@@ -231,7 +252,7 @@ func DefaultConfig() *SyncConfig {
 		ConflictResolution: ConflictConfig{
 			Strategy:        "manual",
 			BackupDir:       filepath.Join(homeDir, "dotfiles", ".backup"),
-			KeepBackupsDays: 7,
+			KeepBackupsDays: DefaultKeepBackupsDays,
 		},
 		Mappings: make(map[string]string),
 		UI: UIConfig{
@@ -242,14 +263,17 @@ func DefaultConfig() *SyncConfig {
 		Advanced: AdvancedConfig{
 			DebugLogging: false,
 			LogFile:      filepath.Join(homeDir, ".dotfile-sync.log"),
-			MaxLogSizeMB: 10,
+			MaxLogSizeMB: DefaultMaxLogSizeMB,
 		},
-	}
+	}, nil
 }
 
 // LoadFromFile loads configuration from a JSON file
 func LoadFromFile(filename string) (*SyncConfig, error) {
-	config := DefaultConfig()
+	config, err := DefaultConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create default config: %w", err)
+	}
 
 	// Store the config path (resolve to absolute path)
 	absPath, err := filepath.Abs(filename)
@@ -317,7 +341,7 @@ func FindConfigFile(explicitPath string) (string, bool, error) {
 	// Check standard locations in order of priority
 	prdPath := filepath.Join(homeDir, "dotfiles", ".sync-config.json")
 	searchPaths := []string{
-		prdPath,                                       // PRD location
+		prdPath, // PRD location
 		filepath.Join(homeDir, ".dotfile-sync.json"), // Legacy location
 	}
 
@@ -346,7 +370,10 @@ func LoadFromDefaultLocation() (*SyncConfig, error) {
 	}
 
 	// Return default config if no file found, store the expected path
-	cfg := DefaultConfig()
+	cfg, err := DefaultConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create default config: %w", err)
+	}
 	cfg.ConfigPath = configPath
 	return cfg, nil
 }
@@ -444,14 +471,46 @@ func (c *SyncConfig) GetConfigPath() string {
 	return c.ConfigPath
 }
 
-// validateInclusion checks if a value is in a list of allowed options
-func validateInclusion(value string, options []string, fieldName string) error {
-	for _, opt := range options {
-		if value == opt {
-			return nil
-		}
+// validThemes contains allowed UI theme values for O(1) validation
+var validThemes = map[string]struct{}{
+	"auto":  {},
+	"light": {},
+	"dark":  {},
+}
+
+// validConflictStrategies contains allowed conflict resolution strategy values for O(1) validation
+var validConflictStrategies = map[string]struct{}{
+	"manual":           {},
+	"auto_keep_local":  {},
+	"auto_keep_remote": {},
+}
+
+// validateTheme checks if a UI theme value is valid using O(1) map lookup
+func validateTheme(value string) error {
+	if _, ok := validThemes[value]; !ok {
+		return fmt.Errorf("invalid UI theme: %s (must be one of: %s)", value, strings.Join(getValidThemeKeys(), ", "))
 	}
-	return fmt.Errorf("invalid %s: %s (must be one of: %v)", fieldName, value, options)
+	return nil
+}
+
+// getValidThemeKeys returns the valid theme keys as a slice for error messages
+func getValidThemeKeys() []string {
+	keys := make([]string, 0, len(validThemes))
+	for theme := range validThemes {
+		keys = append(keys, theme)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// getValidConflictStrategyKeys returns valid conflict strategies sorted for deterministic output
+func getValidConflictStrategyKeys() []string {
+	keys := make([]string, 0, len(validConflictStrategies))
+	for strategy := range validConflictStrategies {
+		keys = append(keys, strategy)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // Validate checks if the configuration is valid
@@ -508,8 +567,9 @@ func (c *SyncConfig) Validate() error {
 		return fmt.Errorf("conflict resolution strategy is required")
 	}
 
-	if err := validateInclusion(c.ConflictResolution.Strategy, []string{"manual", "auto_keep_local", "auto_keep_remote"}, "conflict resolution strategy"); err != nil {
-		return err
+	// Use package-level map for O(1) strategy validation
+	if _, ok := validConflictStrategies[c.ConflictResolution.Strategy]; !ok {
+		return fmt.Errorf("invalid conflict resolution strategy: %s (must be one of: %s)", c.ConflictResolution.Strategy, strings.Join(getValidConflictStrategyKeys(), ", "))
 	}
 
 	if c.ConflictResolution.KeepBackupsDays < 0 {
@@ -525,7 +585,7 @@ func (c *SyncConfig) Validate() error {
 		return fmt.Errorf("UI theme is required")
 	}
 
-	if err := validateInclusion(c.UI.Theme, []string{"auto", "light", "dark"}, "UI theme"); err != nil {
+	if err := validateTheme(c.UI.Theme); err != nil {
 		return err
 	}
 

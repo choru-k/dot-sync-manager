@@ -37,7 +37,7 @@ func (p *Parser) LoadFromFile(filename string) error {
 		}
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {

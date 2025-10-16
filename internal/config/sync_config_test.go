@@ -12,8 +12,21 @@ import (
 	"github.com/choru-k/dot-sync-manager/internal/util"
 )
 
+// mustDefaultConfig is a test helper that calls DefaultConfig and fails the test if it errors
+func mustDefaultConfig(t *testing.T) *SyncConfig {
+	t.Helper()
+	cfg, err := DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	return cfg
+}
+
 func TestDefaultConfig(t *testing.T) {
-	config := DefaultConfig()
+	config, err := DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
 
 	if config.Version != "1.0" {
 		t.Errorf("Expected version 1.0, got %s", config.Version)
@@ -56,12 +69,13 @@ func TestConfigValidation(t *testing.T) {
 	}{
 		{
 			name:   "valid config",
-			config: DefaultConfig(),
+			config: mustDefaultConfig(t),
 		},
 		{
 			name: "empty machine name",
 			config: func() *SyncConfig {
-				c := DefaultConfig()
+				c, err := DefaultConfig()
+				if err != nil { t.Fatal(err) }
 				c.Machine.Name = ""
 				return c
 			}(),
@@ -70,7 +84,8 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "empty repo path",
 			config: func() *SyncConfig {
-				c := DefaultConfig()
+				c, err := DefaultConfig()
+				if err != nil { t.Fatal(err) }
 				c.Git.RepoPath = ""
 				return c
 			}(),
@@ -79,7 +94,8 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "relative repo path",
 			config: func() *SyncConfig {
-				c := DefaultConfig()
+				c, err := DefaultConfig()
+				if err != nil { t.Fatal(err) }
 				c.Git.RepoPath = "relative/path"
 				return c
 			}(),
@@ -88,7 +104,8 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "empty author name",
 			config: func() *SyncConfig {
-				c := DefaultConfig()
+				c, err := DefaultConfig()
+				if err != nil { t.Fatal(err) }
 				c.Git.AuthorName = ""
 				return c
 			}(),
@@ -97,7 +114,8 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "negative pull interval",
 			config: func() *SyncConfig {
-				c := DefaultConfig()
+				c, err := DefaultConfig()
+				if err != nil { t.Fatal(err) }
 				c.Sync.PullIntervalSeconds = -1
 				return c
 			}(),
@@ -106,7 +124,8 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "zero debounce",
 			config: func() *SyncConfig {
-				c := DefaultConfig()
+				c, err := DefaultConfig()
+				if err != nil { t.Fatal(err) }
 				c.Sync.DebounceSeconds = 0
 				return c
 			}(),
@@ -250,7 +269,10 @@ func TestConfigLoadInvalidJSON(t *testing.T) {
 }
 
 func TestConfigToGitManagerConfig(t *testing.T) {
-	config := DefaultConfig()
+	config, err := DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
 
 	gitConfig := config.ToGitManagerConfig()
 
@@ -272,7 +294,10 @@ func TestConfigToGitManagerConfig(t *testing.T) {
 }
 
 func TestConfigToSyncServiceConfig(t *testing.T) {
-	config := DefaultConfig()
+	config, err := DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
 
 	syncConfig := config.ToSyncServiceConfig()
 
@@ -295,7 +320,10 @@ func TestConfigToSyncServiceConfig(t *testing.T) {
 }
 
 func TestConfigJSONSerialization(t *testing.T) {
-	config := DefaultConfig()
+	config, err := DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
 
 	// Marshal to JSON
 	data, err := json.Marshal(config)
@@ -488,13 +516,14 @@ func TestConfigValidationEnhanced(t *testing.T) {
 	}{
 		{
 			name:    "valid config",
-			config:  DefaultConfig(),
+			config:  mustDefaultConfig(t),
 			wantErr: false,
 		},
 		{
 			name: "empty version",
 			config: func() *SyncConfig {
-				c := DefaultConfig()
+				c, err := DefaultConfig()
+				if err != nil { t.Fatal(err) }
 				c.Version = ""
 				return c
 			}(),
@@ -504,7 +533,8 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "invalid email format",
 			config: func() *SyncConfig {
-				c := DefaultConfig()
+				c, err := DefaultConfig()
+				if err != nil { t.Fatal(err) }
 				c.Git.AuthorEmail = "invalid-email"
 				return c
 			}(),
@@ -514,7 +544,8 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "pull interval too short",
 			config: func() *SyncConfig {
-				c := DefaultConfig()
+				c, err := DefaultConfig()
+				if err != nil { t.Fatal(err) }
 				c.Sync.PullIntervalSeconds = 30
 				return c
 			}(),
@@ -524,7 +555,8 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "debounce exceeds pull interval",
 			config: func() *SyncConfig {
-				c := DefaultConfig()
+				c, err := DefaultConfig()
+				if err != nil { t.Fatal(err) }
 				c.Sync.PullIntervalSeconds = 300
 				c.Sync.DebounceSeconds = 400
 				return c
@@ -535,7 +567,8 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "invalid conflict strategy",
 			config: func() *SyncConfig {
-				c := DefaultConfig()
+				c, err := DefaultConfig()
+				if err != nil { t.Fatal(err) }
 				c.ConflictResolution.Strategy = "invalid"
 				return c
 			}(),
@@ -545,7 +578,8 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "empty conflict strategy",
 			config: func() *SyncConfig {
-				c := DefaultConfig()
+				c, err := DefaultConfig()
+				if err != nil { t.Fatal(err) }
 				c.ConflictResolution.Strategy = ""
 				return c
 			}(),
@@ -555,7 +589,8 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "backup retention too long",
 			config: func() *SyncConfig {
-				c := DefaultConfig()
+				c, err := DefaultConfig()
+				if err != nil { t.Fatal(err) }
 				c.ConflictResolution.KeepBackupsDays = 500
 				return c
 			}(),
@@ -565,7 +600,8 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "invalid UI theme",
 			config: func() *SyncConfig {
-				c := DefaultConfig()
+				c, err := DefaultConfig()
+				if err != nil { t.Fatal(err) }
 				c.UI.Theme = "invalid"
 				return c
 			}(),
@@ -575,7 +611,8 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "empty UI theme",
 			config: func() *SyncConfig {
-				c := DefaultConfig()
+				c, err := DefaultConfig()
+				if err != nil { t.Fatal(err) }
 				c.UI.Theme = ""
 				return c
 			}(),
@@ -585,7 +622,8 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "log size too large",
 			config: func() *SyncConfig {
-				c := DefaultConfig()
+				c, err := DefaultConfig()
+				if err != nil { t.Fatal(err) }
 				c.Advanced.MaxLogSizeMB = 2000
 				return c
 			}(),
@@ -595,7 +633,8 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "mapping target requires absolute path",
 			config: func() *SyncConfig {
-				c := DefaultConfig()
+				c, err := DefaultConfig()
+				if err != nil { t.Fatal(err) }
 				c.Mappings = map[string]string{
 					"bashrc": "relative/path", // Relative path without expansion
 				}
@@ -607,9 +646,13 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "valid mapping target with absolute path",
 			config: func() *SyncConfig {
-				c := DefaultConfig()
+				c, err := DefaultConfig()
+				if err != nil { t.Fatal(err) }
 				// Use absolute paths (as they would be after expandPaths())
-				homeDir, _ := os.UserHomeDir()
+				homeDir, err := os.UserHomeDir()
+				if err != nil {
+					t.Fatalf("could not get user home dir: %v", err)
+				}
 				c.Mappings = map[string]string{
 					"bashrc": filepath.Join(homeDir, ".bashrc"),
 					"config": filepath.Join(homeDir, ".config"),
@@ -621,7 +664,8 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "empty mapping source",
 			config: func() *SyncConfig {
-				c := DefaultConfig()
+				c, err := DefaultConfig()
+				if err != nil { t.Fatal(err) }
 				c.Mappings = map[string]string{
 					"": "~/.bashrc",
 				}

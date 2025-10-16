@@ -132,10 +132,14 @@ func (gm *GitManager) createStash(status git.Status) (*stashSnapshot, error) {
 		return nil, fmt.Errorf("gitmanager: stash metadata create: %w", err)
 	}
 	if err := json.NewEncoder(fileHandle).Encode(meta); err != nil {
-		fileHandle.Close()
+		if closeErr := fileHandle.Close(); closeErr != nil {
+			return nil, fmt.Errorf("gitmanager: stash metadata encode: %w (close error: %w)", err, closeErr)
+		}
 		return nil, fmt.Errorf("gitmanager: stash metadata encode: %w", err)
 	}
-	fileHandle.Close()
+	if err := fileHandle.Close(); err != nil {
+		return nil, fmt.Errorf("gitmanager: stash metadata close: %w", err)
+	}
 
 	return &stashSnapshot{
 		Path:      snapshotDir,
@@ -291,7 +295,7 @@ func persistConflictArtifacts(baseDir, relPath string, remote, base, local []byt
 		return fmt.Errorf("gitmanager: conflict mkdir: %w", err)
 	}
 
-	if remote != nil && len(remote) > 0 {
+	if len(remote) > 0 {
 		if err := os.WriteFile(conflictPath+".remote", remote, 0o644); err != nil {
 			return fmt.Errorf("gitmanager: conflict remote copy: %w", err)
 		}
@@ -301,7 +305,7 @@ func persistConflictArtifacts(baseDir, relPath string, remote, base, local []byt
 		}
 	}
 
-	if base != nil && len(base) > 0 {
+	if len(base) > 0 {
 		if err := os.WriteFile(conflictPath+".base", base, 0o644); err != nil {
 			return fmt.Errorf("gitmanager: conflict base copy: %w", err)
 		}
@@ -340,13 +344,13 @@ func copyFilesystemFile(source, destination string, symlink bool) error {
 	if err != nil {
 		return err
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 
 	dst, err := os.Create(destination)
 	if err != nil {
 		return err
 	}
-	defer dst.Close()
+	defer func() { _ = dst.Close() }()
 
 	if _, err := io.Copy(dst, src); err != nil {
 		return err
@@ -362,13 +366,13 @@ func copyTreeFile(file *object.File, destination string) error {
 	if err != nil {
 		return err
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	dst, err := os.Create(destination)
 	if err != nil {
 		return err
 	}
-	defer dst.Close()
+	defer func() { _ = dst.Close() }()
 
 	if _, err := io.Copy(dst, reader); err != nil {
 		return err

@@ -18,23 +18,38 @@ Quick reference guide for maintaining code quality and consistency in this proje
 
 ## Code Quality Rules
 
+9. **Use existing helpers instead of duplicating** - Use `DefaultConfig()` instead of manually creating config structs
 10. **Reduce duplication with helpers** - Extract repeated validation patterns into helper functions
 11. **Refactor to loops** - Replace repeated if/else blocks with loop over slice/map
 12. **Remove unnecessary wrappers** - Don't create wrapper functions that just forward calls
 13. **Wrap errors with context** - Use `fmt.Errorf("operation failed: %w", err)` pattern
 14. **Document actual behavior** - Comments must reflect reality, especially with JSON tags like `omitempty`
+15. **Move large literals to constants** - Multi-line strings (>10 lines) belong at package level, not in functions
+16. **Honest function signatures** - Don't return error types that are never actually used or always nil
+17. **Use raw string literals for multiline** - Use backticks for error messages with newlines
+18. **Add godoc to exported functions** - All exported functions need documentation comments
+19. **Add TODO comments to stubs** - Mark incomplete implementations with TODO(PRx) comments
+20. **Extract file permissions to constants** - Use named constants for octal permissions (0600, 0644, etc.)
+21. **Use maps for validation lookups** - Replace validation loops with map lookups for O(1) performance
+22. **Preserve existing config values** - When updating config, only override fields you intend to change
 
 ## Testing Rules
 
-15. **Use `t.Cleanup` not `defer`** - Modern Go testing: cleanup runs after all subtests
-16. **Check all error returns** - Tests must check `os.Setenv`, `os.Mkdir`, etc. return values
-17. **Test post-normalization state** - Use absolute paths in tests when testing validation
+20. **Use `t.Cleanup` not `defer`** - Modern Go testing: cleanup runs after all subtests
+21. **Check all error returns** - Tests must check `os.Setenv`, `os.Mkdir`, etc. return values (and in error handling too!)
+22. **Test post-normalization state** - Use absolute paths in tests when testing validation
+23. **Avoid tight coupling in tests** - Don't test other packages' constants; test behavior not implementation
+24. **Descriptive test names** - Test names should clearly describe what is being tested
 
 ## Architecture Principles
 
-18. **Separation of concerns** - Normalize → Validate → Save/Use (three distinct stages)
-19. **Fail fast** - Return errors early, don't continue with invalid state
-20. **Group related operations** - Keep related path expansions, validations together with comments
+25. **Separation of concerns** - Normalize → Validate → Save/Use (three distinct stages)
+26. **Fail fast** - Return errors early, don't continue with invalid state
+27. **Group related operations** - Keep related path expansions, validations together with comments
+28. **Design for optionality** - Make fields/parameters optional when legitimate use cases exist without them
+29. **Guard optional operations** - Check preconditions before calling functions that depend on optional config
+30. **Check before overwriting** - Always check if files exist before creating to preserve user data
+31. **Confirm destructive operations** - Prompt user confirmation for operations that delete data
 
 ## Quick Examples
 
@@ -135,6 +150,278 @@ if c.TimeoutSeconds < 0 {
 }
 ```
 
+### ❌ Don't Embed Large String Literals in Functions
+```go
+// BAD - 37 lines embedded in function
+func createIgnoreFile() error {
+    content := `# Line 1
+# Line 2
+... 35 more lines ...
+`
+    return os.WriteFile(path, []byte(content), 0644)
+}
+
+// GOOD - Package-level constant
+const defaultIgnoreContent = `# Line 1
+# Line 2
+... 35 more lines ...
+`
+
+func createIgnoreFile() error {
+    return os.WriteFile(path, []byte(defaultIgnoreContent), 0644)
+}
+```
+
+### ❌ Don't Return Errors That Are Never Used
+```go
+// BAD - Error return never populated
+func getMachineName() (string, error) {
+    if hostname, err := os.Hostname(); err == nil {
+        return hostname, nil
+    }
+    return "unknown-machine", nil  // Always returns nil error!
+}
+
+// GOOD - Honest signature
+func getMachineName() string {
+    if hostname, err := os.Hostname(); err == nil {
+        return hostname
+    }
+    return "unknown-machine"
+}
+```
+
+### ❌ Don't Ignore Errors in Error Handling
+```go
+// BAD - Error ignored when building error message
+homeDir, _ := os.UserHomeDir()  // Ignored!
+return fmt.Errorf("config not found at: %s", homeDir)  // Could be empty!
+
+// GOOD - Check error even in error paths
+homeDir, homeErr := os.UserHomeDir()
+if homeErr != nil {
+    return fmt.Errorf("config not found (unable to determine home: %v)", homeErr)
+}
+return fmt.Errorf("config not found at: %s", homeDir)
+```
+
+### ❌ Don't Duplicate Config Creation Logic
+```go
+// BAD - Manually creating entire config struct (50+ lines duplicated)
+func initCommand() error {
+    cfg := &config.SyncConfig{
+        Version: config.CurrentVersion,
+        Machine: config.MachineConfig{Name: machineName},
+        Git: config.GitConfig{
+            RepoPath: repoPath,
+            // ... 30 more lines of defaults ...
+        },
+        // Missing Sync.Backoff settings!
+    }
+}
+
+// GOOD - Use helper and override only what's needed
+func initCommand() error {
+    cfg := config.DefaultConfig()
+    cfg.Machine.Name = machineName
+    cfg.Git.RepoPath = repoPath
+    cfg.Git.AuthorName = authorName
+    // All defaults preserved, including Backoff
+}
+```
+
+### ❌ Don't Use Explicit \n in Multi-line Strings
+```go
+// BAD - Hard to read, error-prone
+return fmt.Errorf("directory exists\n\nOptions:\n  - Use --force\n  - Use different path")
+
+// GOOD - Raw string literal (backticks)
+return fmt.Errorf(`directory exists
+
+Options:
+  - Use --force
+  - Use different path`)
+```
+
+### ❌ Don't Skip Godoc for Exported Functions
+```go
+// BAD - No documentation
+func getConfig() (*config.SyncConfig, error) {
+    // ...
+}
+
+// GOOD - Clear documentation
+// getConfig loads configuration using proper discovery logic.
+// If --config flag is provided, it loads from that path (with tilde expansion).
+// Otherwise, it searches default locations.
+// Returns error if explicit config file doesn't exist or has invalid JSON.
+func getConfig() (*config.SyncConfig, error) {
+    // ...
+}
+```
+
+### ❌ Don't Overwrite Existing Files Without Checking
+```go
+// BAD - Overwrites user's existing config when cloning
+func initRepo(cloneURL string) error {
+    clone(cloneURL)
+    // Destroys existing .sync-config.json from the clone!
+    createConfig()
+}
+
+// GOOD - Check before overwriting
+func initRepo(cloneURL string) error {
+    clone(cloneURL)
+    if _, err := os.Stat(configPath); err == nil {
+        fmt.Println("Using existing configuration")
+        return nil
+    }
+    createConfig()
+}
+```
+
+### ❌ Don't Make Fields Required When They're Optional
+```go
+// BAD - Always requires remote even for local-only use
+func (c *Config) validate() error {
+    if c.RemoteURL == "" {
+        return errors.New("remote URL is required")  // Blocks local-only!
+    }
+}
+
+// GOOD - Optional field with guarded operations
+func (c *Config) validate() error {
+    // RemoteURL is optional - local-only repos don't need it
+    if c.RemoteURL != "" && c.RemoteName == "" {
+        c.RemoteName = "origin"
+    }
+}
+
+// Guard dependent operations
+if gm.cfg.RemoteURL != "" {
+    return gm.ensureRemote()  // Only when configured
+}
+```
+
+### ❌ Don't Perform Destructive Operations Without Confirmation
+```go
+// BAD - Deletes entire directory without asking
+if force {
+    os.RemoveAll(repoPath)
+}
+
+// GOOD - Ask user to confirm
+if force {
+    fmt.Printf("⚠️  Warning: will delete entire directory: %s\n", repoPath)
+    confirmation, _ := promptForInput("Type 'yes' to confirm: ", "")
+    if confirmation != "yes" {
+        return fmt.Errorf("operation cancelled")
+    }
+    os.RemoveAll(repoPath)
+}
+```
+
+### ❌ Don't Test Other Packages' Constants
+```go
+// BAD - Tight coupling to config package internals
+func TestDefaultConstants(t *testing.T) {
+    if config.CurrentVersion != "1.0" {  // Breaks when config changes
+        t.Errorf("Expected version 1.0")
+    }
+}
+
+// GOOD - Test behavior, not implementation
+func TestConfigHasVersion(t *testing.T) {
+    cfg := config.DefaultConfig()
+    if cfg.Version == "" {
+        t.Error("Expected non-empty version")
+    }
+}
+```
+
+### ❌ Don't Use Magic Numbers for File Permissions
+```go
+// BAD - What does 0600 mean?
+if err := os.Chmod(configPath, 0600); err != nil {
+    return err
+}
+if err := os.WriteFile(ignorePath, data, 0644); err != nil {
+    return err
+}
+
+// GOOD - Named constants are self-documenting
+const (
+    configFilePerms = 0600 // owner read/write only (sensitive data)
+    defaultFilePerms = 0644 // owner rw, group/others read
+)
+
+if err := os.Chmod(configPath, configFilePerms); err != nil {
+    return err
+}
+if err := os.WriteFile(ignorePath, data, defaultFilePerms); err != nil {
+    return err
+}
+```
+
+### ❌ Don't Use Loops for Validation When Maps Are Better
+```go
+// BAD - O(n) validation
+func (c *Config) Validate() error {
+    validStrategies := []string{"manual", "auto_keep_local", "auto_keep_remote"}
+    valid := false
+    for _, s := range validStrategies {
+        if c.Strategy == s {
+            valid = true
+            break
+        }
+    }
+    if !valid {
+        return fmt.Errorf("invalid strategy: %s", c.Strategy)
+    }
+    return nil
+}
+
+// GOOD - O(1) validation with map
+var validStrategies = map[string]struct{}{
+    "manual":            {},
+    "auto_keep_local":   {},
+    "auto_keep_remote":  {},
+}
+
+func (c *Config) Validate() error {
+    if _, ok := validStrategies[c.Strategy]; !ok {
+        return fmt.Errorf("invalid strategy: %s (must be one of: %s)",
+            c.Strategy, strings.Join(getKeys(validStrategies), ", "))
+    }
+    return nil
+}
+```
+
+### ❌ Don't Clobber Existing Config Values
+```go
+// BAD - Unconditionally overwrites AuthType
+func updateConfig(cfg *Config) error {
+    cfg.Machine.Name = newMachineName
+    cfg.Git.RepoPath = newRepoPath
+    cfg.Git.AuthType = gitmanager.AuthStrategyNone  // Destroys SSH config!
+    return cfg.SaveToFile(configPath)
+}
+
+// GOOD - Only override when creating new config
+func updateConfig(cfg *Config, isNewConfig bool) error {
+    cfg.Machine.Name = newMachineName
+    cfg.Git.RepoPath = newRepoPath
+    
+    // Only set default auth for new configs
+    if isNewConfig {
+        cfg.Git.AuthType = gitmanager.AuthStrategyNone
+    }
+    // Existing configs preserve their auth settings
+    
+    return cfg.SaveToFile(configPath)
+}
+```
+
 ## Review Checklist
 
 Before submitting code, verify:
@@ -145,11 +432,25 @@ Before submitting code, verify:
 - [ ] Path resolution errors propagated immediately (fail fast)
 - [ ] Validation only checks, doesn't modify
 - [ ] Error messages use "must" language
-- [ ] Magic numbers extracted to constants
+- [ ] Magic numbers/strings extracted to constants (including file permissions)
+- [ ] Large multi-line strings (>10 lines) moved to package constants
+- [ ] Used `DefaultConfig()` instead of duplicating config creation
+- [ ] Raw string literals (backticks) for multi-line error messages
+- [ ] Godoc comments on all exported functions
+- [ ] TODO comments on stub implementations (TODO(PRx))
+- [ ] Function signatures don't return unused errors
 - [ ] Helper functions reduce duplication
+- [ ] Validation uses maps instead of loops where appropriate
+- [ ] Config updates preserve existing values (don't clobber auth, paths, etc.)
 - [ ] Tests use `t.Cleanup` for setup/teardown
-- [ ] All error returns checked in tests
+- [ ] All error returns checked (even in error handling code)
+- [ ] Test names clearly describe what is being tested
+- [ ] Tests don't verify other packages' constants (avoid tight coupling)
 - [ ] Comments accurately reflect behavior (especially with `omitempty`)
+- [ ] Optional fields designed for legitimate use cases
+- [ ] Optional operations guarded with precondition checks
+- [ ] Check file existence before overwriting
+- [ ] User confirmation for destructive operations (delete, force)
 - [ ] Clear separation: normalize → validate → use
 
 ## References

@@ -34,6 +34,13 @@ This guide defines how we track work for the Dotfile Sync Manager (DSM) project 
 
 Before submitting code for review:
 
+## GitHub CLI
+IMPORTANT: When responding to GitHub comment or review requests, use the helper script instead of hitting the API directly.
+Example:
+```bash
+bin/review_report.sh https://github.com/choru-k/dot-sync-manager/pull/<n>
+```
+
 ### Required Reading
 - **CODING_RULES.md** - Quick reference with 18 essential rules
 - **.gemini/styleguide.md** - Detailed guide with examples

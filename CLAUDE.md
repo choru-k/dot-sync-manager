@@ -58,6 +58,13 @@ GOOS=linux GOARCH=amd64 go build -v -o bin/dotfile-sync-manager-linux .
 GOOS=darwin GOARCH=arm64 go build -v -o bin/dotfile-sync-manager-darwin .
 ```
 
+### GitHub CLI
+IMPORTANT: For GitHub comments or review data, use the provided helper rather than direct API calls.
+Example:
+```bash
+bin/review_report.sh https://github.com/choru-k/dot-sync-manager/pull/<n>
+```
+
 ## Architecture
 
 ### Core Components
