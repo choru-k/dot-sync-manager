@@ -607,8 +607,12 @@ func (c *SyncConfig) Validate() error {
 			if target == "" {
 				return fmt.Errorf("mapping target for '%s' cannot be empty", source)
 			}
-		if !filepath.IsAbs(util.ExpandPath(target)) {
-			return fmt.Errorf("mapping target for '%s' must expand to an absolute path, but got '%s'", source, target)
+		expandedTarget, err := util.ExpandPath(target)
+		if err != nil {
+			return fmt.Errorf("failed to expand mapping target for '%s': %w", source, err)
+		}
+		if !filepath.IsAbs(expandedTarget) {
+			return fmt.Errorf("mapping target for '%s' must expand to an absolute path, but got '%s'", source, expandedTarget)
 		}
 		}
 	}

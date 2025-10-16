@@ -527,7 +527,46 @@ if err := expand(&c.Git.SSHKeyPath, "git.ssh_key_path"); err != nil { return err
 
 **Rationale**: Logical grouping improves code readability.
 
-### Rule 17: Extract File Permissions to Named Constants
+### Rule 17: Parse External Command Output Robustly
+**Context**: External commands often return structured data (CSV, JSON) that should be parsed with appropriate libraries, not string manipulation.
+
+**✅ DO:**
+```go
+// Use CSV parser for CSV-formatted command output
+cmd := exec.Command("tasklist", "/FI", "IMAGENAME eq "+name+".exe", "/FO", "CSV", "/NH")
+output, err := cmd.Output()
+if err != nil {
+    return 0, fmt.Errorf("process: not found: %s", name)
+}
+
+reader := csv.NewReader(strings.NewReader(string(output)))
+records, err := reader.ReadAll()
+if err != nil || len(records) == 0 {
+    return 0, fmt.Errorf("process: not found: %s", name)
+}
+
+record := records[0]
+if len(record) < 2 {
+    return 0, fmt.Errorf("process: unexpected tasklist output format")
+}
+
+pid, err := strconv.Atoi(record[1])
+if err != nil {
+    return 0, fmt.Errorf("process: could not parse PID '%s': %w", record[1], err)
+}
+```
+
+**❌ DON'T:**
+```go
+// Don't parse structured output with string splitting
+lines := strings.Split(string(output), "\n")
+fields := strings.Split(lines[1], ",")
+pidStr := strings.Trim(fields[1], "\"")  // Fragile manual parsing
+```
+
+**Rationale**: Structured parsers handle edge cases (quoted fields, escaped characters, etc.) that string splitting cannot.
+
+### Rule 18: Extract File Permissions to Named Constants
 **Context**: File permission modes (0600, 0644, etc.) are magic numbers.
 
 **✅ DO:**
@@ -568,7 +607,7 @@ if err := os.WriteFile(ignorePath, data, 0644); err != nil {
 
 **Rationale**: Octal permission numbers are not self-documenting. Named constants with comments explain *why* those permissions are chosen (e.g., 0600 for sensitive data). Makes security intent explicit.
 
-### Rule 17: Comment Accuracy with JSON Tags
+### Rule 19: Comment Accuracy with JSON Tags
 **Context**: Comments about optional fields with `omitempty` can be misleading with primitive types.
 
 **✅ DO:**
@@ -913,3 +952,4 @@ When writing configuration-related code, ensure:
 
 **Architecture:**
 - [ ] Separation of concerns: normalize → validate → use
+- [ ] External command output parsed with appropriate libraries (CSV, JSON, etc.)

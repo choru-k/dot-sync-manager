@@ -24,32 +24,33 @@ Quick reference guide for maintaining code quality and consistency in this proje
 12. **Remove unnecessary wrappers** - Don't create wrapper functions that just forward calls
 13. **Wrap errors with context** - Use `fmt.Errorf("operation failed: %w", err)` pattern
 14. **Document actual behavior** - Comments must reflect reality, especially with JSON tags like `omitempty`
-15. **Move large literals to constants** - Multi-line strings (>10 lines) belong at package level, not in functions
-16. **Honest function signatures** - Don't return error types that are never actually used or always nil
-17. **Use raw string literals for multiline** - Use backticks for error messages with newlines
-18. **Add godoc to exported functions** - All exported functions need documentation comments
-19. **Add TODO comments to stubs** - Mark incomplete implementations with TODO(PRx) comments
-20. **Extract file permissions to constants** - Use named constants for octal permissions (0600, 0644, etc.)
-21. **Use maps for validation lookups** - Replace validation loops with map lookups for O(1) performance
-22. **Preserve existing config values** - When updating config, only override fields you intend to change
+15. **Parse external command output robustly** - Use proper parsers (CSV, JSON) instead of string splitting for structured command output
+16. **Move large literals to constants** - Multi-line strings (>10 lines) belong at package level, not in functions
+17. **Honest function signatures** - Don't return error types that are never actually used or always nil
+18. **Use raw string literals for multiline** - Use backticks for error messages with newlines
+19. **Add godoc to exported functions** - All exported functions need documentation comments
+20. **Add TODO comments to stubs** - Mark incomplete implementations with TODO(PRx) comments
+21. **Extract file permissions to constants** - Use named constants for octal permissions (0600, 0644, etc.)
+22. **Use maps for validation lookups** - Replace validation loops with map lookups for O(1) performance
+23. **Preserve existing config values** - When updating config, only override fields you intend to change
 
 ## Testing Rules
 
-20. **Use `t.Cleanup` not `defer`** - Modern Go testing: cleanup runs after all subtests
-21. **Check all error returns** - Tests must check `os.Setenv`, `os.Mkdir`, etc. return values (and in error handling too!)
-22. **Test post-normalization state** - Use absolute paths in tests when testing validation
-23. **Avoid tight coupling in tests** - Don't test other packages' constants; test behavior not implementation
-24. **Descriptive test names** - Test names should clearly describe what is being tested
+24. **Use `t.Cleanup` not `defer`** - Modern Go testing: cleanup runs after all subtests
+25. **Check all error returns** - Tests must check `os.Setenv`, `os.Mkdir`, etc. return values (and in error handling too!)
+26. **Test post-normalization state** - Use absolute paths in tests when testing validation
+27. **Avoid tight coupling in tests** - Don't test other packages' constants; test behavior not implementation
+28. **Descriptive test names** - Test names should clearly describe what is being tested
 
 ## Architecture Principles
 
-25. **Separation of concerns** - Normalize → Validate → Save/Use (three distinct stages)
-26. **Fail fast** - Return errors early, don't continue with invalid state
-27. **Group related operations** - Keep related path expansions, validations together with comments
-28. **Design for optionality** - Make fields/parameters optional when legitimate use cases exist without them
-29. **Guard optional operations** - Check preconditions before calling functions that depend on optional config
-30. **Check before overwriting** - Always check if files exist before creating to preserve user data
-31. **Confirm destructive operations** - Prompt user confirmation for operations that delete data
+29. **Separation of concerns** - Normalize → Validate → Save/Use (three distinct stages)
+30. **Fail fast** - Return errors early, don't continue with invalid state
+31. **Group related operations** - Keep related path expansions, validations together with comments
+32. **Design for optionality** - Make fields/parameters optional when legitimate use cases exist without them
+33. **Guard optional operations** - Check preconditions before calling functions that depend on optional config
+34. **Check before overwriting** - Always check if files exist before creating to preserve user data
+35. **Confirm destructive operations** - Prompt user confirmation for operations that delete data
 
 ## Quick Examples
 
@@ -80,6 +81,58 @@ func (c *Config) Validate() error {
         return fmt.Errorf("pull interval must be at least %d seconds", minPullIntervalSeconds)
     }
     return nil
+}
+```
+
+### ✅ Good Robust Parsing
+```go
+// Use CSV parser for CSV-formatted command output
+cmd := exec.Command("tasklist", "/FI", "IMAGENAME eq "+name+".exe", "/FO", "CSV", "/NH")
+output, err := cmd.Output()
+if err != nil {
+    return 0, fmt.Errorf("process: not found: %s", name)
+}
+
+reader := csv.NewReader(strings.NewReader(string(output)))
+records, err := reader.ReadAll()
+if err != nil || len(records) == 0 {
+    return 0, fmt.Errorf("process: not found: %s", name)
+}
+
+record := records[0]
+if len(record) < 2 {
+    return 0, fmt.Errorf("process: unexpected tasklist output format")
+}
+
+pid, err := strconv.Atoi(record[1])
+if err != nil {
+    return 0, fmt.Errorf("process: could not parse PID '%s': %w", record[1], err)
+}
+```
+
+### ✅ Good Robust Parsing
+```go
+// Use CSV parser for CSV-formatted command output
+cmd := exec.Command("tasklist", "/FI", "IMAGENAME eq "+name+".exe", "/FO", "CSV", "/NH")
+output, err := cmd.Output()
+if err != nil {
+    return 0, fmt.Errorf("process: not found: %s", name)
+}
+
+reader := csv.NewReader(strings.NewReader(string(output)))
+records, err := reader.ReadAll()
+if err != nil || len(records) == 0 {
+    return 0, fmt.Errorf("process: not found: %s", name)
+}
+
+record := records[0]
+if len(record) < 2 {
+    return 0, fmt.Errorf("process: unexpected tasklist output format")
+}
+
+pid, err := strconv.Atoi(record[1])
+if err != nil {
+    return 0, fmt.Errorf("process: could not parse PID '%s': %w", record[1], err)
 }
 ```
 
@@ -131,6 +184,34 @@ config.Path = absPath  // Other code expects absolute path
 // BAD
 if value < 60 {
     return errors.New("value should be at least 60")  // "should" is too weak
+}
+```
+
+### ❌ Don't Parse Structured Output with String Splitting
+```go
+// BAD - Fragile string parsing for CSV output
+cmd := exec.Command("tasklist", "/FI", "IMAGENAME eq "+name+".exe", "/FO", "CSV")
+output, err := cmd.Output()
+if err != nil {
+    return 0, err
+}
+
+lines := strings.Split(string(output), "\n")
+if len(lines) < 2 {
+    return 0, fmt.Errorf("process: not found: %s", name)
+}
+
+// Fragile: assumes CSV format never changes or contains commas in values
+fields := strings.Split(lines[1], ",")
+if len(fields) < 2 {
+    return 0, fmt.Errorf("process: unexpected format")
+}
+
+// Fragile: strips quotes manually
+pidStr := strings.Trim(fields[1], "\"")
+pid, err := strconv.Atoi(pidStr)
+if err != nil {
+    return 0, err
 }
 ```
 
@@ -452,6 +533,7 @@ Before submitting code, verify:
 - [ ] Check file existence before overwriting
 - [ ] User confirmation for destructive operations (delete, force)
 - [ ] Clear separation: normalize → validate → use
+- [ ] External command output parsed with appropriate parsers (CSV, JSON, etc.)
 
 ## References
 
