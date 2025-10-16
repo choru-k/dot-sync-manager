@@ -3,10 +3,10 @@
 package process
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -39,9 +39,7 @@ func verifyProcessName(pid int, expectedName string) bool {
 		// Extract the first word (command) from args for exact matching
 		parts := strings.Fields(args)
 		if len(parts) > 0 {
-			cmdName := filepath.Base(parts[0])
-			cmdName = strings.TrimSuffix(cmdName, " (deleted)")
-			if strings.EqualFold(cmdName, expectedName) {
+			if normalizeProcessName(parts[0]) == normalizeProcessName(expectedName) {
 				return true
 			}
 		}
@@ -51,10 +49,7 @@ func verifyProcessName(pid int, expectedName string) bool {
 	if runtime.GOOS == "linux" {
 		exePath := fmt.Sprintf("/proc/%d/exe", pid)
 		if link, err := os.Readlink(exePath); err == nil {
-			baseName := filepath.Base(link)
-			// Strip " (deleted)" suffix that appears when binary is replaced
-			baseName = strings.TrimSuffix(baseName, " (deleted)")
-			if strings.EqualFold(baseName, expectedName) {
+			if normalizeProcessName(link) == normalizeProcessName(expectedName) {
 				return true
 			}
 		}
@@ -65,14 +60,24 @@ func verifyProcessName(pid int, expectedName string) bool {
 
 func terminateProcess(proc *os.Process) error {
 	if err := proc.Signal(syscall.SIGTERM); err != nil {
-		return err
+		return fmt.Errorf("process: terminate: %w", err)
 	}
 	return nil
 }
 
 func stopAllDaemons(name string) error {
-	if err := exec.Command("pkill", "-f", name).Run(); err != nil {
-		if err := exec.Command("killall", name).Run(); err != nil {
+	normalized := normalizeProcessName(name)
+	if !isValidProcessName(normalized) {
+		return fmt.Errorf("process: invalid process name: %q", name)
+	}
+
+	if err := exec.Command("pkill", "-x", normalized).Run(); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			// pkill returns 1 when no processes matched; treat as success.
+			return nil
+		}
+		if err := exec.Command("killall", normalized).Run(); err != nil {
 			return fmt.Errorf("process: stop daemons: %w", err)
 		}
 	}
@@ -84,11 +89,16 @@ func stopAllDaemons(name string) error {
 // This may be slow as it involves process enumeration when pgrep fails.
 // Returns the first matching PID or an error if not found.
 func findProcessByName(name string) (int, error) {
-	if output, err := exec.Command("pgrep", "-f", name).Output(); err == nil {
+	normalized := normalizeProcessName(name)
+	if normalized == "" {
+		return 0, fmt.Errorf("process: not found: %s", name)
+	}
+
+	if output, err := exec.Command("pgrep", "-x", normalized).Output(); err == nil {
 		pids := strings.Fields(string(output))
 		for _, pidStr := range pids {
 			pid, convErr := strconv.Atoi(strings.TrimSpace(pidStr))
-			if convErr == nil {
+			if convErr == nil && pid != os.Getpid() {
 				return pid, nil
 			}
 		}
@@ -118,11 +128,31 @@ func findProcessByName(name string) (int, error) {
 		if convErr != nil {
 			continue
 		}
-		// Check if the command contains our expected name
-		if strings.Contains(command, name) {
+		if pid == os.Getpid() {
+			continue
+		}
+
+		parts := strings.Fields(command)
+		if len(parts) == 0 {
+			continue
+		}
+
+		if normalizeProcessName(parts[0]) == normalized {
 			return pid, nil
 		}
 	}
 
 	return 0, fmt.Errorf("process: not found: %s", name)
+}
+
+func isValidProcessName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' && r != '_' && r != '.' {
+			return false
+		}
+	}
+	return true
 }

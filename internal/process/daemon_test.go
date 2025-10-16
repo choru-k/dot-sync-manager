@@ -127,7 +127,7 @@ func TestConcurrentPIDFileOperations(t *testing.T) {
 		go func(goroutineID int) {
 			defer wg.Done()
 			for j := 0; j < numOperations; j++ {
-				pid := goroutineID*1000 + j
+				pid := goroutineID*1000 + j + 1
 				if err := WritePID(pid); err != nil {
 					errChan <- err
 					return
@@ -161,5 +161,35 @@ func TestConcurrentPIDFileOperations(t *testing.T) {
 	// Final cleanup
 	if err := RemovePID(); err != nil && !os.IsNotExist(err) {
 		t.Errorf("final cleanup failed: %v", err)
+	}
+}
+
+func TestWritePIDRejectsNonPositive(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	if err := WritePID(0); err == nil {
+		t.Fatal("expected error when writing PID 0, got nil")
+	}
+	if err := WritePID(-42); err == nil {
+		t.Fatal("expected error when writing negative PID, got nil")
+	}
+}
+
+func TestReadPIDRejectsNonPositive(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	path, err := pidFilePath()
+	if err != nil {
+		t.Fatalf("failed to determine pid file path: %v", err)
+	}
+
+	if err := os.WriteFile(path, []byte("0\n"), 0o600); err != nil {
+		t.Fatalf("failed to write pid file: %v", err)
+	}
+
+	if _, err := readPID(); err == nil {
+		t.Fatal("expected error when reading non-positive PID, got nil")
 	}
 }

@@ -16,10 +16,11 @@ func ExpandPath(path string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("failed to get home directory: %w", err)
 		}
-		if path == "~" {
+		remainder := strings.TrimLeft(path[1:], "/\\")
+		if remainder == "" {
 			return homeDir, nil
 		}
-		return filepath.Join(homeDir, path[2:]), nil
+		return filepath.Join(homeDir, remainder), nil
 	}
 
 	// Convert to absolute path if it's not already

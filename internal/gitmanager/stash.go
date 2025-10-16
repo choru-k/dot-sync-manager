@@ -329,18 +329,24 @@ func persistConflictArtifacts(baseDir, relPath string, remote, base, local []byt
 	return nil
 }
 
-func copyFilesystemFile(source, destination string, symlink bool) error {
-	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+func copyFilesystemFile(source, destination string, symlink bool) (err error) {
+	if err = os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 		return err
 	}
 	if symlink {
-		target, err := os.Readlink(source)
+		var target string
+		target, err = os.Readlink(source)
 		if err != nil {
 			return err
 		}
-		return os.Symlink(target, destination)
+		if err = os.Symlink(target, destination); err != nil {
+			return err
+		}
+		return nil
 	}
-	src, err := os.Open(source)
+
+	var src *os.File
+	src, err = os.Open(source)
 	if err != nil {
 		return err
 	}
@@ -350,7 +356,8 @@ func copyFilesystemFile(source, destination string, symlink bool) error {
 		}
 	}()
 
-	dst, err := os.Create(destination)
+	var dst *os.File
+	dst, err = os.Create(destination)
 	if err != nil {
 		return err
 	}
@@ -360,17 +367,16 @@ func copyFilesystemFile(source, destination string, symlink bool) error {
 		}
 	}()
 
-	if _, err := io.Copy(dst, src); err != nil {
-		return err
-	}
-	return nil
+	_, err = io.Copy(dst, src)
+	return err
 }
 
-func copyTreeFile(file *object.File, destination string) error {
-	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+func copyTreeFile(file *object.File, destination string) (err error) {
+	if err = os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
 		return err
 	}
-	reader, err := file.Reader()
+	var reader io.ReadCloser
+	reader, err = file.Reader()
 	if err != nil {
 		return err
 	}
@@ -380,7 +386,8 @@ func copyTreeFile(file *object.File, destination string) error {
 		}
 	}()
 
-	dst, err := os.Create(destination)
+	var dst *os.File
+	dst, err = os.Create(destination)
 	if err != nil {
 		return err
 	}
@@ -390,10 +397,8 @@ func copyTreeFile(file *object.File, destination string) error {
 		}
 	}()
 
-	if _, err := io.Copy(dst, reader); err != nil {
-		return err
-	}
-	return nil
+	_, err = io.Copy(dst, reader)
+	return err
 }
 
 func readFileMaybeSymlink(path string, info os.FileInfo) ([]byte, error) {

@@ -598,7 +598,6 @@ func (c *SyncConfig) Validate() error {
 		return fmt.Errorf("maximum log size must not exceed %d MB", maxLogSizeMB)
 	}
 
-	// Validate file mappings (paths are already expanded by expandPaths)
 	if c.Mappings != nil {
 		for source, target := range c.Mappings {
 			if source == "" {

@@ -24,6 +24,9 @@ func pidFilePath() (string, error) {
 
 // WritePID persists the daemon PID for later lookup.
 func WritePID(pid int) error {
+	if pid <= 0 {
+		return fmt.Errorf("process: write pid: invalid pid %d", pid)
+	}
 	path, err := pidFilePath()
 	if err != nil {
 		return fmt.Errorf("process: write pid: failed to get path: %w", err)
@@ -59,6 +62,9 @@ func readPID() (int, error) {
 	if convErr != nil {
 		return 0, fmt.Errorf("process: invalid pid value %q: %w", pidStr, convErr)
 	}
+	if pid <= 0 {
+		return 0, fmt.Errorf("process: invalid pid value %q: must be positive", pidStr)
+	}
 	return pid, nil
 }
 
@@ -73,35 +79,36 @@ func readPID() (int, error) {
 // for daemon management purposes and don't affect correctness.
 func IsDaemonRunning() bool {
 	expectedName := defaultProcessName()
-	pid, err := readPID()
-	if err == nil {
-		if pid != os.Getpid() && processExists(pid) {
-			// Verify this PID actually belongs to our process
-			if verifyProcessName(pid, expectedName) {
-				return true
+
+	if pid, err := readPID(); err == nil {
+		switch {
+		case pid == os.Getpid():
+			if err := RemovePID(); err != nil {
+				log.Printf("process: warning - failed to remove self PID file: %v", err)
 			}
-			// Stale PID file - clean it up
+		case processExists(pid) && verifyProcessName(pid, expectedName):
+			return true
+		default:
 			if err := RemovePID(); err != nil {
 				log.Printf("process: warning - failed to remove stale PID file: %v", err)
-			}
-		} else {
-			if err := RemovePID(); err != nil {
-				log.Printf("process: warning - failed to remove invalid PID file: %v", err)
 			}
 		}
 	}
 
-	if pid, err = findProcessByName(expectedName); err == nil {
-		if pid == os.Getpid() {
-			return false
-		}
-		if processExists(pid) {
-			if verifyProcessName(pid, expectedName) {
-				return true
-			}
-			log.Printf("process: found process %d but name verification failed for %q", pid, expectedName)
-		}
+	pid, err := findProcessByName(expectedName)
+	if err != nil {
+		return false
 	}
+	if pid == os.Getpid() {
+		return false
+	}
+	if !processExists(pid) {
+		return false
+	}
+	if verifyProcessName(pid, expectedName) {
+		return true
+	}
+	log.Printf("process: found process %d but name verification failed for %q", pid, expectedName)
 	return false
 }
 
@@ -112,10 +119,13 @@ func GetDaemonPID() (int, error) {
 	expectedName := defaultProcessName()
 
 	if pid, err := readPID(); err == nil {
-		if processExists(pid) && verifyProcessName(pid, expectedName) {
+		if pid == os.Getpid() {
+			if err := RemovePID(); err != nil {
+				log.Printf("process: warning - failed to remove self PID file: %v", err)
+			}
+		} else if processExists(pid) && verifyProcessName(pid, expectedName) {
 			return pid, nil
-		}
-		if err := RemovePID(); err != nil {
+		} else if err := RemovePID(); err != nil {
 			log.Printf("process: warning - failed to remove PID file during cleanup: %v", err)
 		}
 	}
@@ -124,10 +134,16 @@ func GetDaemonPID() (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if processExists(pid) {
-		return pid, nil
+	if pid == os.Getpid() {
+		return 0, fmt.Errorf("process: found current process instead of daemon")
 	}
-	return 0, fmt.Errorf("process: pid %d not running", pid)
+	if !processExists(pid) {
+		return 0, fmt.Errorf("process: pid %d not running", pid)
+	}
+	if !verifyProcessName(pid, expectedName) {
+		return 0, fmt.Errorf("process: pid %d does not match expected daemon", pid)
+	}
+	return pid, nil
 }
 
 // defaultProcessName returns the expected binary name for daemon detection.
@@ -135,12 +151,11 @@ func GetDaemonPID() (int, error) {
 // to "dot-sync-manager" if that fails. This ensures we can find the daemon
 // even if the binary was renamed or executed from a different path.
 func defaultProcessName() string {
-	// The actual binary name is dot-sync-manager (or dsm as the command)
-	// Use the executable name to ensure we match the actual running process
 	if exe, err := os.Executable(); err == nil {
-		return filepath.Base(exe)
+		if name := normalizeProcessName(exe); name != "" {
+			return name
+		}
 	}
-	// Fallback to the actual binary name if os.Executable fails
 	return "dot-sync-manager"
 }
 
@@ -160,4 +175,19 @@ func StopAllDaemons() error {
 		return err
 	}
 	return RemovePID()
+}
+
+// normalizeProcessName trims, removes directory components, strips extensions, and
+// normalizes platform-specific suffixes so we can compare process names safely.
+func normalizeProcessName(name string) string {
+	clean := strings.TrimSpace(name)
+	if clean == "" {
+		return ""
+	}
+	base := filepath.Base(clean)
+	base = strings.TrimSuffix(base, " (deleted)")
+	if ext := filepath.Ext(base); ext != "" && strings.EqualFold(ext, ".exe") {
+		base = base[:len(base)-len(ext)]
+	}
+	return base
 }

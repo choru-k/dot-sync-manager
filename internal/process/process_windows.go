@@ -4,6 +4,7 @@ package process
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -50,11 +51,7 @@ func verifyProcessName(pid int, expectedName string) bool {
 		return false
 	}
 
-	// Remove .exe extension from imageName if present for comparison
-	cleanImageName := strings.TrimSuffix(imageName, ".exe")
-
-	// Use exact matching (case-insensitive) to avoid false positives
-	return strings.EqualFold(cleanImageName, expectedName)
+	return strings.EqualFold(normalizeProcessName(imageName), normalizeProcessName(expectedName))
 }
 
 func terminateProcess(proc *os.Process) error {
@@ -62,50 +59,150 @@ func terminateProcess(proc *os.Process) error {
 }
 
 func stopAllDaemons(name string) error {
-	cmd := exec.Command("taskkill", "/F", "/IM", name+".exe")
+	normalized := normalizeProcessName(name)
+	if normalized == "" {
+		return fmt.Errorf("process: invalid process name: %q", name)
+	}
+
+	cmd := exec.Command("taskkill", "/F", "/IM", normalized+".exe")
 	if err := cmd.Run(); err != nil {
-		cmd = exec.Command("taskkill", "/F", "/IM", name)
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("process: stop daemons: %w", err)
+		if isTaskkillNotFound(err) {
+			cmd = exec.Command("taskkill", "/F", "/IM", normalized)
+			if err := cmd.Run(); err != nil {
+				if isTaskkillNotFound(err) {
+					return nil
+				}
+				return fmt.Errorf("process: stop daemons: %w", err)
+			}
+			return nil
+		}
+		cmd = exec.Command("taskkill", "/F", "/IM", normalized)
+		if retryErr := cmd.Run(); retryErr != nil {
+			if isTaskkillNotFound(retryErr) {
+				return nil
+			}
+			return fmt.Errorf("process: stop daemons: %w", retryErr)
+		}
+		return nil
+	}
+
+	return nil
+}
+
+func isTaskkillNotFound(err error) bool {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		if exitErr.ExitCode() == 128 {
+			return true
 		}
 	}
-	return nil
+	return false
 }
 
 // findProcessByName searches for a process by image name using tasklist command.
 // Tries both with and without .exe extension. This may be slow as it lists all processes.
 // Returns the first matching PID or an error if not found.
 func findProcessByName(name string) (int, error) {
-	// Use /NH (No Header) to simplify parsing
-	cmd := exec.Command("tasklist", "/FI", "IMAGENAME eq "+name+".exe", "/FO", "CSV", "/NH")
-	output, err := cmd.Output()
-	if err != nil {
-		// Fallback to name without .exe
-		cmd = exec.Command("tasklist", "/FI", "IMAGENAME eq "+name, "/FO", "CSV", "/NH")
-		output, err = cmd.Output()
-		if err != nil {
-			// This error usually means the process was not found.
-			return 0, fmt.Errorf("process: not found: %s", name)
-		}
-	}
-
-	// Use csv.Reader for robust parsing
-	reader := csv.NewReader(strings.NewReader(string(output)))
-	records, err := reader.ReadAll()
-	if err != nil || len(records) == 0 {
+	normalized := normalizeProcessName(name)
+	if normalized == "" {
 		return 0, fmt.Errorf("process: not found: %s", name)
 	}
 
-	// We expect at least one record, and it should have at least 2 columns (Image Name, PID)
-	record := records[0]
-	if len(record) < 2 {
-		return 0, fmt.Errorf("process: unexpected tasklist output format")
+	currentPID := os.Getpid()
+
+	// Use /NH (No Header) to simplify parsing
+	commands := []*exec.Cmd{
+		exec.Command("tasklist", "/FI", "IMAGENAME eq "+normalized+".exe", "/FO", "CSV", "/NH"),
+		exec.Command("tasklist", "/FI", "IMAGENAME eq "+normalized, "/FO", "CSV", "/NH"),
 	}
 
-	pid, convErr := strconv.Atoi(record[1])
-	if convErr != nil {
-		return 0, fmt.Errorf("process: could not parse PID '%s': %w", record[1], convErr)
+	for _, cmd := range commands {
+		output, err := cmd.Output()
+		if err != nil {
+			continue
+		}
+
+		reader := csv.NewReader(strings.NewReader(string(output)))
+		records, err := reader.ReadAll()
+		if err != nil {
+			continue
+		}
+
+		for _, record := range records {
+			if len(record) < 2 {
+				continue
+			}
+
+			if !strings.EqualFold(normalizeProcessName(record[0]), normalized) {
+				continue
+			}
+
+			pidStr := strings.TrimSpace(record[1])
+			if pidStr == "" {
+				continue
+			}
+
+			pid, convErr := strconv.Atoi(pidStr)
+			if convErr != nil || pid == currentPID {
+				continue
+			}
+			return pid, nil
+		}
 	}
 
-	return pid, nil
+	return 0, fmt.Errorf("process: not found: %s", name)
+}
+
+// findProcessByName searches for a process by image name using tasklist command.
+// Tries both with and without .exe extension. This may be slow as it lists all processes.
+// Returns the first matching PID or an error if not found.
+func findProcessByName(name string) (int, error) {
+	normalized := normalizeProcessName(name)
+	if normalized == "" {
+		return 0, fmt.Errorf("process: not found: %s", name)
+	}
+
+	currentPID := os.Getpid()
+
+	// Use /NH (No Header) to simplify parsing
+	commands := []*exec.Cmd{
+		exec.Command("tasklist", "/FI", "IMAGENAME eq "+normalized+".exe", "/FO", "CSV", "/NH"),
+		exec.Command("tasklist", "/FI", "IMAGENAME eq "+normalized, "/FO", "CSV", "/NH"),
+	}
+
+	for _, cmd := range commands {
+		output, err := cmd.Output()
+		if err != nil {
+			continue
+		}
+
+		reader := csv.NewReader(strings.NewReader(string(output)))
+		records, err := reader.ReadAll()
+		if err != nil {
+			continue
+		}
+
+		for _, record := range records {
+			if len(record) < 2 {
+				continue
+			}
+
+			if !strings.EqualFold(normalizeProcessName(record[0]), normalized) {
+				continue
+			}
+
+			pidStr := strings.TrimSpace(record[1])
+			if pidStr == "" {
+				continue
+			}
+
+			pid, convErr := strconv.Atoi(pidStr)
+			if convErr != nil || pid == currentPID {
+				continue
+			}
+			return pid, nil
+		}
+	}
+
+	return 0, fmt.Errorf("process: not found: %s", name)
 }
