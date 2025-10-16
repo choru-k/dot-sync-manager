@@ -15,7 +15,7 @@ func TestProcessDetectionRaceCondition(t *testing.T) {
 	}
 
 	// Test signal 0 check for non-existent PID
-	nonExistentPID := 99999
+	nonExistentPID := findNonExistentPID()
 	if processExists(nonExistentPID) {
 		t.Fatalf("processExists returned true for non-existent PID %d", nonExistentPID)
 	}
@@ -36,6 +36,18 @@ func TestProcessDetectionRaceCondition(t *testing.T) {
 	}
 }
 
+func findNonExistentPID() int {
+	// Start from a high PID and work down to find one that doesn't exist
+	for pid := 99999; pid > 50000; pid-- {
+		if err := syscall.Kill(pid, 0); err != nil {
+			// Error means process doesn't exist
+			return pid
+		}
+	}
+	// Fallback (unlikely to reach here)
+	return 99999
+}
+
 func TestProcessExistsImplementation(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix-specific test")
@@ -51,7 +63,7 @@ func TestProcessExistsImplementation(t *testing.T) {
 	}
 
 	// This should fail (process doesn't exist)
-	nonExistentPID := 99999
+	nonExistentPID := findNonExistentPID()
 	err = syscall.Kill(nonExistentPID, 0)
 	if err == nil {
 		t.Fatalf("syscall.Kill(nonExistentPID, 0) should have failed")

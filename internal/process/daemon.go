@@ -13,6 +13,7 @@ const pidFileName = ".dotfile-sync-manager.pid"
 
 // pidFilePath returns the absolute path to the PID file in the user's home directory.
 // The PID file is used to track the running daemon process across sessions.
+// pidFilePath returns the full path to the PID file in the user's home directory.
 // Uses 0600 permissions to ensure only the owner can read/write the file.
 func pidFilePath() (string, error) {
 	home, err := os.UserHomeDir()

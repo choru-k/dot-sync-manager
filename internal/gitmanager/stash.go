@@ -344,13 +344,21 @@ func copyFilesystemFile(source, destination string, symlink bool) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = src.Close() }()
+	defer func() {
+		if closeErr := src.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
 
 	dst, err := os.Create(destination)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = dst.Close() }()
+	defer func() {
+		if closeErr := dst.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
 
 	if _, err := io.Copy(dst, src); err != nil {
 		return err
@@ -366,13 +374,21 @@ func copyTreeFile(file *object.File, destination string) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = reader.Close() }()
+	defer func() {
+		if closeErr := reader.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
 
 	dst, err := os.Create(destination)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = dst.Close() }()
+	defer func() {
+		if closeErr := dst.Close(); closeErr != nil && err == nil {
+			err = closeErr
+		}
+	}()
 
 	if _, err := io.Copy(dst, reader); err != nil {
 		return err

@@ -43,6 +43,7 @@ func processExists(pid int) bool {
 // verifyProcessName checks if the given PID belongs to a process with the expected name.
 // Uses exact matching (case-insensitive) to avoid false positives from partial name matches.
 // For example, it won't match "chrome-sync-service.exe" when looking for "sync".
+// Returns false if the PID doesn't exist or if the process name doesn't match.
 func verifyProcessName(pid int, expectedName string) bool {
 	imageName, exists := getProcessInfo(pid)
 	if !exists {

@@ -9,7 +9,7 @@ import (
 
 func TestProcessDetectionWindows(t *testing.T) {
 	// Test processExists for non-existent PID
-	nonExistentPID := 99999
+	nonExistentPID := findNonExistentPID()
 	if processExists(nonExistentPID) {
 		t.Errorf("processExists returned true for non-existent PID %d", nonExistentPID)
 	}
@@ -30,6 +30,17 @@ func TestProcessDetectionWindows(t *testing.T) {
 	}
 }
 
+func findNonExistentPID() int {
+	// Start from a high PID and work down to find one that doesn't exist
+	for pid := 99999; pid > 50000; pid-- {
+		if _, exists := getProcessInfo(pid); !exists {
+			return pid
+		}
+	}
+	// Fallback (unlikely to reach here)
+	return 99999
+}
+
 func TestGetProcessInfoWindows(t *testing.T) {
 	// Test getProcessInfo for current process
 	currentPID := os.Getpid()
@@ -42,7 +53,7 @@ func TestGetProcessInfoWindows(t *testing.T) {
 	}
 
 	// Test getProcessInfo for non-existent PID
-	nonExistentPID := 99999
+	nonExistentPID := findNonExistentPID()
 	_, exists = getProcessInfo(nonExistentPID)
 	if exists {
 		t.Errorf("getProcessInfo returned true for non-existent PID %d", nonExistentPID)

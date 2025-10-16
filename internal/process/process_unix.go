@@ -28,6 +28,9 @@ func processExists(pid int) bool {
 // 1. ps command with full command line args
 // 2. Linux /proc/<pid>/exe symlink (faster when available)
 // Returns true if any method finds a match containing the expected name.
+// verifyProcessName checks if the process with the given PID matches the expected name.
+// Uses both ps command output and /proc/<pid>/exe (on Linux) to verify the process identity.
+// Returns false if the PID doesn't exist or if the process name doesn't match.
 func verifyProcessName(pid int, expectedName string) bool {
 	if pid <= 0 {
 		return false
@@ -38,8 +41,14 @@ func verifyProcessName(pid int, expectedName string) bool {
 	output, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "args=").Output()
 	if err == nil {
 		args := strings.TrimSpace(string(output))
-		if strings.Contains(args, expectedName) {
-			return true
+		// Extract the first word (command) from args for exact matching
+		parts := strings.Fields(args)
+		if len(parts) > 0 {
+			cmdName := filepath.Base(parts[0])
+			cmdName = strings.TrimSuffix(cmdName, " (deleted)")
+			if strings.EqualFold(cmdName, expectedName) {
+				return true
+			}
 		}
 	}
 
@@ -50,7 +59,7 @@ func verifyProcessName(pid int, expectedName string) bool {
 			baseName := filepath.Base(link)
 			// Strip " (deleted)" suffix that appears when binary is replaced
 			baseName = strings.TrimSuffix(baseName, " (deleted)")
-			if strings.Contains(baseName, expectedName) {
+			if strings.EqualFold(baseName, expectedName) {
 				return true
 			}
 		}
