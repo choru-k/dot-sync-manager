@@ -15,6 +15,11 @@ var (
 	verbose    bool
 )
 
+const (
+	// LegacyConfigFileName is the historical config filename used before PRD standardization
+	LegacyConfigFileName = ".dotfile-sync.json"
+)
+
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "dsm",
@@ -83,7 +88,7 @@ func formatConfigNotFoundError(err error) error {
 	}
 
 	prdPath := filepath.Join(homeDir, "dotfiles", ConfigFileName)
-	legacyPath := filepath.Join(homeDir, ".dotfile-sync.json")
+	legacyPath := filepath.Join(homeDir, LegacyConfigFileName)
 
 	return fmt.Errorf(`failed to load configuration: %w
 

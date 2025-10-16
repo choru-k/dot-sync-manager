@@ -55,7 +55,7 @@ func runList(cmd *cobra.Command, args []string) error {
 			sources = append(sources, source)
 		}
 		sort.Strings(sources)
-		
+
 		for _, source := range sources {
 			target := cfg.Mappings[source]
 			sourcePath := filepath.Join(cfg.Git.RepoPath, source)
@@ -76,7 +76,7 @@ func runList(cmd *cobra.Command, args []string) error {
 			targets = append(targets, target)
 		}
 		sort.Strings(targets)
-		
+
 		for _, target := range targets {
 			fmt.Printf("📄 %s\n", target)
 		}
@@ -95,7 +95,7 @@ func checkSymlinkStatus(sourcePath, targetPath string) (string, string) {
 	// Expand target path
 	expandedPath, err := util.ExpandPath(targetPath)
 	if err != nil {
-		return "error expanding path", "✗"
+		return fmt.Sprintf("error expanding path %s", targetPath), "✗"
 	}
 	targetPath = expandedPath
 

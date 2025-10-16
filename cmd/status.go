@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	git "github.com/go-git/go-git/v5"
@@ -71,8 +72,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	// Show mappings if any
 	if len(cfg.Mappings) > 0 {
 		fmt.Printf("\n🔗 File Mappings (%d):\n", len(cfg.Mappings))
-		for source, target := range cfg.Mappings {
-			fmt.Printf("  %s -> %s\n", source, target)
+		sources := make([]string, 0, len(cfg.Mappings))
+		for source := range cfg.Mappings {
+			sources = append(sources, source)
+		}
+		sort.Strings(sources)
+
+		for _, source := range sources {
+			fmt.Printf("  %s -> %s\n", source, cfg.Mappings[source])
 		}
 	}
 

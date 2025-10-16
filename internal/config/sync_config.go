@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -340,7 +341,7 @@ func FindConfigFile(explicitPath string) (string, bool, error) {
 	// Check standard locations in order of priority
 	prdPath := filepath.Join(homeDir, "dotfiles", ".sync-config.json")
 	searchPaths := []string{
-		prdPath,                                       // PRD location
+		prdPath, // PRD location
 		filepath.Join(homeDir, ".dotfile-sync.json"), // Legacy location
 	}
 
@@ -479,15 +480,15 @@ var validThemes = map[string]struct{}{
 
 // validConflictStrategies contains allowed conflict resolution strategy values for O(1) validation
 var validConflictStrategies = map[string]struct{}{
-	"manual":            {},
-	"auto_keep_local":   {},
-	"auto_keep_remote":  {},
+	"manual":           {},
+	"auto_keep_local":  {},
+	"auto_keep_remote": {},
 }
 
 // validateTheme checks if a UI theme value is valid using O(1) map lookup
 func validateTheme(value string) error {
 	if _, ok := validThemes[value]; !ok {
-		return fmt.Errorf("invalid UI theme: %s (must be one of: %s)", value, getValidThemeKeys())
+		return fmt.Errorf("invalid UI theme: %s (must be one of: %s)", value, strings.Join(getValidThemeKeys(), ", "))
 	}
 	return nil
 }
@@ -498,6 +499,17 @@ func getValidThemeKeys() []string {
 	for theme := range validThemes {
 		keys = append(keys, theme)
 	}
+	sort.Strings(keys)
+	return keys
+}
+
+// getValidConflictStrategyKeys returns valid conflict strategies sorted for deterministic output
+func getValidConflictStrategyKeys() []string {
+	keys := make([]string, 0, len(validConflictStrategies))
+	for strategy := range validConflictStrategies {
+		keys = append(keys, strategy)
+	}
+	sort.Strings(keys)
 	return keys
 }
 
@@ -557,12 +569,7 @@ func (c *SyncConfig) Validate() error {
 
 	// Use package-level map for O(1) strategy validation
 	if _, ok := validConflictStrategies[c.ConflictResolution.Strategy]; !ok {
-		// Generate error message dynamically from map keys
-		keys := make([]string, 0, len(validConflictStrategies))
-		for k := range validConflictStrategies {
-			keys = append(keys, k)
-		}
-		return fmt.Errorf("invalid conflict resolution strategy: %s (must be one of: %s)", c.ConflictResolution.Strategy, strings.Join(keys, ", "))
+		return fmt.Errorf("invalid conflict resolution strategy: %s (must be one of: %s)", c.ConflictResolution.Strategy, strings.Join(getValidConflictStrategyKeys(), ", "))
 	}
 
 	if c.ConflictResolution.KeepBackupsDays < 0 {

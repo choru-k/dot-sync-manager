@@ -61,8 +61,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// Expand repo path
-	var err error
-	expandedRepoPath, err := util.ExpandPath(repoPath)
+	var (
+		err              error
+		expandedRepoPath string
+	)
+	expandedRepoPath, err = util.ExpandPath(repoPath)
 	if err != nil {
 		return fmt.Errorf("failed to expand repo path: %w", err)
 	}
@@ -78,7 +81,7 @@ Options:
   - Use a different --path
   - Remove the existing directory first`, repoPath)
 		}
-		
+
 		// Confirm before removing directory (require strong confirmation)
 		fmt.Printf("⚠️  WARNING: --force will delete the entire directory: %s\n", repoPath)
 		fmt.Printf("⚠️  This action CANNOT be undone!\n")
@@ -89,7 +92,7 @@ Options:
 		if confirmation != forceConfirmationKeyword {
 			return fmt.Errorf("operation cancelled (you must type '%s' exactly)", forceConfirmationKeyword)
 		}
-		
+
 		if err := os.RemoveAll(repoPath); err != nil {
 			return fmt.Errorf("failed to remove existing directory: %w", err)
 		}
@@ -106,7 +109,7 @@ Options:
 			return err
 		}
 	}
-	
+
 	// Get email from flag or prompt, then validate once
 	if authorEmail == "" {
 		authorEmail, err = promptForNonEmpty("Enter your email: ", "author email")
@@ -114,7 +117,7 @@ Options:
 			return err
 		}
 	}
-	
+
 	// Validate email format once for both flag and prompt inputs
 	if _, err := mail.ParseAddress(authorEmail); err != nil {
 		inputSource := "prompt"
@@ -157,7 +160,7 @@ Options:
 	ignorePath := filepath.Join(repoPath, ".syncignore")
 	configExists := false
 	ignoreExists := false
-	
+
 	if _, err := os.Stat(configPath); err == nil {
 		configExists = true
 	}
@@ -176,8 +179,6 @@ Options:
 		}
 		fmt.Printf("✅ Configuration created: %s\n", configPath)
 
-		// For new configs, set auth to None (can be updated later)
-		cfg.Git.AuthType = gitmanager.AuthStrategyNone
 	} else {
 		// Load existing config and update for this machine
 		cfg, err = config.LoadFromFile(configPath)
@@ -191,16 +192,18 @@ Options:
 	// Update machine-specific fields for new location/machine
 	cfg.Machine.Name = machineName
 	cfg.Git.RepoPath = repoPath
-	
-	// Only override RemoteURL if gitURL is provided (preserve existing remote config)
+
+	// Only override remote values when cloning
 	if gitURL != "" {
 		cfg.Git.RemoteURL = gitURL
-		cfg.Git.RemoteName = gitmanager.DefaultRemoteName
+		if !configExists || cfg.Git.RemoteName == "" {
+			cfg.Git.RemoteName = gitmanager.DefaultRemoteName
+		}
 	}
-	
+
 	cfg.Git.AuthorName = authorName
 	cfg.Git.AuthorEmail = authorEmail
-	
+
 	// Adjust paths relative to the new repo location
 	cfg.ConflictResolution.BackupDir = filepath.Join(repoPath, ".backup")
 	cfg.ConfigPath = configPath
@@ -226,7 +229,7 @@ Options:
 
 	fmt.Printf("\n✅ Dotfiles repository initialized successfully!\n")
 	fmt.Printf("📁 Repository: %s\n", repoPath)
-	
+
 	fmt.Printf("\n⚠️  SECURITY WARNING: Configuration file may contain sensitive data.\n")
 	fmt.Printf("   Never commit %s to version control repositories.\n", ConfigFileName)
 
