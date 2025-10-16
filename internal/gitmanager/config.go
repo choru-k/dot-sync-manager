@@ -9,7 +9,7 @@ import (
 const (
 	// DefaultRemoteName is the default name for git remotes
 	DefaultRemoteName = "origin"
-	
+
 	defaultRemoteName = DefaultRemoteName // Internal alias for backward compatibility
 )
 
@@ -70,11 +70,6 @@ func (c *Config) validate() error {
 	}
 	if !filepath.IsAbs(c.RepoPath) {
 		return fmt.Errorf("gitmanager: repo path must be absolute (%s)", c.RepoPath)
-	}
-	// RemoteURL is optional - local-only repos don't need a remote
-	// If remote URL is set, remote name must be set (normalized before validation)
-	if c.RemoteURL != "" && c.RemoteName == "" {
-		return errors.New("gitmanager: remote name is required when remote URL is set")
 	}
 	if c.AuthorName == "" || c.AuthorEmail == "" {
 		return errors.New("gitmanager: author name and email are required")
