@@ -638,6 +638,8 @@ func TestConfigValidationEnhanced(t *testing.T) {
 				c.Mappings = map[string]string{
 					"bashrc": "relative/path", // This will be expanded to absolute path
 				}
+				// Call expandPaths to simulate the normal loading process
+				_ = c.expandPaths()
 				return c
 			}(),
 			wantErr: false, // No error because expandPath converts to absolute
