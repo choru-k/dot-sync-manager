@@ -15,6 +15,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const daemonStartupTimeout = 5 * time.Second
+
 // startCmd represents the start command
 var startCmd = &cobra.Command{
 	Use:   "start",
@@ -82,7 +84,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	// Wait for daemon to fully initialize by checking for PID file
 	// This ensures the daemon successfully started before we report success
-	if err := waitForDaemonStartup(5 * time.Second); err != nil {
+	if err := waitForDaemonStartup(daemonStartupTimeout); err != nil {
 		return fmt.Errorf("daemon failed to start: %w", err)
 	}
 
@@ -138,15 +140,7 @@ func runForegroundDaemon(cfg *config.SyncConfig) error {
 		return fmt.Errorf("failed to initialize git manager: %w", err)
 	}
 
-	serviceCfg := cfg.ToSyncServiceConfig()
-	syncCfg := syncservice.Config{
-		RepoPath:        serviceCfg.RepoPath,
-		DebounceDelay:   serviceCfg.DebounceDelay,
-		AutoSyncEnabled: serviceCfg.AutoSyncEnabled,
-		IgnoreFile:      serviceCfg.IgnoreFile,
-		Backoff:         serviceCfg.Backoff,
-	}
-	syncSvc, err := syncservice.New(gitMgr, &syncCfg)
+	syncSvc, err := syncservice.New(gitMgr, cfg.ToSyncConfig())
 	if err != nil {
 		return fmt.Errorf("failed to create sync service: %w", err)
 	}
@@ -156,8 +150,9 @@ func runForegroundDaemon(cfg *config.SyncConfig) error {
 	}
 	defer syncSvc.Stop()
 
-	if err := process.WritePID(os.Getpid()); err != nil {
+	if err := process.WritePIDExclusive(os.Getpid()); err != nil {
 		fmt.Printf("⚠️  Warning: failed to write PID file: %v\n", err)
+		return fmt.Errorf("failed to write PID file: %w", err)
 	}
 	defer func() {
 		if err := process.RemovePID(); err != nil {
