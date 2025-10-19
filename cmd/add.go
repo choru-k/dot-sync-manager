@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/choru-k/dot-sync-manager/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -35,7 +36,11 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	filePath := args[0]
 
 	// Expand path
-	filePath = expandPath(filePath)
+	expandedPath, err := util.ExpandPath(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to expand file path %s: %w", filePath, err)
+	}
+	filePath = expandedPath
 
 	// Check if file exists and validate it's a file (not a directory)
 	fileInfo, err := os.Lstat(filePath) // Use Lstat to detect symlinks
@@ -208,7 +213,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			} else {
 				restoreSuccessful = true
 				// Clean up backup after successful restore
-				os.Remove(backupPath)
+				if removeErr := os.Remove(backupPath); removeErr != nil {
+					fmt.Printf("⚠️  Warning: failed to remove backup file %s after restore: %v\n", backupPath, removeErr)
+				}
 			}
 		}
 
@@ -252,7 +259,9 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 	// Atomically rename temp file to actual config file as final step
 	if err := os.Rename(tempConfigPath, configPath); err != nil {
-		os.Remove(tempConfigPath) // cleanup temp file
+		if removeErr := os.Remove(tempConfigPath); removeErr != nil {
+			fmt.Printf("⚠️  Warning: failed to remove temp config file %s: %v\n", tempConfigPath, removeErr)
+		}
 		return fmt.Errorf("file moved and symlinked, but failed to finalize configuration: %w. Please check %s for correctness", err, configPath)
 	}
 
@@ -300,7 +309,11 @@ func copyFile(src, dst string) (err error) {
 	if err != nil {
 		return err
 	}
-	defer sourceFile.Close()
+	defer func() {
+		if cerr := sourceFile.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
 	// Get source file info to preserve permissions
 	sourceInfo, err := sourceFile.Stat()
