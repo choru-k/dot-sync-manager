@@ -36,6 +36,10 @@ func init() {
 const (
 	// dirPerms grants owner-level write access while keeping directories traversable by other users, matching standard 0755 expectations.
 	dirPerms = 0755 // rwxr-xr-x so users can traverse synced directories
+	// filePerms allows owner read/write access while providing read access to group and others, appropriate for most dotfiles.
+	filePerms = 0644 // rw-r--r-- standard readable file permissions for dotfiles
+	// sensitiveFilePerms restricts access to owner only, suitable for files containing secrets or private keys.
+	sensitiveFilePerms = 0600 // rw------- private file permissions for sensitive data
 	// backupTimestampFormat ensures backups are timestamped consistently for easy sorting.
 	backupTimestampFormat = "20060102-150405"
 	// defaultBackupDirName provides the fallback directory when no custom backup path is configured.

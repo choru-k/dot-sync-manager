@@ -19,7 +19,7 @@ func requireSymlinkSupport(t *testing.T) {
 	src := filepath.Join(tempDir, "src")
 	dst := filepath.Join(tempDir, "dst")
 
-	if err := os.WriteFile(src, []byte("test"), 0644); err != nil {
+	if err := os.WriteFile(src, []byte("test"), filePerms); err != nil {
 		t.Fatalf("failed to create test file: %v", err)
 	}
 
@@ -77,7 +77,7 @@ func TestRunAddHappyPath(t *testing.T) {
 	t.Cleanup(func() { configFile = "" })
 
 	source := filepath.Join(home, ".vimrc")
-	if err := os.WriteFile(source, []byte("set nu\n"), 0644); err != nil {
+	if err := os.WriteFile(source, []byte("set nu\n"), filePerms); err != nil {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
@@ -142,7 +142,7 @@ func TestRunAddSensitiveFileWithConfirmation(t *testing.T) {
 	}
 
 	sensitive := filepath.Join(sensitiveDir, "id_ed25519")
-	if err := os.WriteFile(sensitive, []byte("key"), 0600); err != nil {
+	if err := os.WriteFile(sensitive, []byte("key"), sensitiveFilePerms); err != nil {
 		t.Fatalf("failed to write sensitive file: %v", err)
 	}
 
@@ -202,7 +202,7 @@ func TestRunAddSensitiveFileCancellation(t *testing.T) {
 	}
 
 	sensitive := filepath.Join(sensitiveDir, "id_ed25519")
-	if err := os.WriteFile(sensitive, []byte("key"), 0600); err != nil {
+	if err := os.WriteFile(sensitive, []byte("key"), sensitiveFilePerms); err != nil {
 		t.Fatalf("failed to write sensitive file: %v", err)
 	}
 
@@ -256,7 +256,7 @@ func TestRunAddCopyFailureRetainsBackup(t *testing.T) {
 	t.Cleanup(func() { configFile = "" })
 
 	source := filepath.Join(home, ".bashrc")
-	if err := os.WriteFile(source, []byte("export TEST=1\n"), 0644); err != nil {
+	if err := os.WriteFile(source, []byte("export TEST=1\n"), filePerms); err != nil {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
@@ -313,7 +313,7 @@ func TestRunAddRemoveOriginalFailureRollsBack(t *testing.T) {
 	t.Cleanup(func() { configFile = "" })
 
 	source := filepath.Join(home, ".gitconfig")
-	if err := os.WriteFile(source, []byte("[user]\n\tname = Test\n"), 0644); err != nil {
+	if err := os.WriteFile(source, []byte("[user]\n\tname = Test\n"), filePerms); err != nil {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
@@ -368,7 +368,7 @@ func TestRunAddSymlinkFailureRestoresFile(t *testing.T) {
 	t.Cleanup(func() { configFile = "" })
 
 	source := filepath.Join(home, ".vimrc")
-	if err := os.WriteFile(source, []byte("set number\n"), 0644); err != nil {
+	if err := os.WriteFile(source, []byte("set number\n"), filePerms); err != nil {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
@@ -422,7 +422,7 @@ func TestRunAddConfigSaveFailureRollsBack(t *testing.T) {
 	t.Cleanup(func() { configFile = "" })
 
 	source := filepath.Join(home, ".zshrc")
-	if err := os.WriteFile(source, []byte("PROMPT='%# '\n"), 0644); err != nil {
+	if err := os.WriteFile(source, []byte("PROMPT='%# '\n"), filePerms); err != nil {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
