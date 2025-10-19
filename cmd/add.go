@@ -60,7 +60,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	// Check if it's a directory
 	if fileInfo.IsDir() {
-		return fmt.Errorf("path is a directory, not a file: %s\nHint: Use symlinks for directories or add individual files within the directory", filePath)
+		return fmt.Errorf(`path is a directory, not a file: %s
+Hint: Use symlinks for directories or add individual files within the directory`, filePath)
 	}
 
 	// Check if file is already a symlink
@@ -69,24 +70,28 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("file is a symlink, but could not read its target: %w", err)
 		}
-		return fmt.Errorf("file is already a symlink: %s -> %s\nHint: Only add actual files, not symlinks", filePath, linkTarget)
+		return fmt.Errorf(`file is already a symlink: %s -> %s
+Hint: Only add actual files, not symlinks`, filePath, linkTarget)
 	}
 
 	// Warn if file appears to be sensitive
 	if isSensitiveFile(filePath) {
-		fmt.Printf("⚠️  WARNING: This file may contain sensitive data:\n")
-		fmt.Printf("   %s\n\n", filePath)
-		fmt.Printf("   Sensitive files should NOT be added to dotfiles repositories as they will be:\n")
-		fmt.Printf("   - Stored in Git history (cannot be fully removed)\n")
-		fmt.Printf("   - Potentially pushed to remote repositories\n")
-		fmt.Printf("   - Accessible to anyone with repository access\n\n")
-		fmt.Printf("   Common sensitive files include:\n")
-		fmt.Printf("   - SSH private keys (.ssh/id_*, .ssh/*.pem)\n")
-		fmt.Printf("   - Cloud credentials (.aws/credentials, .gcp/*, .azure/*)\n")
-		fmt.Printf("   - GPG private keys (.gnupg/private-keys-v1.d/*, *.key)\n")
-		fmt.Printf("   - Environment files (.env, .env.local, .env.production)\n")
-		fmt.Printf("   - Database credentials and API tokens\n\n")
-		fmt.Printf("Type 'yes' to continue anyway, or anything else to cancel: ")
+		fmt.Printf(`⚠️  WARNING: This file may contain sensitive data:
+   %s
+
+   Sensitive files should NOT be added to dotfiles repositories as they will be:
+   - Stored in Git history (cannot be fully removed)
+   - Potentially pushed to remote repositories
+   - Accessible to anyone with repository access
+
+   Common sensitive files include:
+   - SSH private keys (.ssh/id_*, .ssh/*.pem)
+   - Cloud credentials (.aws/credentials, .gcp/*, .azure/*)
+   - GPG private keys (.gnupg/private-keys-v1.d/*, *.key)
+   - Environment files (.env, .env.local, .env.production)
+   - Database credentials and API tokens
+
+Type 'yes' to continue anyway, or anything else to cancel: `, filePath)
 
 		reader := bufio.NewReader(cmd.InOrStdin())
 		response, err := reader.ReadString('\n')
@@ -124,7 +129,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		// In this case, they're on different volumes, so file is definitely outside repo
 	} else if !strings.HasPrefix(relPath, "..") && relPath != "." {
 		// File is inside or equal to repo directory
-		return fmt.Errorf("file is already inside dotfiles repository: %s\nHint: Only add files from outside the repository", absPath)
+		return fmt.Errorf(`file is already inside dotfiles repository: %s
+Hint: Only add files from outside the repository`, absPath)
 	}
 
 	// Determine target path in dotfiles repository
@@ -146,7 +152,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	// Check if target already exists
 	if _, err := os.Stat(targetPath); err == nil {
-		return fmt.Errorf("target file already exists in dotfiles: %s\nThis file may have been added previously", targetPath)
+		return fmt.Errorf(`target file already exists in dotfiles: %s
+This file may have been added previously`, targetPath)
 	}
 
 	// Create target directory if needed
@@ -348,20 +355,20 @@ func isSensitiveFile(path string) bool {
 	// Sensitive file patterns
 	sensitivePatterns := []string{
 		// SSH keys
-		".ssh/id_rsa", ".ssh/id_dsa", ".ssh/id_ecdsa", ".ssh/id_ed25519",
-		".ssh/identity",
+		"/.ssh/id_rsa", "/.ssh/id_dsa", "/.ssh/id_ecdsa", "/.ssh/id_ed25519",
+		"/.ssh/identity",
 		// Environment files
-		".env", ".env.local", ".env.production", ".env.development", ".env.test",
+		"/.env", "/.env.local", "/.env.production", "/.env.development", "/.env.test",
 		// Cloud credentials
-		".aws/credentials", ".aws/config",
-		".gcp/credentials", ".gcp/key.json",
-		".azure/credentials",
+		"/.aws/credentials", "/.aws/config",
+		"/.gcp/credentials", "/.gcp/key.json",
+		"/.azure/credentials",
 		// GPG keys
-		".gnupg/secring.gpg", ".gnupg/pubring.gpg",
+		"/.gnupg/secring.gpg", "/.gnupg/pubring.gpg",
 		// Database files
-		".mysql_history", ".psql_history", ".pgpass",
+		"/.mysql_history", "/.psql_history", "/.pgpass",
 		// Docker secrets
-		".docker/config.json",
+		"/.docker/config.json",
 	}
 
 	// Sensitive filename patterns
@@ -398,7 +405,7 @@ func isSensitiveFile(path string) bool {
 	}
 
 	// Check for files inside .gnupg/private-keys-v1.d/
-	if strings.Contains(path, ".gnupg/private-keys-v1.d/") {
+	if strings.Contains(path, "/.gnupg/private-keys-v1.d/") {
 		return true
 	}
 

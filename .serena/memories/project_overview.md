@@ -1,0 +1,5 @@
+# Dotfile Sync Manager Overview
+- Goal: Go-based utility that watches a dotfiles repo, debounces filesystem events, and uses go-git to auto-commit/push plus manage CLI workflows for adding files and future sync tooling per PRD.
+- Tech: Go 1.23 module with Cobra CLI (`cmd/`), internal packages for git operations (`internal/gitmanager`), sync service & debouncer (`internal/sync`, `internal/debouncer`), config loading/validation (`internal/config`), ignore parsing, and path utilities.
+- Docs: Product requirements in `source-of-truth/PRD.md`; workflow/process guidance in `AGENTS.md` & `CLAUDE.md`; development checklist in `tasks/development_tasks.md`.
+- Repo layout highlights: binaries under `bin/`, CI workflows in `.github/workflows/`, integration/unit tests across internal packages, and Go entry point at `main.go` invoking `cmd.Execute()`.
