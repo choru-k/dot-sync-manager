@@ -44,7 +44,7 @@ Hint: Use 'dsm start' to start the daemon`)
 			fmt.Printf("⚠️  Could not determine daemon PID: %v\n", err)
 			fmt.Println("Attempting to stop all dotfile-sync-manager processes...")
 			if err := process.StopAllDaemons(); err != nil {
-				return err
+				return fmt.Errorf("failed to stop all daemons: %w", err)
 			}
 			fmt.Println("✅ Sent stop signal to all dotfile-sync-manager processes")
 			return nil
