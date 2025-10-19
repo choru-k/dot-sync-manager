@@ -35,8 +35,8 @@ func ExpandPath(path string) (string, error) {
 			return "", fmt.Errorf("failed to get home directory: %w", err)
 		}
 
-		// Use path[2:] to avoid losing the home directory when joining (e.g., filepath.Join("~/", "/foo"))
-		remainder := strings.TrimLeft(path[2:], "/\\")
+		// Use TrimLeft on path[1:] to normalize any combination of separators to a clean relative suffix.
+		remainder := strings.TrimLeft(path[1:], "/\\")
 		if remainder == "" {
 			return homeDir, nil
 		}

@@ -35,6 +35,40 @@ func init() {
 const (
 	// dirPerms sets default directory permissions when creating add command artifacts.
 	dirPerms = 0755 // owner rwx, group/others rx
+	// backupTimestampFormat ensures backups are timestamped consistently for easy sorting.
+	backupTimestampFormat = "20060102-150405"
+)
+
+var (
+	// sensitivePathPatterns lists path fragments that indicate files likely contain secrets.
+	sensitivePathPatterns = []string{
+		// SSH keys
+		"/.ssh/id_rsa", "/.ssh/id_dsa", "/.ssh/id_ecdsa", "/.ssh/id_ed25519",
+		"/.ssh/identity",
+		// Environment files
+		"/.env", "/.env.local", "/.env.production", "/.env.development", "/.env.test",
+		// Cloud credentials
+		"/.aws/credentials", "/.aws/config",
+		"/.gcp/credentials", "/.gcp/key.json",
+		"/.azure/credentials",
+		// GPG keys
+		"/.gnupg/secring.gpg", "/.gnupg/pubring.gpg",
+		// Database files
+		"/.mysql_history", "/.psql_history", "/.pgpass",
+		// Docker secrets
+		"/.docker/config.json",
+	}
+
+	// sensitiveFilenames holds substrings that often denote secret material.
+	sensitiveFilenames = []string{
+		"credentials", "secrets", "secret", "password", "passwd",
+		"token", "auth", "private", "privatekey",
+	}
+
+	// sensitiveExtensions contains file suffixes commonly used for private keys or certificates.
+	sensitiveExtensions = []string{
+		".pem", ".key", ".p12", ".pfx", ".jks", ".keystore",
+	}
 )
 
 // runAdd is the cobra entry point for the `dsm add` command; it orchestrates validation,
@@ -176,7 +210,7 @@ This file may have been added previously`, targetPath)
 		return fmt.Errorf("failed to create backup directory: %w", err)
 	}
 
-	timestamp := time.Now().Format("20060102-150405")
+	timestamp := time.Now().Format(backupTimestampFormat)
 	filename := filepath.Base(filePath)
 	backupPath = filepath.Join(backupDir, fmt.Sprintf("%s-%s", filename, timestamp))
 
@@ -346,44 +380,14 @@ func copyFile(src, dst string) (err error) {
 	return destFile.Sync()
 }
 
-// isSensitiveFile checks if a file path matches patterns for sensitive files
+// isSensitiveFile checks if a file path matches patterns for sensitive files.
 func isSensitiveFile(path string) bool {
 	// Normalize path separators
 	path = filepath.ToSlash(path)
 	baseName := filepath.Base(path)
 
-	// Sensitive file patterns
-	sensitivePatterns := []string{
-		// SSH keys
-		"/.ssh/id_rsa", "/.ssh/id_dsa", "/.ssh/id_ecdsa", "/.ssh/id_ed25519",
-		"/.ssh/identity",
-		// Environment files
-		"/.env", "/.env.local", "/.env.production", "/.env.development", "/.env.test",
-		// Cloud credentials
-		"/.aws/credentials", "/.aws/config",
-		"/.gcp/credentials", "/.gcp/key.json",
-		"/.azure/credentials",
-		// GPG keys
-		"/.gnupg/secring.gpg", "/.gnupg/pubring.gpg",
-		// Database files
-		"/.mysql_history", "/.psql_history", "/.pgpass",
-		// Docker secrets
-		"/.docker/config.json",
-	}
-
-	// Sensitive filename patterns
-	sensitiveNames := []string{
-		"credentials", "secrets", "secret", "password", "passwd",
-		"token", "auth", "private", "privatekey",
-	}
-
-	// Sensitive extensions
-	sensitiveExtensions := []string{
-		".pem", ".key", ".p12", ".pfx", ".jks", ".keystore",
-	}
-
 	// Check exact patterns
-	for _, pattern := range sensitivePatterns {
+	for _, pattern := range sensitivePathPatterns {
 		if strings.Contains(path, pattern) {
 			return true
 		}
@@ -391,7 +395,7 @@ func isSensitiveFile(path string) bool {
 
 	// Check if basename contains sensitive keywords
 	lowerBaseName := strings.ToLower(baseName)
-	for _, name := range sensitiveNames {
+	for _, name := range sensitiveFilenames {
 		if strings.Contains(lowerBaseName, name) {
 			return true
 		}
