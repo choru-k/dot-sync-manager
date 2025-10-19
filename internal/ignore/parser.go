@@ -2,19 +2,12 @@ package ignore
 
 import (
 	"bufio"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
-)
 
-// closeAndCaptureErr captures close errors only when no other error exists.
-// This helper function prevents error shadowing in defer blocks.
-func closeAndCaptureErr(c io.Closer, err *error) {
-	if closeErr := c.Close(); closeErr != nil && *err == nil {
-		*err = closeErr
-	}
-}
+	"github.com/choru-k/dot-sync-manager/internal/util"
+)
 
 // Pattern represents a single ignore pattern
 type Pattern struct {
@@ -46,7 +39,7 @@ func (p *Parser) LoadFromFile(filename string) (err error) {
 		}
 		return err
 	}
-	defer closeAndCaptureErr(file, &err)
+	defer util.CloseAndCaptureErr(file, &err)
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {

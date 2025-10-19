@@ -11,17 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/choru-k/dot-sync-manager/internal/util"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
-
-// closeAndCaptureErr captures close errors only when no other error exists.
-// This helper function prevents error shadowing in defer blocks.
-func closeAndCaptureErr(c io.Closer, err *error) {
-	if closeErr := c.Close(); closeErr != nil && *err == nil {
-		*err = closeErr
-	}
-}
 
 const (
 	// defaultDirPerms represents standard directory permissions (owner rwx, group/others rx)
@@ -363,14 +356,14 @@ func copyFilesystemFile(source, destination string, symlink bool) (err error) {
 	if err != nil {
 		return err
 	}
-	defer closeAndCaptureErr(src, &err)
+	defer util.CloseAndCaptureErr(src, &err)
 
 	var dst *os.File
 	dst, err = os.Create(destination)
 	if err != nil {
 		return err
 	}
-	defer closeAndCaptureErr(dst, &err)
+	defer util.CloseAndCaptureErr(dst, &err)
 
 	_, err = io.Copy(dst, src)
 	return err
@@ -385,18 +378,14 @@ func copyTreeFile(file *object.File, destination string) (err error) {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if closeErr := reader.Close(); closeErr != nil && err == nil {
-			err = closeErr
-		}
-	}()
+	defer util.CloseAndCaptureErr(reader, &err)
 
 	var dst *os.File
 	dst, err = os.Create(destination)
 	if err != nil {
 		return err
 	}
-	defer closeAndCaptureErr(dst, &err)
+	defer util.CloseAndCaptureErr(dst, &err)
 
 	_, err = io.Copy(dst, reader)
 	return err

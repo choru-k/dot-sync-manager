@@ -129,8 +129,6 @@ func runRoot(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-
-
 	ctx := cmd.Context()
 
 	gitCfg := cfg.ToGitManagerConfig()
