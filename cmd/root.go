@@ -144,15 +144,7 @@ func runRoot(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to initialize git manager: %w", err)
 	}
 
-	serviceCfg := cfg.ToSyncServiceConfig()
-	syncCfg := &sync.Config{
-		RepoPath:        serviceCfg.RepoPath,
-		DebounceDelay:   serviceCfg.DebounceDelay,
-		AutoSyncEnabled: serviceCfg.AutoSyncEnabled,
-		IgnoreFile:      serviceCfg.IgnoreFile,
-		Backoff:         serviceCfg.Backoff,
-	}
-
+	syncCfg := cfg.ToSyncConfig()
 	service, err := sync.New(gitMgr, syncCfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize sync service: %w", err)

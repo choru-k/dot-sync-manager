@@ -13,6 +13,7 @@ import (
 
 	"github.com/choru-k/dot-sync-manager/internal/debouncer"
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
+	"github.com/choru-k/dot-sync-manager/internal/sync"
 	"github.com/choru-k/dot-sync-manager/internal/util"
 )
 
@@ -663,20 +664,14 @@ func (c *SyncConfig) ToGitManagerConfig() gitmanager.Config {
 	}
 }
 
-// SyncServiceConfig represents the configuration for the sync service
-type SyncServiceConfig struct {
-	RepoPath        string
-	DebounceDelay   time.Duration
-	AutoSyncEnabled bool
-	IgnoreFile      string
-	Backoff         *debouncer.AdvancedDebouncerConfig
-}
 
-// ToSyncServiceConfig converts to sync.Config
-func (c *SyncConfig) ToSyncServiceConfig() SyncServiceConfig {
-	config := SyncServiceConfig{
+
+// ToSyncConfig converts to sync.Config
+func (c *SyncConfig) ToSyncConfig() *sync.Config {
+	debounceDelay := time.Duration(c.Sync.DebounceSeconds) * time.Second
+	config := &sync.Config{
 		RepoPath:        c.Git.RepoPath,
-		DebounceDelay:   time.Duration(c.Sync.DebounceSeconds) * time.Second,
+		DebounceDelay:   debounceDelay,
 		AutoSyncEnabled: c.Sync.AutoSyncEnabled,
 		IgnoreFile:      ".syncignore",
 	}
@@ -689,7 +684,7 @@ func (c *SyncConfig) ToSyncServiceConfig() SyncServiceConfig {
 		}
 
 		config.Backoff = &debouncer.AdvancedDebouncerConfig{
-			BaseDelay:          config.DebounceDelay,
+			BaseDelay:          debounceDelay,
 			MaxDelay:           time.Duration(c.Sync.Backoff.MaxDelaySeconds) * time.Second,
 			BackoffEnabled:     c.Sync.Backoff.Enabled,
 			BackoffMultiplier:  c.Sync.Backoff.Multiplier,

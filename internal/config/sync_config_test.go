@@ -299,7 +299,7 @@ func TestConfigToSyncServiceConfig(t *testing.T) {
 		t.Fatalf("DefaultConfig() failed: %v", err)
 	}
 
-	syncConfig := config.ToSyncServiceConfig()
+	syncConfig := config.ToSyncConfig()
 
 	if syncConfig.RepoPath != config.Git.RepoPath {
 		t.Errorf("Expected repo path %s, got %s", config.Git.RepoPath, syncConfig.RepoPath)

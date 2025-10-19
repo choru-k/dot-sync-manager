@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/choru-k/dot-sync-manager/internal/config"
 	"github.com/choru-k/dot-sync-manager/internal/debouncer"
 )
 
@@ -131,32 +130,24 @@ func TestSyncService_BasicDebouncer_BackwardCompatibility(t *testing.T) {
 
 func TestSyncService_ConfigIntegration(t *testing.T) {
 	// Create a full configuration with backoff settings
-	syncConfig := &config.SyncConfig{
-		Machine: config.MachineConfig{Name: "test-machine"},
-		Git: config.GitConfig{
-			RepoPath:    "/tmp/test",
-			AuthorName:  "Test User",
-			AuthorEmail: "test@example.com",
-		},
-		Sync: config.SyncSettings{
-			AutoSyncEnabled:     true,
-			PullIntervalSeconds: 300,
-			DebounceSeconds:     30,
-			Backoff: &config.BackoffSettings{
-				Enabled:            true,
-				MaxDelaySeconds:    300,
-				Multiplier:         2.0,
-				ChurnThreshold:     10,
-				ChurnWindowSeconds: 60,
-				DecayResetSeconds:  300,
-			},
+	syncServiceConfig := &Config{
+		RepoPath:        "/tmp/test",
+		DebounceDelay:   30 * time.Second,
+		AutoSyncEnabled: true,
+		IgnoreFile:      ".syncignore",
+		Backoff: &debouncer.AdvancedDebouncerConfig{
+			BaseDelay:          30 * time.Second,
+			MaxDelay:           300 * time.Second,
+			BackoffEnabled:     true,
+			BackoffMultiplier:  2.0,
+			ChurnThreshold:     10,
+			ChurnWindow:        60 * time.Second,
+			DecayResetDuration: 300 * time.Second,
+			ManualSyncTimeout:  10 * time.Second,
 		},
 	}
 
-	// Convert to sync service config
-	syncServiceConfig := syncConfig.ToSyncServiceConfig()
-
-	// Verify the conversion includes backoff settings
+	// Verify the configuration includes backoff settings
 	if syncServiceConfig.Backoff == nil {
 		t.Fatal("Expected backoff configuration to be included")
 	}
