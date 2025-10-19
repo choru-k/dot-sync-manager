@@ -15,6 +15,14 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
+// closeAndCaptureErr captures close errors only when no other error exists.
+// This helper function prevents error shadowing in defer blocks.
+func closeAndCaptureErr(c io.Closer, err *error) {
+	if closeErr := c.Close(); closeErr != nil && *err == nil {
+		*err = closeErr
+	}
+}
+
 const (
 	// defaultDirPerms represents standard directory permissions (owner rwx, group/others rx)
 	defaultDirPerms = 0o755
@@ -355,22 +363,14 @@ func copyFilesystemFile(source, destination string, symlink bool) (err error) {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if closeErr := src.Close(); closeErr != nil && err == nil {
-			err = closeErr
-		}
-	}()
+	defer closeAndCaptureErr(src, &err)
 
 	var dst *os.File
 	dst, err = os.Create(destination)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if closeErr := dst.Close(); closeErr != nil && err == nil {
-			err = closeErr
-		}
-	}()
+	defer closeAndCaptureErr(dst, &err)
 
 	_, err = io.Copy(dst, src)
 	return err
@@ -396,11 +396,7 @@ func copyTreeFile(file *object.File, destination string) (err error) {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if closeErr := dst.Close(); closeErr != nil && err == nil {
-			err = closeErr
-		}
-	}()
+	defer closeAndCaptureErr(dst, &err)
 
 	_, err = io.Copy(dst, reader)
 	return err

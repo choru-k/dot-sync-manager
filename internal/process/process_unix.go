@@ -166,17 +166,15 @@ func findProcessByName(name string) (int, error) {
 // These restrictions prevent command injection and ensure the process name can be safely
 // used in shell commands and file operations. The allowed characters are:
 // - Letters (a-z, A-Z)
-// - Numbers (0-9) 
+// - Numbers (0-9)
 // - Hyphens (-), underscores (_), and periods (.)
 // This matches typical process naming conventions and avoids special shell characters.
 func isValidProcessName(name string) bool {
 	if name == "" {
 		return false
 	}
-	for _, r := range name {
-		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' && r != '_' && r != '.' {
-			return false
-		}
-	}
-	return true
+	// Check for any character that is NOT a letter, number, or one of the allowed symbols.
+	return strings.IndexFunc(name, func(r rune) bool {
+		return !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.')
+	}) == -1
 }

@@ -56,10 +56,7 @@ func WritePIDExclusive(pid int) error {
 	}
 	defer func() {
 		if closeErr := file.Close(); closeErr != nil {
-			// If close fails and we haven't written yet, try to clean up
-			if removeErr := os.Remove(path); removeErr != nil {
-				log.Printf("process: warning - failed to remove PID file after close error: %v", removeErr)
-			}
+			log.Printf("process: warning - failed to close PID file: %v", closeErr)
 		}
 	}()
 	
