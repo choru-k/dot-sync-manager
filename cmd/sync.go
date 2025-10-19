@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
@@ -69,12 +70,24 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	if dryRun {
 		fmt.Println("🔍 Dry run mode - no changes will be made")
+
+		// Collect changed paths into a slice
+		var changedPaths []string
 		for path, fileStatus := range status {
 			if fileStatus.Worktree == git.Unmodified && fileStatus.Staging == git.Unmodified {
 				continue
 			}
+			changedPaths = append(changedPaths, path)
+		}
+
+		// Sort the paths for deterministic output
+		sort.Strings(changedPaths)
+
+		// Print the sorted list
+		for _, path := range changedPaths {
 			fmt.Printf(" • %s\n", path)
 		}
+
 		if cfg.Git.RemoteURL != "" {
 			fmt.Println("📤 Would push to remote repository")
 		}

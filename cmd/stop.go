@@ -30,7 +30,9 @@ func init() {
 func runStop(cmd *cobra.Command, args []string) error {
 	// Check if daemon is running
 	if !isDaemonRunning() {
-		return fmt.Errorf("dotfile sync daemon is not running\n\nHint: Use 'dsm start' to start the daemon")
+		return fmt.Errorf(`dotfile sync daemon is not running
+
+Hint: Use 'dsm start' to start the daemon`)
 	}
 
 	fmt.Println("Stopping dotfile sync daemon...")
