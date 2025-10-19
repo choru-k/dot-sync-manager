@@ -15,7 +15,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const daemonStartupTimeout = 5 * time.Second
+const (
+	daemonStartupTimeout      = 5 * time.Second
+	daemonStartupPollInterval = 100 * time.Millisecond
+)
 
 // startCmd represents the start command
 var startCmd = &cobra.Command{
@@ -110,7 +113,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 // waitForDaemonStartup polls for the daemon to fully initialize by checking for PID file
 func waitForDaemonStartup(timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
-	ticker := time.NewTicker(100 * time.Millisecond)
+	ticker := time.NewTicker(daemonStartupPollInterval)
 	defer ticker.Stop()
 
 	for time.Now().Before(deadline) {
@@ -151,7 +154,6 @@ func runForegroundDaemon(cfg *config.SyncConfig) error {
 	defer syncSvc.Stop()
 
 	if err := process.WritePIDExclusive(os.Getpid()); err != nil {
-		fmt.Printf("⚠️  Warning: failed to write PID file: %v\n", err)
 		return fmt.Errorf("failed to write PID file: %w", err)
 	}
 	defer func() {
