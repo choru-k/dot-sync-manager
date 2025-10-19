@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/choru-k/dot-sync-manager/internal/config"
 	"github.com/choru-k/dot-sync-manager/internal/util"
 	"github.com/spf13/cobra"
 )
@@ -33,10 +34,27 @@ func init() {
 }
 
 const (
-	// dirPerms sets default directory permissions when creating add command artifacts.
-	dirPerms = 0755 // owner rwx, group/others rx
+	// dirPerms grants owner-level write access while keeping directories traversable by other users, matching standard 0755 expectations.
+	dirPerms = 0755 // rwxr-xr-x so users can traverse synced directories
 	// backupTimestampFormat ensures backups are timestamped consistently for easy sorting.
 	backupTimestampFormat = "20060102-150405"
+	// defaultBackupDirName provides the fallback directory when no custom backup path is configured.
+	defaultBackupDirName = ".backup"
+	// tempConfigSuffix isolates temporary config files so atomic renames remain predictable.
+	tempConfigSuffix = ".tmp"
+)
+
+var (
+	mkdirAllFunc = os.MkdirAll
+	removeFunc   = os.Remove
+	symlinkFunc  = os.Symlink
+	renameFunc   = os.Rename
+	timeNow      = time.Now
+
+	copyFileFunc = copyFile
+	saveConfigFn = func(cfg *config.SyncConfig, path string) error {
+		return cfg.SaveToFile(path)
+	}
 )
 
 var (
@@ -74,43 +92,85 @@ var (
 // runAdd is the cobra entry point for the `dsm add` command; it orchestrates validation,
 // file relocation, symlink creation, and configuration updates for a single source file.
 func runAdd(cmd *cobra.Command, args []string) error {
-	filePath := args[0]
-
-	// Expand path
-	expandedPath, err := util.ExpandPath(filePath)
+	filePath, err := validateSourceFile(cmd, args[0])
 	if err != nil {
-		return fmt.Errorf("failed to expand file path %s: %w", filePath, err)
+		return err
 	}
-	filePath = expandedPath
 
-	// Check if file exists and validate it's a file (not a directory)
-	fileInfo, err := os.Lstat(filePath) // Use Lstat to detect symlinks
-	if os.IsNotExist(err) {
-		return fmt.Errorf("file does not exist: %s", filePath)
-	}
+	cfg, err := getConfig()
 	if err != nil {
-		return fmt.Errorf("failed to stat file: %w", err)
+		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Check if it's a directory
-	if fileInfo.IsDir() {
-		return fmt.Errorf(`path is a directory, not a file: %s
-Hint: Use symlinks for directories or add individual files within the directory`, filePath)
+	targetPath, err := prepareTargetPath(cfg, filePath)
+	if err != nil {
+		return err
 	}
 
-	// Check if file is already a symlink
-	if fileInfo.Mode()&os.ModeSymlink != 0 {
-		linkTarget, err := os.Readlink(filePath)
-		if err != nil {
-			return fmt.Errorf("file is a symlink, but could not read its target: %w", err)
+	backupPath, backupCreated, err := executeAddTransaction(cfg, filePath, targetPath)
+	if err != nil {
+		return err
+	}
+
+	if err := updateAndSaveConfig(cfg, targetPath, filePath, backupPath, backupCreated); err != nil {
+		return err
+	}
+
+	if backupCreated && backupPath != "" {
+		if err := removeFunc(backupPath); err != nil {
+			fmt.Printf("⚠️  Warning: failed to remove backup file %s: %v\n", backupPath, err)
 		}
-		return fmt.Errorf(`file is already a symlink: %s -> %s
-Hint: Only add actual files, not symlinks`, filePath, linkTarget)
 	}
 
-	// Warn if file appears to be sensitive
-	if isSensitiveFile(filePath) {
-		fmt.Printf(`⚠️  WARNING: This file may contain sensitive data:
+	fmt.Printf("✅ Added file to dotfiles\n")
+	fmt.Printf("📄 Source: %s\n", targetPath)
+	fmt.Printf("🔗 Symlink: %s\n", filePath)
+	fmt.Printf("📂 Repository: %s\n", cfg.Git.RepoPath)
+
+	fmt.Printf("\n📝 Note: File staged for git commit. Run 'dsm sync' or wait for auto-sync.\n")
+
+	return nil
+}
+
+func validateSourceFile(cmd *cobra.Command, rawPath string) (string, error) {
+	expandedPath, err := util.ExpandPath(rawPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to expand file path %s: %w", rawPath, err)
+	}
+
+	fileInfo, err := os.Lstat(expandedPath)
+	if os.IsNotExist(err) {
+		return "", fmt.Errorf("file does not exist: %s", expandedPath)
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to stat file: %w", err)
+	}
+
+	if fileInfo.IsDir() {
+		return "", fmt.Errorf(`path is a directory, not a file: %s
+Hint: Use symlinks for directories or add individual files within the directory`, expandedPath)
+	}
+
+	if fileInfo.Mode()&os.ModeSymlink != 0 {
+		linkTarget, err := os.Readlink(expandedPath)
+		if err != nil {
+			return "", fmt.Errorf("file is a symlink, but could not read its target: %w", err)
+		}
+		return "", fmt.Errorf(`file is already a symlink: %s -> %s
+Hint: Only add actual files, not symlinks`, expandedPath, linkTarget)
+	}
+
+	if isSensitiveFile(expandedPath) {
+		if err := confirmSensitiveAdd(cmd, expandedPath); err != nil {
+			return "", err
+		}
+	}
+
+	return expandedPath, nil
+}
+
+func confirmSensitiveAdd(cmd *cobra.Command, filePath string) error {
+	fmt.Printf(`⚠️  WARNING: This file may contain sensitive data:
    %s
 
    Sensitive files should NOT be added to dotfiles repositories as they will be:
@@ -127,168 +187,141 @@ Hint: Only add actual files, not symlinks`, filePath, linkTarget)
 
 Type 'yes' to continue anyway, or anything else to cancel: `, filePath)
 
-		reader := bufio.NewReader(cmd.InOrStdin())
-		response, err := reader.ReadString('\n')
-		if err != nil {
-			return fmt.Errorf("failed to read user input: %w", err)
-		}
-		response = strings.TrimSpace(response)
-		if response != "yes" {
-			return fmt.Errorf("operation cancelled by user")
-		}
-		fmt.Println()
-	}
-
-	// Load configuration
-	cfg, err := getConfig()
+	reader := bufio.NewReader(cmd.InOrStdin())
+	response, err := reader.ReadString('\n')
 	if err != nil {
-		return fmt.Errorf("failed to load configuration: %w", err)
+		return fmt.Errorf("failed to read user input: %w", err)
 	}
+	response = strings.TrimSpace(response)
+	if response != "yes" {
+		return fmt.Errorf("operation cancelled by user")
+	}
+	fmt.Println()
+	return nil
+}
 
-	// Get absolute paths for both file and repo
+func prepareTargetPath(cfg *config.SyncConfig, filePath string) (string, error) {
 	absPath, err := filepath.Abs(filePath)
 	if err != nil {
-		return fmt.Errorf("failed to get absolute path: %w", err)
+		return "", fmt.Errorf("failed to get absolute path: %w", err)
 	}
 
 	absRepo, err := filepath.Abs(cfg.Git.RepoPath)
 	if err != nil {
-		return fmt.Errorf("failed to resolve repository path: %w", err)
+		return "", fmt.Errorf("failed to resolve repository path: %w", err)
 	}
 
-	// Check if file is already inside the dotfiles repository
 	relPath, err := filepath.Rel(absRepo, absPath)
-	if err != nil {
-		// filepath.Rel can fail on Windows with different drives
-		// In this case, they're on different volumes, so file is definitely outside repo
-	} else if !strings.HasPrefix(relPath, "..") && relPath != "." {
-		// File is inside or equal to repo directory
-		return fmt.Errorf(`file is already inside dotfiles repository: %s
+	if err == nil && !strings.HasPrefix(relPath, "..") && relPath != "." {
+		return "", fmt.Errorf(`file is already inside dotfiles repository: %s
 Hint: Only add files from outside the repository`, absPath)
 	}
 
-	// Determine target path in dotfiles repository
 	targetPath, err := getTargetPath(cfg.Git.RepoPath, absPath)
 	if err != nil {
-		return fmt.Errorf("failed to determine target path: %w", err)
+		return "", fmt.Errorf("failed to determine target path: %w", err)
 	}
 
 	absTarget, err := filepath.Abs(targetPath)
 	if err != nil {
-		return fmt.Errorf("failed to resolve target path: %w", err)
+		return "", fmt.Errorf("failed to resolve target path: %w", err)
 	}
 
-	// Validate target is inside repository (absRepo already computed above)
 	relTarget, err := filepath.Rel(absRepo, absTarget)
 	if err != nil || strings.HasPrefix(relTarget, "..") || relTarget == "." {
-		return fmt.Errorf("target path is outside repository: %s", absTarget)
+		return "", fmt.Errorf("target path is outside repository: %s", absTarget)
 	}
 
-	// Check if target already exists
 	if _, err := os.Stat(targetPath); err == nil {
-		return fmt.Errorf(`target file already exists in dotfiles: %s
+		return "", fmt.Errorf(`target file already exists in dotfiles: %s
 This file may have been added previously`, targetPath)
+	} else if err != nil && !os.IsNotExist(err) {
+		return "", fmt.Errorf("failed to check target path: %w", err)
 	}
 
-	// Create target directory if needed
-	targetDir := filepath.Dir(targetPath)
-	if err := os.MkdirAll(targetDir, dirPerms); err != nil {
-		return fmt.Errorf("failed to create target directory: %w", err)
+	if err := mkdirAllFunc(filepath.Dir(targetPath), dirPerms); err != nil {
+		return "", fmt.Errorf("failed to create target directory: %w", err)
 	}
 
-	// Track backup path for potential rollback
-	var backupPath string
-	var backupCreated bool
+	return targetPath, nil
+}
 
-	// Backup original file. The previous checks ensure it's a regular file.
+func executeAddTransaction(cfg *config.SyncConfig, filePath, targetPath string) (string, bool, error) {
 	backupDir := cfg.ConflictResolution.BackupDir
 	if backupDir == "" {
-		backupDir = filepath.Join(cfg.Git.RepoPath, ".backup")
+		backupDir = filepath.Join(cfg.Git.RepoPath, defaultBackupDirName)
 	}
 
-	if err := os.MkdirAll(backupDir, dirPerms); err != nil {
-		return fmt.Errorf("failed to create backup directory: %w", err)
+	if err := mkdirAllFunc(backupDir, dirPerms); err != nil {
+		return "", false, fmt.Errorf("failed to create backup directory: %w", err)
 	}
 
-	timestamp := time.Now().Format(backupTimestampFormat)
+	timestamp := timeNow().Format(backupTimestampFormat)
 	filename := filepath.Base(filePath)
-	backupPath = filepath.Join(backupDir, fmt.Sprintf("%s-%s", filename, timestamp))
+	backupPath := filepath.Join(backupDir, fmt.Sprintf("%s-%s", filename, timestamp))
 
-	if err := copyFile(filePath, backupPath); err != nil {
-		return fmt.Errorf("failed to backup original file: %w", err)
+	if err := copyFileFunc(filePath, backupPath); err != nil {
+		return "", false, fmt.Errorf("failed to backup original file: %w", err)
 	}
-	backupCreated = true
+	backupCreated := true
 	fmt.Printf("📦 Backed up original file to: %s\n", backupPath)
 
-	// Move file to dotfiles directory using copy-then-remove for cross-filesystem compatibility
-	if err := copyFile(filePath, targetPath); err != nil {
+	if err := copyFileFunc(filePath, targetPath); err != nil {
 		if backupCreated {
-			// On copy failure, preserve the backup for manual recovery.
 			fmt.Printf("⚠️  Failed to copy file to dotfiles. Backup of original file retained at: %s\n", backupPath)
 		}
-		return fmt.Errorf("failed to copy file to dotfiles: %w", err)
+		return backupPath, backupCreated, fmt.Errorf("failed to copy file to dotfiles: %w", err)
 	}
 
-	// Remove original file after successful copy
-	if err := os.Remove(filePath); err != nil {
-		// Rollback: remove the copied file
-		if removeErr := os.Remove(targetPath); removeErr != nil {
+	if err := removeFunc(filePath); err != nil {
+		if removeErr := removeFunc(targetPath); removeErr != nil {
 			fmt.Printf("❌ Failed to remove copied file during rollback: %v\n", removeErr)
 		}
 		if backupCreated {
 			fmt.Printf("⚠️  Failed to remove original file. The file was copied to the repository, but the original was not removed. Backup retained at: %s for manual recovery.\n", backupPath)
 		}
-		return fmt.Errorf("failed to remove original file: %w", err)
+		return backupPath, backupCreated, fmt.Errorf("failed to remove original file: %w", err)
 	}
 
-	// Create symlink using relative path for portability across machines
-	// Fall back to absolute path if relative path cannot be computed (e.g., cross-drive on Windows)
 	relSymlinkPath, err := filepath.Rel(filepath.Dir(filePath), targetPath)
 	symlinkTarget := relSymlinkPath
 	if err != nil {
-		// Use absolute path when relative path cannot be computed
 		symlinkTarget = targetPath
 	}
 
-	if err := os.Symlink(symlinkTarget, filePath); err != nil {
-		// Rollback: restore from backup or from target
+	if err := symlinkFunc(symlinkTarget, filePath); err != nil {
 		restoreSuccessful := false
 		if backupCreated {
-			// Restore from backup
-			if restoreErr := copyFile(backupPath, filePath); restoreErr != nil {
+			if restoreErr := copyFileFunc(backupPath, filePath); restoreErr != nil {
 				fmt.Printf("❌ Failed to restore from backup: %v\n", restoreErr)
 				fmt.Printf("⚠️  Backup retained at %s for manual recovery\n", backupPath)
 			} else {
 				restoreSuccessful = true
-				// Clean up backup after successful restore
-				if removeErr := os.Remove(backupPath); removeErr != nil {
+				backupCreated = false
+				if removeErr := removeFunc(backupPath); removeErr != nil {
 					fmt.Printf("⚠️  Warning: failed to remove backup file %s after restore: %v\n", backupPath, removeErr)
+					backupCreated = true
 				}
 			}
 		}
 
-		// Remove the file from dotfiles directory
-		if removeErr := os.Remove(targetPath); removeErr != nil {
+		if removeErr := removeFunc(targetPath); removeErr != nil {
 			fmt.Printf("⚠️  Warning: failed to remove file from dotfiles during rollback: %v\n", removeErr)
 		}
 
 		if restoreSuccessful {
-			return fmt.Errorf("failed to create symlink: %w\nOriginal file restored to %s", err, filePath)
+			return backupPath, backupCreated, fmt.Errorf("failed to create symlink: %w\nOriginal file restored to %s", err, filePath)
 		}
 		if backupCreated {
-			return fmt.Errorf("failed to create symlink: %w\nBackup available at %s", err, backupPath)
+			return backupPath, backupCreated, fmt.Errorf("failed to create symlink: %w\nBackup available at %s", err, backupPath)
 		}
-		return fmt.Errorf("failed to create symlink: %w", err)
+		return backupPath, backupCreated, fmt.Errorf("failed to create symlink: %w", err)
 	}
 
-	// Success! Clean up the backup since operation completed successfully
-	if backupCreated {
-		if err := os.Remove(backupPath); err != nil {
-			fmt.Printf("⚠️  Warning: failed to remove backup file %s: %v\n", backupPath, err)
-		}
-	}
+	return backupPath, backupCreated, nil
+}
 
-	// Update mappings in configuration
+func updateAndSaveConfig(cfg *config.SyncConfig, targetPath, filePath, backupPath string, backupCreated bool) error {
 	sourceRelative, err := filepath.Rel(cfg.Git.RepoPath, targetPath)
 	if err != nil {
 		return fmt.Errorf("failed to compute mapping path: %w", err)
@@ -299,28 +332,80 @@ This file may have been added previously`, targetPath)
 	}
 	cfg.Mappings[sourceRelative] = filePath
 
-	// Save updated configuration atomically using temp file pattern
 	configPath := cfg.GetConfigPath()
-	tempConfigPath := configPath + ".tmp"
-	if err := cfg.SaveToFile(tempConfigPath); err != nil {
-		return fmt.Errorf("file moved and symlinked, but failed to prepare configuration update: %w. Please check %s for correctness", err, configPath)
-	}
-	// Atomically rename temp file to actual config file as final step
-	if err := os.Rename(tempConfigPath, configPath); err != nil {
-		if removeErr := os.Remove(tempConfigPath); removeErr != nil {
+	tempConfigPath := configPath + tempConfigSuffix
+	if err := saveConfigFn(cfg, tempConfigPath); err != nil {
+		restoredOriginal, backupRetained := rollbackAfterConfigFailure(filePath, targetPath, backupPath, backupCreated)
+		if removeErr := removeFunc(tempConfigPath); removeErr != nil && !os.IsNotExist(removeErr) {
 			fmt.Printf("⚠️  Warning: failed to remove temp config file %s: %v\n", tempConfigPath, removeErr)
 		}
-		return fmt.Errorf("file moved and symlinked, but failed to finalize configuration: %w. Please check %s for correctness", err, configPath)
+		return fmt.Errorf("file moved and symlinked, but failed to prepare configuration update: %w.%s Please check %s for correctness", err, rollbackOutcomeMessage(restoredOriginal, backupRetained, backupPath), configPath)
 	}
 
-	fmt.Printf("✅ Added file to dotfiles\n")
-	fmt.Printf("📄 Source: %s\n", targetPath)
-	fmt.Printf("🔗 Symlink: %s\n", filePath)
-	fmt.Printf("📂 Repository: %s\n", cfg.Git.RepoPath)
-
-	fmt.Printf("\n📝 Note: File staged for git commit. Run 'dsm sync' or wait for auto-sync.\n")
+	if err := renameFunc(tempConfigPath, configPath); err != nil {
+		restoredOriginal, backupRetained := rollbackAfterConfigFailure(filePath, targetPath, backupPath, backupCreated)
+		if removeErr := removeFunc(tempConfigPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			fmt.Printf("⚠️  Warning: failed to remove temp config file %s: %v\n", tempConfigPath, removeErr)
+		}
+		return fmt.Errorf("file moved and symlinked, but failed to finalize configuration: %w.%s Please check %s for correctness", err, rollbackOutcomeMessage(restoredOriginal, backupRetained, backupPath), configPath)
+	}
 
 	return nil
+}
+
+// rollbackAfterConfigFailure attempts to restore the user's original file when a configuration
+// write fails after the file has been moved and symlinked. It returns whether the original file was
+// restored and whether a backup copy remains for manual recovery.
+func rollbackAfterConfigFailure(filePath, targetPath, backupPath string, backupCreated bool) (bool, bool) {
+	restored := false
+	backupRetained := backupCreated
+
+	if err := removeFunc(filePath); err != nil && !os.IsNotExist(err) {
+		fmt.Printf("⚠️  Warning: failed to remove symlink during rollback: %v\n", err)
+	}
+
+	if backupCreated {
+		if err := copyFileFunc(backupPath, filePath); err != nil {
+			fmt.Printf("❌ Failed to restore original file from backup: %v\n", err)
+		} else {
+			restored = true
+			backupRetained = false
+			if removeErr := removeFunc(backupPath); removeErr != nil {
+				fmt.Printf("⚠️  Warning: failed to remove backup file %s after restore: %v\n", backupPath, removeErr)
+				backupRetained = true
+			}
+		}
+	}
+
+	if !restored {
+		if err := copyFileFunc(targetPath, filePath); err != nil {
+			fmt.Printf("❌ Failed to restore original file from dotfiles copy: %v\n", err)
+		} else {
+			restored = true
+		}
+	}
+
+	if restored {
+		if removeErr := removeFunc(targetPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			fmt.Printf("⚠️  Warning: failed to remove dotfiles copy during rollback: %v\n", removeErr)
+		}
+	}
+
+	return restored, backupRetained
+}
+
+// rollbackOutcomeMessage produces user-facing guidance based on rollback results.
+func rollbackOutcomeMessage(restored, backupRetained bool, backupPath string) string {
+	if restored && backupRetained && backupPath != "" {
+		return fmt.Sprintf(" Original file restored. Backup retained at %s.", backupPath)
+	}
+	if restored {
+		return " Original file restored."
+	}
+	if backupRetained && backupPath != "" {
+		return fmt.Sprintf(" Original file not fully restored. Backup available at %s.", backupPath)
+	}
+	return " Original file could not be restored automatically."
 }
 
 // getTargetPath determines where the file should be placed in the dotfiles repository

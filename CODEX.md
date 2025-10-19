@@ -24,7 +24,7 @@ This guide provides concise workflow instructions for Codex agents working on th
 - **Break work into droid exec commands** - never edit files directly
 - **Update issue** with findings, decisions, or blockers
 
-### Droid Exec Pattern
+### **IMPORTANT** Droid Exec Pattern
 - Split work into atomic commands that can be executed independently
 - Each command should have clear purpose and verification steps
 - Use descriptive command names matching the task
