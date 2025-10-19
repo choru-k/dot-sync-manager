@@ -19,13 +19,24 @@ func CloseAndCaptureErr(c io.Closer, err *error) {
 // ExpandPath expands ~ to user home directory and resolves relative paths.
 // Returns an error if path expansion fails.
 func ExpandPath(path string) (string, error) {
-	// Handle tilde expansion
-	if path == "~" || strings.HasPrefix(path, "~/") {
+	// Handle tilde pointing to the current user's home directory
+	if path == "~" {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
 			return "", fmt.Errorf("failed to get home directory: %w", err)
 		}
-		remainder := strings.TrimLeft(path[1:], "/\\")
+		return homeDir, nil
+	}
+
+	// Support both Unix (~/<path>) and Windows (~\<path>) separators.
+	if len(path) >= 2 && path[0] == '~' && (path[1] == '/' || path[1] == '\\') {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("failed to get home directory: %w", err)
+		}
+
+		// Use path[2:] to avoid losing the home directory when joining (e.g., filepath.Join("~/", "/foo"))
+		remainder := strings.TrimLeft(path[2:], "/\\")
 		if remainder == "" {
 			return homeDir, nil
 		}

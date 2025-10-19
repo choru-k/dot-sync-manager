@@ -32,6 +32,13 @@ func init() {
 	rootCmd.AddCommand(addCmd)
 }
 
+const (
+	// dirPerms sets default directory permissions when creating add command artifacts.
+	dirPerms = 0755 // owner rwx, group/others rx
+)
+
+// runAdd is the cobra entry point for the `dsm add` command; it orchestrates validation,
+// file relocation, symlink creation, and configuration updates for a single source file.
 func runAdd(cmd *cobra.Command, args []string) error {
 	filePath := args[0]
 
@@ -81,7 +88,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		fmt.Printf("   - Database credentials and API tokens\n\n")
 		fmt.Printf("Type 'yes' to continue anyway, or anything else to cancel: ")
 
-		reader := bufio.NewReader(os.Stdin)
+		reader := bufio.NewReader(cmd.InOrStdin())
 		response, err := reader.ReadString('\n')
 		if err != nil {
 			return fmt.Errorf("failed to read user input: %w", err)
@@ -144,7 +151,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	// Create target directory if needed
 	targetDir := filepath.Dir(targetPath)
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
+	if err := os.MkdirAll(targetDir, dirPerms); err != nil {
 		return fmt.Errorf("failed to create target directory: %w", err)
 	}
 
@@ -158,7 +165,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		backupDir = filepath.Join(cfg.Git.RepoPath, ".backup")
 	}
 
-	if err := os.MkdirAll(backupDir, 0755); err != nil {
+	if err := os.MkdirAll(backupDir, dirPerms); err != nil {
 		return fmt.Errorf("failed to create backup directory: %w", err)
 	}
 
@@ -304,16 +311,13 @@ func getTargetPath(repoPath, sourcePath string) (string, error) {
 	return filepath.Join(repoPath, filepath.Clean(relativePath)), nil
 }
 
+// copyFile copies the file from src to dst while preserving the original permissions.
 func copyFile(src, dst string) (err error) {
 	sourceFile, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if cerr := sourceFile.Close(); cerr != nil && err == nil {
-			err = cerr
-		}
-	}()
+	defer util.CloseAndCaptureErr(sourceFile, &err)
 
 	// Get source file info to preserve permissions
 	sourceInfo, err := sourceFile.Stat()
@@ -326,11 +330,7 @@ func copyFile(src, dst string) (err error) {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if cerr := destFile.Close(); cerr != nil && err == nil {
-			err = cerr
-		}
-	}()
+	defer util.CloseAndCaptureErr(destFile, &err)
 
 	if _, err = io.Copy(destFile, sourceFile); err != nil {
 		return err
