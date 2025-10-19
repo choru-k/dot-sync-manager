@@ -53,23 +53,25 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to prepare git repository: %w", err)
 	}
 
-	worktree, err := gitMgr.Repo().Worktree()
-	if err != nil {
-		return fmt.Errorf("failed to open worktree: %w", err)
-	}
-
-	status, err := worktree.Status()
-	if err != nil {
-		return fmt.Errorf("failed to read repository status: %w", err)
-	}
-
-	if status.IsClean() {
-		fmt.Println("✅ No changes to sync")
-		return nil
-	}
-
 	if dryRun {
 		fmt.Println("🔍 Dry run mode - no changes will be made")
+
+		// Open the worktree and get status
+		worktree, err := gitMgr.Repo().Worktree()
+		if err != nil {
+			return fmt.Errorf("failed to open worktree: %w", err)
+		}
+
+		status, err := worktree.Status()
+		if err != nil {
+			return fmt.Errorf("failed to read repository status: %w", err)
+		}
+
+		// Handle the clean case
+		if status.IsClean() {
+			fmt.Println("✅ No changes to sync")
+			return nil
+		}
 
 		// Collect changed paths into a slice
 		var changedPaths []string

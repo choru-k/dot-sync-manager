@@ -63,7 +63,10 @@ Hint: Use 'dsm start' to start the daemon`)
 		if stopForce {
 			fmt.Printf("⚠️  Failed to send graceful shutdown signal: %v\n", err)
 			fmt.Println("Attempting force shutdown...")
-			return proc.Kill()
+			if killErr := proc.Kill(); killErr != nil {
+				return fmt.Errorf("failed to force kill process: %w", killErr)
+			}
+			return nil
 		}
 		return fmt.Errorf("failed to send shutdown signal: %w", err)
 	}

@@ -155,7 +155,7 @@ func (gm *GitManager) Repo() *git.Repository {
 // StageCommitAndPush stages all changes, creates an auto-sync commit, and pushes to remote.
 // It returns the list of file paths that were included in the commit.
 func (gm *GitManager) StageCommitAndPush(ctx context.Context, when time.Time) ([]string, error) {
-	changed, err := gm.stageAndCommit(ctx, when)
+	changed, err := gm.StageAndCommit(ctx, when)
 	if err != nil {
 		return nil, err
 	}
@@ -171,11 +171,6 @@ func (gm *GitManager) StageCommitAndPush(ctx context.Context, when time.Time) ([
 // StageAndCommit stages all changes and creates an auto-sync commit without pushing.
 // It returns the list of file paths that were included in the commit.
 func (gm *GitManager) StageAndCommit(ctx context.Context, when time.Time) ([]string, error) {
-	return gm.stageAndCommit(ctx, when)
-}
-
-// stageAndCommit stages changes and writes the commit. Returns changed files.
-func (gm *GitManager) stageAndCommit(ctx context.Context, when time.Time) ([]string, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()

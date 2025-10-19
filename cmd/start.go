@@ -48,7 +48,10 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 
 	// Prepare command arguments
-	flagArgs := []string{"--config", cfg.GetConfigPath()}
+	flagArgs := []string{}
+	if configFile != "" {
+		flagArgs = append(flagArgs, "--config", cfg.GetConfigPath())
+	}
 	if verbose {
 		flagArgs = append(flagArgs, "--verbose")
 	}
@@ -73,7 +76,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create command for daemon
-	daemonArgs := append(append([]string{}, flagArgs...), "start", "--foreground")
+	daemonArgs := append(flagArgs, "start", "--foreground")
 	daemonCmd := exec.Command(execPath, daemonArgs...)
 
 	if attrs := daemonProcAttr(); attrs != nil {
