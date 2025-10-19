@@ -26,16 +26,24 @@ func pidFilePath() (string, error) {
 	return filepath.Join(home, pidFileName), nil
 }
 
-// WritePID persists the daemon PID for later lookup.
+// WritePID persists the daemon PID and executable name for later lookup.
+// This ensures daemon detection works reliably even if the binary is renamed.
 func WritePID(pid int) error {
 	if pid <= 0 {
 		return fmt.Errorf("process: write pid: invalid pid %d", pid)
 	}
+	
+	// Get the current executable name for reliable daemon detection
+	exeName := defaultProcessName()
+	
 	path, err := pidFilePath()
 	if err != nil {
 		return fmt.Errorf("process: write pid: failed to get path: %w", err)
 	}
-	return os.WriteFile(path, []byte(strconv.Itoa(pid)), pidFilePerms)
+	
+	// Store both PID and executable name in format: "PID:exe_name"
+	content := fmt.Sprintf("%d:%s", pid, exeName)
+	return os.WriteFile(path, []byte(content), pidFilePerms)
 }
 
 // RemovePID deletes the stored PID file if it exists.
@@ -50,26 +58,57 @@ func RemovePID() error {
 	return nil
 }
 
-// readPID reads and parses the PID from the PID file.
+// pidInfo stores both the PID and executable name from the PID file.
+type pidInfo struct {
+	pid      int
+	exeName string
+}
+
+// readPID reads and parses the PID and executable name from the PID file.
 // Returns an error if the file doesn't exist, can't be read, or contains invalid data.
-func readPID() (int, error) {
+func readPID() (*pidInfo, error) {
 	path, err := pidFilePath()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return 0, fmt.Errorf("process: read pid file: %w", err)
+		return nil, fmt.Errorf("process: read pid file: %w", err)
 	}
-	pidStr := strings.TrimSpace(string(data))
+	content := strings.TrimSpace(string(data))
+	
+	// Handle legacy format (PID only) and new format (PID:exe_name)
+	parts := strings.SplitN(content, ":", 2)
+	if len(parts) == 1 {
+		// Legacy format: just the PID
+		pidStr := parts[0]
+		pid, convErr := strconv.Atoi(pidStr)
+		if convErr != nil {
+			return nil, fmt.Errorf("process: invalid pid value %q: %w", pidStr, convErr)
+		}
+		if pid <= 0 {
+			return nil, fmt.Errorf("process: invalid pid value %q: must be positive", pidStr)
+		}
+		// For legacy files, we don't have the executable name
+		return &pidInfo{pid: pid, exeName: ""}, nil
+	}
+	
+	// New format: PID:exe_name
+	pidStr := parts[0]
+	exeName := parts[1]
+	
 	pid, convErr := strconv.Atoi(pidStr)
 	if convErr != nil {
-		return 0, fmt.Errorf("process: invalid pid value %q: %w", pidStr, convErr)
+		return nil, fmt.Errorf("process: invalid pid value %q: %w", pidStr, convErr)
 	}
 	if pid <= 0 {
-		return 0, fmt.Errorf("process: invalid pid value %q: must be positive", pidStr)
+		return nil, fmt.Errorf("process: invalid pid value %q: must be positive", pidStr)
 	}
-	return pid, nil
+	if exeName == "" {
+		return nil, fmt.Errorf("process: missing executable name in pid file")
+	}
+	
+	return &pidInfo{pid: pid, exeName: exeName}, nil
 }
 
 // IsDaemonRunning checks if the daemon associated with the stored PID is running.
@@ -84,21 +123,33 @@ func readPID() (int, error) {
 // When falling back to process enumeration the lookup may be slow on systems
 // with many processes; callers should treat this as an infrequent operation.
 func IsDaemonRunning() bool {
-	expectedName := defaultProcessName()
+	var expectedName string
+	
+	if pidInfo, err := readPID(); err == nil {
+		// Use stored executable name from PID file for reliable detection
+		expectedName = pidInfo.exeName
+		if expectedName == "" {
+			// Legacy PID file format - use current executable name
+			expectedName = defaultProcessName()
+		}
 
-	if pid, err := readPID(); err == nil {
 		switch {
-		case pid == os.Getpid():
+		case pidInfo.pid == os.Getpid():
 			if err := RemovePID(); err != nil {
 				log.Printf("process: warning - failed to remove self PID file: %v", err)
 			}
-		case processExists(pid) && verifyProcessName(pid, expectedName):
+		case processExists(pidInfo.pid) && verifyProcessName(pidInfo.pid, expectedName):
 			return true
 		default:
 			if err := RemovePID(); err != nil {
 				log.Printf("process: warning - failed to remove stale PID file: %v", err)
 			}
 		}
+	}
+
+	// Fallback to process discovery using current executable name if no PID file
+	if expectedName == "" {
+		expectedName = defaultProcessName()
 	}
 
 	pid, err := findProcessByName(expectedName)
@@ -122,19 +173,27 @@ func IsDaemonRunning() bool {
 // Returns the PID of a running daemon process that matches the expected binary name.
 // This function may be slow as it involves process enumeration on failure.
 func GetDaemonPID() (int, error) {
-	expectedName := defaultProcessName()
+	if pidInfo, err := readPID(); err == nil {
+		// Use stored executable name from PID file for reliable detection
+		expectedName := pidInfo.exeName
+		if expectedName == "" {
+			// Legacy PID file format - use current executable name
+			expectedName = defaultProcessName()
+		}
 
-	if pid, err := readPID(); err == nil {
-		if pid == os.Getpid() {
+		if pidInfo.pid == os.Getpid() {
 			if err := RemovePID(); err != nil {
 				log.Printf("process: warning - failed to remove self PID file: %v", err)
 			}
-		} else if processExists(pid) && verifyProcessName(pid, expectedName) {
-			return pid, nil
+		} else if processExists(pidInfo.pid) && verifyProcessName(pidInfo.pid, expectedName) {
+			return pidInfo.pid, nil
 		} else if err := RemovePID(); err != nil {
 			log.Printf("process: warning - failed to remove PID file during cleanup: %v", err)
 		}
 	}
+
+	// Fallback to process discovery using current executable name
+	expectedName := defaultProcessName()
 
 	pid, err := findProcessByName(expectedName)
 	if err != nil {
@@ -191,6 +250,9 @@ func normalizeProcessName(name string) string {
 		return ""
 	}
 	base := filepath.Base(clean)
+	// On Linux, when the executable file is deleted while the process is still running,
+	// the kernel adds " (deleted)" to the process name in /proc/<pid>/exe and ps output.
+	// We strip this suffix to ensure reliable process name matching.
 	base = strings.TrimSuffix(base, " (deleted)")
 	if ext := filepath.Ext(base); ext != "" && strings.EqualFold(ext, exeExtension) {
 		base = base[:len(base)-len(ext)]

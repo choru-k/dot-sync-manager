@@ -89,7 +89,13 @@ func stopAllDaemons(name string) error {
 			return nil
 		}
 		if err := exec.Command("killall", normalized).Run(); err != nil {
-			return fmt.Errorf("process: stop daemons: %w", err)
+			var exitErr *exec.ExitError
+			// If killall returns an exit error, it's likely because no process was found.
+			// We treat this as a success, similar to the pkill handling.
+			if errors.As(err, &exitErr) {
+				return nil
+			}
+			return fmt.Errorf("process: stop daemons with killall: %w", err)
 		}
 	}
 	return nil

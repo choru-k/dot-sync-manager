@@ -32,7 +32,8 @@ func getProcessInfo(pid int) (imageName string, exists bool) {
 		return "", false
 	}
 
-	// First column is Image Name
+	// First data row (index 1) contains the Image Name in the first column
+	// Index 0 is the header row, index 1 is the first data record
 	return records[1][0], true
 }
 
