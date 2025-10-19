@@ -218,4 +218,4 @@ Quick Reference:
 - **Validation**: Never mutate state in `Validate()`; separate normalize → validate → use
 - **Testing**: Use `t.Cleanup` not `defer`; check all error returns in tests
 - **Code Organization**: Extract magic numbers to constants; use helper functions for duplication
-- USE gh for accessing github. not fetch
+- Use the `gh` CLI for interacting with GitHub, do not use `fetch` or other raw Git commands for this purpose.

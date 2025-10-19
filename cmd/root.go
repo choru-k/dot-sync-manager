@@ -129,12 +129,7 @@ func runRoot(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if process.IsDaemonRunning() {
-		if pid, pidErr := process.GetDaemonPID(); pidErr == nil {
-			return fmt.Errorf("daemon already running (pid %d)", pid)
-		}
-		return fmt.Errorf("daemon already running")
-	}
+
 
 	ctx := cmd.Context()
 
@@ -154,7 +149,7 @@ func runRoot(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to start sync service: %w", err)
 	}
 
-	if err := process.WritePID(os.Getpid()); err != nil {
+	if err := process.WritePIDExclusive(os.Getpid()); err != nil {
 		service.Stop()
 		return fmt.Errorf("failed to write PID file: %w", err)
 	}

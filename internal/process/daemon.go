@@ -26,6 +26,54 @@ func pidFilePath() (string, error) {
 	return filepath.Join(home, pidFileName), nil
 }
 
+// WritePIDExclusive atomically creates the PID file with O_EXCL flag.
+// This prevents TOCTOU race conditions between checking if daemon is running
+// and writing the PID file. Returns an error if PID file already exists.
+func WritePIDExclusive(pid int) error {
+	if pid <= 0 {
+		return fmt.Errorf("process: write pid exclusive: invalid pid %d", pid)
+	}
+	
+	// Get the current executable name for reliable daemon detection
+	exeName := defaultProcessName()
+	
+	path, err := pidFilePath()
+	if err != nil {
+		return fmt.Errorf("process: write pid exclusive: failed to get path: %w", err)
+	}
+	
+	// Store both PID and executable name in format: "PID:exe_name"
+	content := fmt.Sprintf("%d:%s", pid, exeName)
+	
+	// Create file atomically with O_EXCL flag
+	flags := os.O_WRONLY | os.O_CREATE | os.O_EXCL
+	file, err := os.OpenFile(path, flags, pidFilePerms)
+	if err != nil {
+		if os.IsExist(err) {
+			return fmt.Errorf("process: daemon already running (PID file exists)")
+		}
+		return fmt.Errorf("process: write pid exclusive: %w", err)
+	}
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			// If close fails and we haven't written yet, try to clean up
+			if removeErr := os.Remove(path); removeErr != nil {
+				log.Printf("process: warning - failed to remove PID file after close error: %v", removeErr)
+			}
+		}
+	}()
+	
+	if _, err := file.WriteString(content); err != nil {
+		// Clean up on write failure
+		if removeErr := os.Remove(path); removeErr != nil {
+			log.Printf("process: warning - failed to remove PID file after write error: %v", removeErr)
+		}
+		return fmt.Errorf("process: write pid exclusive: %w", err)
+	}
+	
+	return nil
+}
+
 // WritePID persists the daemon PID and executable name for later lookup.
 // This ensures daemon detection works reliably even if the binary is renamed.
 func WritePID(pid int) error {
@@ -77,26 +125,11 @@ func readPID() (*pidInfo, error) {
 	}
 	content := strings.TrimSpace(string(data))
 	
-	// Handle legacy format (PID only) and new format (PID:exe_name)
+	// Parse content into parts (legacy: "PID", new: "PID:exe_name")
 	parts := strings.SplitN(content, ":", 2)
-	if len(parts) == 1 {
-		// Legacy format: just the PID
-		pidStr := parts[0]
-		pid, convErr := strconv.Atoi(pidStr)
-		if convErr != nil {
-			return nil, fmt.Errorf("process: invalid pid value %q: %w", pidStr, convErr)
-		}
-		if pid <= 0 {
-			return nil, fmt.Errorf("process: invalid pid value %q: must be positive", pidStr)
-		}
-		// For legacy files, we don't have the executable name
-		return &pidInfo{pid: pid, exeName: ""}, nil
-	}
-	
-	// New format: PID:exe_name
 	pidStr := parts[0]
-	exeName := parts[1]
 	
+	// Validate PID first (common to both formats)
 	pid, convErr := strconv.Atoi(pidStr)
 	if convErr != nil {
 		return nil, fmt.Errorf("process: invalid pid value %q: %w", pidStr, convErr)
@@ -104,6 +137,15 @@ func readPID() (*pidInfo, error) {
 	if pid <= 0 {
 		return nil, fmt.Errorf("process: invalid pid value %q: must be positive", pidStr)
 	}
+	
+	// Handle format-specific logic
+	if len(parts) == 1 {
+		// Legacy format: just the PID, no executable name
+		return &pidInfo{pid: pid, exeName: ""}, nil
+	}
+	
+	// New format: PID:exe_name
+	exeName := parts[1]
 	if exeName == "" {
 		return nil, fmt.Errorf("process: missing executable name in pid file")
 	}
