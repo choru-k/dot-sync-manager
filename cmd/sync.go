@@ -81,9 +81,10 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	changed, err := gitMgr.StageCommitAndPush(ctx, time.Now())
+	// Stage and commit changes
+	changed, err := gitMgr.StageAndCommit(ctx, time.Now())
 	if err != nil {
-		return fmt.Errorf("failed to sync changes: %w", err)
+		return fmt.Errorf("failed to stage or commit changes: %w", err)
 	}
 
 	if len(changed) == 0 {
@@ -97,7 +98,12 @@ func runSync(cmd *cobra.Command, args []string) error {
 		fmt.Printf(" • %s\n", file)
 	}
 
-	if cfg.Git.RemoteURL == "" {
+	// Push only if remote URL is configured
+	if cfg.Git.RemoteURL != "" {
+		if err := gitMgr.Push(ctx); err != nil {
+			return fmt.Errorf("failed to push changes: %w", err)
+		}
+	} else {
 		fmt.Println("ℹ️  No remote configured, skipping push")
 	}
 
