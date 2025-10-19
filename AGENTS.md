@@ -46,6 +46,20 @@ bin/review_report.sh https://github.com/choru-k/dot-sync-manager/pull/<n>
 - **.gemini/styleguide.md** - Detailed guide with examples
 - **CLAUDE.md** - Project-specific patterns and conventions
 
+#### Running `droid exec`
+- Base syntax: `droid exec [options] [prompt]` or pipe stdin (e.g., ``echo "summarize repo" | droid exec``)
+- Always start prompts from `DROID.md` plus task-specific context; favor `droid exec -f prompt.md` for longer briefs
+- Default to `--auto high` for DSM work so end-to-end flows (tests → commit → push/deploy) succeed without extra reruns; consciously drop to lower levels when the task truly stays local
+- Know the autonomy envelope before launching:
+  - default (no flags) stays read-only
+  - `--auto low` covers safe read/write tasks with minimal side-effects
+  - `--auto medium` unlocks routine dev flows (installs, builds, local git operations)
+  - `--auto high` enables production-impacting actions (e.g., running untrusted scripts, opening ports, `git push`, migrations, handling secrets) and still blocks destructive commands like `sudo rm -rf /`
+- `--skip-permissions-unsafe` removes all safeguards and must only run inside disposable sandboxes; it cannot be combined with any `--auto` flag
+- Prefer `--session-id` to continue an existing run only when explicitly coordinating with teammates; otherwise each exec should stay isolated
+- Capture outputs (logs, artifacts) immediately after the command finishes—`droid exec` exits once the task is complete
+- Default Usage: droid exec --auto high -f DROID.md -f prompt.md
+
 ### Pre-Commit Checklist
 - [ ] All user-provided paths expanded via `expandPaths()` method
 - [ ] Path expansion functions return errors (never silently fail)
