@@ -12,6 +12,7 @@ import (
 const (
 	pidFileName  = ".dotfile-sync-manager.pid"
 	pidFilePerms = 0o600 // owner read/write only to protect daemon PID information
+	exeExtension = ".exe" // Windows executable extension
 )
 
 // pidFilePath returns the absolute path to the PID file in the user's home directory.
@@ -191,7 +192,7 @@ func normalizeProcessName(name string) string {
 	}
 	base := filepath.Base(clean)
 	base = strings.TrimSuffix(base, " (deleted)")
-	if ext := filepath.Ext(base); ext != "" && strings.EqualFold(ext, ".exe") {
+	if ext := filepath.Ext(base); ext != "" && strings.EqualFold(ext, exeExtension) {
 		base = base[:len(base)-len(ext)]
 	}
 	return base

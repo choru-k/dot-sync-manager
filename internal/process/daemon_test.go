@@ -185,7 +185,7 @@ func TestReadPIDRejectsNonPositive(t *testing.T) {
 		t.Fatalf("failed to determine pid file path: %v", err)
 	}
 
-	if err := os.WriteFile(path, []byte("0\n"), 0o600); err != nil {
+	if err := os.WriteFile(path, []byte("0\n"), pidFilePerms); err != nil {
 		t.Fatalf("failed to write pid file: %v", err)
 	}
 

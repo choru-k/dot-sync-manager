@@ -15,6 +15,11 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
+const (
+	// defaultDirPerms represents standard directory permissions (owner rwx, group/others rx)
+	defaultDirPerms = 0o755
+)
+
 type stashSnapshot struct {
 	Path      string        `json:"-"`
 	Metadata  stashMetadata `json:"metadata"`
@@ -47,7 +52,7 @@ func (e *ConflictError) Error() string {
 
 func (gm *GitManager) createStash(status git.Status) (*stashSnapshot, error) {
 	stashDir := filepath.Join(os.TempDir(), "dsm-stash")
-	if err := os.MkdirAll(stashDir, 0o755); err != nil {
+	if err := os.MkdirAll(stashDir, defaultDirPerms); err != nil {
 		return nil, fmt.Errorf("gitmanager: create stash dir: %w", err)
 	}
 
@@ -59,10 +64,10 @@ func (gm *GitManager) createStash(status git.Status) (*stashSnapshot, error) {
 	snapshotDir := filepath.Join(stashDir, fmt.Sprintf("%s-%s", repoHint, timestamp.Format("20060102T150405Z0700")))
 	localRoot := filepath.Join(snapshotDir, "local")
 	baseRoot := filepath.Join(snapshotDir, "base")
-	if err := os.MkdirAll(localRoot, 0o755); err != nil {
+	if err := os.MkdirAll(localRoot, defaultDirPerms); err != nil {
 		return nil, fmt.Errorf("gitmanager: create local stash dir: %w", err)
 	}
-	if err := os.MkdirAll(baseRoot, 0o755); err != nil {
+	if err := os.MkdirAll(baseRoot, defaultDirPerms); err != nil {
 		return nil, fmt.Errorf("gitmanager: create base stash dir: %w", err)
 	}
 
@@ -251,7 +256,7 @@ func (gm *GitManager) applyStash(snapshot *stashSnapshot) error {
 				continue
 			}
 
-			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(target), defaultDirPerms); err != nil {
 				return fmt.Errorf("gitmanager: apply stash mkdir: %w", err)
 			}
 			mode := normalizedPerm(file.Mode)
@@ -282,7 +287,7 @@ func ensureConflictDir(current *string, createdAt time.Time, repoPath string) (s
 		return *current, nil
 	}
 	dir := filepath.Join(repoPath, ".dsm", "conflicts", createdAt.Format("20060102T150405Z0700"))
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, defaultDirPerms); err != nil {
 		return "", fmt.Errorf("gitmanager: create conflict dir: %w", err)
 	}
 	*current = dir
@@ -291,7 +296,7 @@ func ensureConflictDir(current *string, createdAt time.Time, repoPath string) (s
 
 func persistConflictArtifacts(baseDir, relPath string, remote, base, local []byte, localMode os.FileMode, localDeleted bool) error {
 	conflictPath := filepath.Join(baseDir, relPath)
-	if err := os.MkdirAll(filepath.Dir(conflictPath), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(conflictPath), defaultDirPerms); err != nil {
 		return fmt.Errorf("gitmanager: conflict mkdir: %w", err)
 	}
 
@@ -330,7 +335,7 @@ func persistConflictArtifacts(baseDir, relPath string, remote, base, local []byt
 }
 
 func copyFilesystemFile(source, destination string, symlink bool) (err error) {
-	if err = os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+	if err = os.MkdirAll(filepath.Dir(destination), defaultDirPerms); err != nil {
 		return err
 	}
 	if symlink {
@@ -372,7 +377,7 @@ func copyFilesystemFile(source, destination string, symlink bool) (err error) {
 }
 
 func copyTreeFile(file *object.File, destination string) (err error) {
-	if err = os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+	if err = os.MkdirAll(filepath.Dir(destination), defaultDirPerms); err != nil {
 		return err
 	}
 	var reader io.ReadCloser

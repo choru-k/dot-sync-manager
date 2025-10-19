@@ -16,11 +16,22 @@ import (
 // processExists checks if a process with the given PID exists using syscall.Kill(pid, 0).
 // This is a lightweight check that doesn't actually send a signal.
 // Returns false for invalid PIDs (<= 0) or non-existent processes.
+// Returns true if the process exists, even if we don't have permission to signal it (EPERM).
 func processExists(pid int) bool {
 	if pid <= 0 {
 		return false
 	}
-	return syscall.Kill(pid, 0) == nil
+	err := syscall.Kill(pid, 0)
+	if err == nil {
+		return true
+	}
+	// EPERM means the process exists but we don't have permission to signal it
+	// This should be treated as the process being alive
+	if errors.Is(err, syscall.EPERM) {
+		return true
+	}
+	// ESRCH means the process doesn't exist
+	return false
 }
 
 // verifyProcessName checks if the process with the given PID matches the expected name.
@@ -145,6 +156,13 @@ func findProcessByName(name string) (int, error) {
 	return 0, fmt.Errorf("process: not found: %s", name)
 }
 
+// isValidProcessName validates that a process name contains only safe characters.
+// These restrictions prevent command injection and ensure the process name can be safely
+// used in shell commands and file operations. The allowed characters are:
+// - Letters (a-z, A-Z)
+// - Numbers (0-9) 
+// - Hyphens (-), underscores (_), and periods (.)
+// This matches typical process naming conventions and avoids special shell characters.
 func isValidProcessName(name string) bool {
 	if name == "" {
 		return false
