@@ -260,7 +260,7 @@ func TestToSyncServiceConfig_WithBackoff(t *testing.T) {
 		Advanced:           AdvancedConfig{MaxLogSizeMB: 10},
 	}
 
-	syncConfig := config.ToSyncServiceConfig()
+	syncConfig := config.ToSyncConfig()
 
 	// Check basic fields
 	if syncConfig.RepoPath != "/tmp/test" {
@@ -333,7 +333,7 @@ func TestToSyncServiceConfig_WithoutBackoff(t *testing.T) {
 		Advanced:           AdvancedConfig{MaxLogSizeMB: 10},
 	}
 
-	syncConfig := config.ToSyncServiceConfig()
+	syncConfig := config.ToSyncConfig()
 
 	// Check basic fields
 	if syncConfig.RepoPath != "/tmp/test" {

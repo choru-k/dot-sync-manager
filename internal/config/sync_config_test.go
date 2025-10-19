@@ -299,7 +299,7 @@ func TestConfigToSyncServiceConfig(t *testing.T) {
 		t.Fatalf("DefaultConfig() failed: %v", err)
 	}
 
-	syncConfig := config.ToSyncServiceConfig()
+	syncConfig := config.ToSyncConfig()
 
 	if syncConfig.RepoPath != config.Git.RepoPath {
 		t.Errorf("Expected repo path %s, got %s", config.Git.RepoPath, syncConfig.RepoPath)
@@ -636,7 +636,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 				c, err := DefaultConfig()
 				if err != nil { t.Fatal(err) }
 				c.Mappings = map[string]string{
-					"bashrc": "relative/path", // Relative path without expansion
+					"bashrc": "relative/path", // Relative path should fail validation
 				}
 				return c
 			}(),

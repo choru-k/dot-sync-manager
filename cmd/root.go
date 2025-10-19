@@ -2,10 +2,17 @@ package cmd
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"runtime"
+	"syscall"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
+	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
+	"github.com/choru-k/dot-sync-manager/internal/process"
+	"github.com/choru-k/dot-sync-manager/internal/sync"
 	"github.com/choru-k/dot-sync-manager/internal/util"
 	"github.com/spf13/cobra"
 )
@@ -16,6 +23,8 @@ var (
 )
 
 const (
+	// ConfigFileName is the PRD-standardized config filename
+	ConfigFileName = ".sync-config.json"
 	// LegacyConfigFileName is the historical config filename used before PRD standardization
 	LegacyConfigFileName = ".dotfile-sync.json"
 )
@@ -28,6 +37,7 @@ var rootCmd = &cobra.Command{
 using Git. Manage your dotfiles with simple commands.
 
 Use "dsm help <command>" for more information about a command.`,
+	RunE: runRoot,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -99,14 +109,72 @@ Expected config at:
 Run 'dsm init' to create a new configuration`, err, prdPath, legacyPath)
 }
 
-// isDaemonRunning checks if the daemon is already running.
-// TODO(PR3): Implement actual daemon detection via PID file or process lookup.
 func isDaemonRunning() bool {
-	return false
+	return process.IsDaemonRunning()
 }
 
 // getDaemonPID finds the PID of the running daemon.
-// TODO(PR3): Implement by reading PID file from ~/.dotfile-sync.pid.
 func getDaemonPID() (int, error) {
-	return 0, fmt.Errorf("daemon not running")
+	return process.GetDaemonPID()
+}
+
+func runRoot(cmd *cobra.Command, args []string) error {
+	// Prevent accidental invocation with unexpected positional arguments.
+	if len(args) > 0 {
+		return cmd.Help()
+	}
+
+	cfg, err := getConfig()
+	if err != nil {
+		return err
+	}
+
+	ctx := cmd.Context()
+
+	gitCfg := cfg.ToGitManagerConfig()
+	gitMgr, err := gitmanager.NewGitManager(ctx, gitCfg)
+	if err != nil {
+		return fmt.Errorf("failed to initialize git manager: %w", err)
+	}
+
+	syncCfg := cfg.ToSyncConfig()
+	service, err := sync.New(gitMgr, syncCfg)
+	if err != nil {
+		return fmt.Errorf("failed to initialize sync service: %w", err)
+	}
+
+	if err := service.Start(); err != nil {
+		return fmt.Errorf("failed to start sync service: %w", err)
+	}
+
+	if err := process.WritePIDExclusive(os.Getpid()); err != nil {
+		service.Stop()
+		return fmt.Errorf("failed to write PID file: %w", err)
+	}
+
+	signalCh := make(chan os.Signal, 1)
+	signals := []os.Signal{os.Interrupt}
+	if runtime.GOOS != "windows" {
+		signals = append(signals, syscall.SIGTERM)
+	}
+	signal.Notify(signalCh, signals...)
+
+	defer func() {
+		signal.Stop(signalCh)
+		service.Stop()
+		if err := process.RemovePID(); err != nil {
+			log.Printf("process: warning - failed to remove PID file: %v", err)
+		}
+	}()
+
+	fmt.Println("Dotfile Sync Manager daemon started. Press Ctrl+C to stop.")
+
+	select {
+	case <-ctx.Done():
+		fmt.Println("Context cancelled; stopping daemon...")
+	case sig := <-signalCh:
+		fmt.Printf("Received %s; stopping daemon...\n", sig)
+	}
+
+	return nil
 }

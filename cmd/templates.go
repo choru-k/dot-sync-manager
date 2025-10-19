@@ -1,10 +1,6 @@
 package cmd
 
-// Configuration filename constants
-const (
-	// ConfigFileName is the name of the configuration file
-	ConfigFileName = ".sync-config.json"
-)
+
 
 // Default .syncignore content
 const defaultSyncIgnoreContent = `# Sensitive authentication files

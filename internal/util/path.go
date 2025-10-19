@@ -2,10 +2,19 @@ package util
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+// CloseAndCaptureErr captures close errors only when no other error exists.
+// This helper function prevents error shadowing in defer blocks.
+func CloseAndCaptureErr(c io.Closer, err *error) {
+	if closeErr := c.Close(); closeErr != nil && *err == nil {
+		*err = closeErr
+	}
+}
 
 // ExpandPath expands ~ to user home directory and resolves relative paths.
 // Returns an error if path expansion fails.
@@ -16,10 +25,11 @@ func ExpandPath(path string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("failed to get home directory: %w", err)
 		}
-		if path == "~" {
+		remainder := strings.TrimLeft(path[1:], "/\\")
+		if remainder == "" {
 			return homeDir, nil
 		}
-		return filepath.Join(homeDir, path[2:]), nil
+		return filepath.Join(homeDir, remainder), nil
 	}
 
 	// Convert to absolute path if it's not already
