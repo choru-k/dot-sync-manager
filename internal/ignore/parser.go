@@ -29,7 +29,7 @@ func New(root string) *Parser {
 }
 
 // LoadFromFile loads ignore patterns from a file
-func (p *Parser) LoadFromFile(filename string) error {
+func (p *Parser) LoadFromFile(filename string) (err error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -56,7 +56,10 @@ func (p *Parser) LoadFromFile(filename string) error {
 		p.patterns = append(p.patterns, pattern)
 	}
 
-	return scanner.Err()
+	if scanErr := scanner.Err(); scanErr != nil && err == nil {
+		err = scanErr
+	}
+	return err
 }
 
 // parsePattern parses a single pattern line

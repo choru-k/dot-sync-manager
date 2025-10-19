@@ -6,7 +6,7 @@ Quick reference guide for maintaining code quality and consistency in this proje
 
 1. **Always expand user paths early** - Normalize `~` and relative paths immediately after loading config
 2. **Path expansion must return errors** - Never silently fail on `os.UserHomeDir()` or `filepath.Abs()` errors  
-3. **Use `path[2:]` for `~/` prefix** - Not `path[1:]` which creates absolute paths incorrectly
+3. **Use `strings.TrimLeft(path[1:], "/\\")` for tilde expansion** - Handles `~`, `~/`, and `~\\` correctly. This is more robust than the old `path[2:]` approach.
 4. **Expand ALL path fields consistently** - Create `expandPaths()` method to handle all path fields uniformly
 
 ## Validation Rules
@@ -139,7 +139,7 @@ func (c *Config) Validate() error {
 // BAD
 func ExpandPath(path string) string {
     homeDir, _ := os.UserHomeDir()  // Ignoring error!
-    return filepath.Join(homeDir, path[1:])  // And using wrong index!
+    return filepath.Join(homeDir, path[1:])  // And using wrong approach!
 }
 ```
 
@@ -483,7 +483,7 @@ Before submitting code, verify:
 
 - [ ] All paths expanded via dedicated `expandPaths()` method
 - [ ] Path expansion returns errors properly (never silent fallback)
-- [ ] `~/path` uses `path[2:]` not `path[1:]`
+- [ ] `~/path` uses `strings.TrimLeft(path[1:], "/\\")` not `path[2:]`
 - [ ] Path resolution errors propagated immediately (fail fast)
 - [ ] Validation only checks, doesn't modify
 - [ ] Error messages use "must" language

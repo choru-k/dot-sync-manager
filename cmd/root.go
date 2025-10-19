@@ -23,6 +23,8 @@ var (
 )
 
 const (
+	// ConfigFileName is the PRD-standardized config filename
+	ConfigFileName = ".sync-config.json"
 	// LegacyConfigFileName is the historical config filename used before PRD standardization
 	LegacyConfigFileName = ".dotfile-sync.json"
 )

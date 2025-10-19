@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestProcessDetectionRaceCondition(t *testing.T) {
+func TestProcessExistsEdgeCases(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Unix-specific process detection test")
 	}
@@ -70,7 +70,7 @@ func TestProcessExistsImplementation(t *testing.T) {
 	}
 }
 
-const testPID = 12345
+const testPID = 12345 // Arbitrary non-existent PID for testing file operations
 
 func TestPIDFileManagement(t *testing.T) {
 	homeDir := t.TempDir()

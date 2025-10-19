@@ -121,10 +121,6 @@ func findProcessByName(name string) (int, error) {
 				continue
 			}
 
-			if !strings.EqualFold(normalizeProcessName(record[0]), normalized) {
-				continue
-			}
-
 			pidStr := strings.TrimSpace(record[1])
 			if pidStr == "" {
 				continue
