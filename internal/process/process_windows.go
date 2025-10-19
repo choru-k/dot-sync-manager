@@ -70,11 +70,13 @@ func stopAllDaemons(name string) error {
 	for _, suffix := range []string{".exe", ""} {
 		imageName := normalized + suffix
 		// Attempt graceful shutdown first.
-		err := exec.Command("taskkill", "/IM", imageName).Run()
-		if err != nil && !isTaskkillNotFound(err) {
+		gracefulErr := exec.Command("taskkill", "/IM", imageName).Run()
+		if gracefulErr != nil && !isTaskkillNotFound(gracefulErr) {
 			// If graceful fails, try forceful shutdown as a fallback.
-			if forceErr := exec.Command("taskkill", "/F", "/IM", imageName).Run(); forceErr != nil && !isTaskkillNotFound(forceErr) {
-				err = fmt.Errorf("failed to stop '%s' gracefully or forcefully: %w", imageName, forceErr)
+			forcefulErr := exec.Command("taskkill", "/F", "/IM", imageName).Run()
+			if forcefulErr != nil && !isTaskkillNotFound(forcefulErr) {
+				// Both failed, so we create a new error that includes context from both attempts.
+				err := fmt.Errorf("failed to stop '%s' gracefully (%v) and forcefully (%v)", imageName, gracefulErr, forcefulErr)
 				if lastErr != nil {
 					lastErr = fmt.Errorf("%v; %w", lastErr, err)
 				} else {

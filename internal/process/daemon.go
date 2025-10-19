@@ -31,7 +31,7 @@ func pidFilePath() (string, error) {
 // WritePIDExclusive atomically creates the PID file with O_EXCL flag.
 // This prevents TOCTOU race conditions between checking if daemon is running
 // and writing the PID file. Returns an error if PID file already exists.
-func WritePIDExclusive(pid int) error {
+func WritePIDExclusive(pid int) (err error) {
 	if pid <= 0 {
 		return fmt.Errorf("process: write pid exclusive: invalid pid %d", pid)
 	}
@@ -49,7 +49,8 @@ func WritePIDExclusive(pid int) error {
 	
 	// Create file atomically with O_EXCL flag
 	flags := os.O_WRONLY | os.O_CREATE | os.O_EXCL
-	file, err := os.OpenFile(path, flags, pidFilePerms)
+	var file *os.File
+	file, err = os.OpenFile(path, flags, pidFilePerms)
 	if err != nil {
 		if os.IsExist(err) {
 			return fmt.Errorf("process: daemon already running (PID file exists)")
