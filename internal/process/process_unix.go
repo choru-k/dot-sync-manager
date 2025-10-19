@@ -175,6 +175,6 @@ func isValidProcessName(name string) bool {
 	}
 	// Check for any character that is NOT a letter, number, or one of the allowed symbols.
 	return strings.IndexFunc(name, func(r rune) bool {
-		return !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.')
+		return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' && r != '_' && r != '.'
 	}) == -1
 }

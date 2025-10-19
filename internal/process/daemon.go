@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/choru-k/dot-sync-manager/internal/util"
 )
 
 const (
@@ -54,11 +56,7 @@ func WritePIDExclusive(pid int) error {
 		}
 		return fmt.Errorf("process: write pid exclusive: %w", err)
 	}
-	defer func() {
-		if closeErr := file.Close(); closeErr != nil {
-			log.Printf("process: warning - failed to close PID file: %v", closeErr)
-		}
-	}()
+	defer util.CloseAndCaptureErr(file, &err)
 	
 	if _, err := file.WriteString(content); err != nil {
 		// Clean up on write failure
@@ -132,7 +130,7 @@ func readPID() (*pidInfo, error) {
 		return nil, fmt.Errorf("process: invalid pid value %q: %w", pidStr, convErr)
 	}
 	if pid <= 0 {
-		return nil, fmt.Errorf("process: invalid pid value %q: must be positive", pidStr)
+		return nil, fmt.Errorf("process: invalid pid value %q: must be positive: %w", pidStr, convErr)
 	}
 	
 	// Handle format-specific logic
@@ -157,8 +155,9 @@ func readPID() (*pidInfo, error) {
 // 2. Fall back to process discovery by name if PID file is missing/invalid
 //
 // Note: This function contains benign race conditions where a process could
-// terminate between checking existence and verifying name. These are acceptable
-// for daemon management purposes and don't affect correctness.
+// terminate between checking existence and verifying name. The worst case is
+// a false negative (reporting daemon not running when it just started), which
+// is acceptable for daemon management as subsequent operations will fail safely.
 // When falling back to process enumeration the lookup may be slow on systems
 // with many processes; callers should treat this as an infrequent operation.
 func IsDaemonRunning() bool {
@@ -263,7 +262,10 @@ func defaultProcessName() string {
 	return "dot-sync-manager"
 }
 
-// FindProcessByName exposes name lookup for callers that need it.
+// FindProcessByName searches for a running process by name across all processes.
+// Returns the PID of the first matching process (excluding the current process).
+// This operation may be slow as it involves process enumeration.
+// Returns an error if no matching process is found or if the name is invalid.
 func FindProcessByName(name string) (int, error) {
 	return findProcessByName(name)
 }

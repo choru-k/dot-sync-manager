@@ -65,17 +65,26 @@ func stopAllDaemons(name string) error {
 		return fmt.Errorf("process: invalid process name: %q", name)
 	}
 
-	if err := exec.Command("taskkill", "/F", "/IM", normalized+".exe").Run(); err != nil {
-		if !isTaskkillNotFound(err) {
-			return fmt.Errorf("process: stop daemons with .exe: %w", err)
-		}
-
-		if err := exec.Command("taskkill", "/F", "/IM", normalized).Run(); err != nil && !isTaskkillNotFound(err) {
-			return fmt.Errorf("process: stop daemons without .exe: %w", err)
+	var lastErr error
+	// Attempt to gracefully terminate processes with and without .exe extension.
+	for _, suffix := range []string{".exe", ""} {
+		imageName := normalized + suffix
+		// Attempt graceful shutdown first.
+		err := exec.Command("taskkill", "/IM", imageName).Run()
+		if err != nil && !isTaskkillNotFound(err) {
+			// If graceful fails, try forceful shutdown as a fallback.
+			if forceErr := exec.Command("taskkill", "/F", "/IM", imageName).Run(); forceErr != nil && !isTaskkillNotFound(forceErr) {
+				err = fmt.Errorf("failed to stop '%s' gracefully or forcefully: %w", imageName, forceErr)
+				if lastErr != nil {
+					lastErr = fmt.Errorf("%v; %w", lastErr, err)
+				} else {
+					lastErr = err
+				}
+			}
 		}
 	}
 
-	return nil
+	return lastErr
 }
 
 func isTaskkillNotFound(err error) bool {
