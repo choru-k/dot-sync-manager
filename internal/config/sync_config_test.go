@@ -13,6 +13,9 @@ import (
 	"github.com/choru-k/dot-sync-manager/internal/util"
 )
 
+// defaultFilePerms is the default file permission for config files (read/write for owner, read-only for others)
+const defaultFilePerms = 0644
+
 // mustDefaultConfig is a test helper that calls DefaultConfig and fails the test if it errors
 func mustDefaultConfig(t *testing.T) *SyncConfig {
 	t.Helper()
@@ -1062,7 +1065,7 @@ func TestStartAtBootMigration(t *testing.T) {
 
 		// Create temporary config file
 		tmpFile := t.TempDir() + "/config.json"
-		if err := os.WriteFile(tmpFile, []byte(jsonData), 0644); err != nil {
+		if err := os.WriteFile(tmpFile, []byte(jsonData), defaultFilePerms); err != nil {
 			t.Fatalf("Failed to write test config: %v", err)
 		}
 
@@ -1124,7 +1127,7 @@ func TestStartAtBootMigration(t *testing.T) {
 
 		// Create temporary config file
 		tmpFile := t.TempDir() + "/config.json"
-		if err := os.WriteFile(tmpFile, []byte(jsonData), 0644); err != nil {
+		if err := os.WriteFile(tmpFile, []byte(jsonData), defaultFilePerms); err != nil {
 			t.Fatalf("Failed to write test config: %v", err)
 		}
 
@@ -1186,7 +1189,7 @@ func TestStartAtBootMigration(t *testing.T) {
 
 		// Create temporary config file
 		tmpFile := t.TempDir() + "/config.json"
-		if err := os.WriteFile(tmpFile, []byte(jsonData), 0644); err != nil {
+		if err := os.WriteFile(tmpFile, []byte(jsonData), defaultFilePerms); err != nil {
 			t.Fatalf("Failed to write test config: %v", err)
 		}
 
