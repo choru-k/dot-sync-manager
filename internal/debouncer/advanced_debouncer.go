@@ -296,6 +296,12 @@ func (d *AdvancedDebouncer) TriggerManualSync(key string, fn func()) error {
 		result:    result,
 	}
 
+	// Double-check pattern to handle Time-of-Check-Time-of-Use (TOCTOU) race:
+	// 1. Fast-path check without holding lock (optimization for common case)
+	// 2. Full check under lock before channel operations
+	// This prevents races where Stop() could be called between checks
+	// while avoiding holding the lock during potentially blocking channel operations
+
 	// Check if debouncer is stopped with proper synchronization
 	d.manualSyncMu.Lock()
 	stopped := d.stopped
@@ -532,6 +538,12 @@ func (d *AdvancedDebouncer) TriggerManualSyncWithContext(ctx context.Context, ke
 		immediate: true,
 		result:    result,
 	}
+
+	// Double-check pattern to handle Time-of-Check-Time-of-Use (TOCTOU) race:
+	// 1. Fast-path check without holding lock (optimization for common case)
+	// 2. Full check under lock before channel operations
+	// This prevents races where Stop() could be called between checks
+	// while avoiding holding the lock during potentially blocking channel operations
 
 	// Check if debouncer is stopped with proper synchronization
 	d.manualSyncMu.Lock()

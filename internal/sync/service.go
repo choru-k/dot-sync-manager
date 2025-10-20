@@ -198,8 +198,8 @@ func (s *SyncService) Stop() error {
 
 	// Use sync.Once to ensure cleanup happens only once, even if called concurrently
 	s.stopOnce.Do(func() {
-		// State management simplified:
-		// - running (atomic int32): Single source of truth for running state
+		// State management explanation:
+		// - running (atomic int32): Fast atomic check for service state, used in IsRunning()
 		// - stopped (atomic int32): Prevents service reuse after Stop()
 		// This provides both performance (atomic reads) and thread safety
 		// with minimal complexity and no race conditions
