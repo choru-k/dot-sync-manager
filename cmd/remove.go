@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
-	"github.com/choru-k/dot-sync-manager/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -28,21 +27,16 @@ Examples:
 }
 
 var (
-	keepRepoFile bool
-	deleteAll    bool
+	deleteAll bool
 )
 
 func init() {
 	rootCmd.AddCommand(removeCmd)
-	removeCmd.Flags().BoolVar(&keepRepoFile, "keep-repo", true, "Keep file in dotfiles repository (default)")
 	removeCmd.Flags().BoolVar(&deleteAll, "delete-all", false, "Delete file from both home and repository")
 }
 
 func runRemove(cmd *cobra.Command, args []string) error {
-	// Validate flags
-	if deleteAll && keepRepoFile {
-		return fmt.Errorf("cannot use both --keep-repo and --delete-all flags")
-	}
+	// No conflicting flags to validate since --keep-repo was removed
 
 	filePath, err := validateRemoveTarget(args[0])
 	if err != nil {
@@ -82,7 +76,8 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	fmt.Printf("✅ Removed file from dotfiles tracking\n")
 	fmt.Printf("🔗 Symlink removed: %s\n", filePath)
 	if !deleteAll {
-		fmt.Printf("📄 File preserved in repository: %s\n", trackedFile)
+		fmt.Printf("📄 Original file restored to: %s\n", filePath)
+		fmt.Printf("📂 File preserved in repository: %s\n", trackedFile)
 	}
 	fmt.Printf("📂 Repository: %s\n", cfg.Git.RepoPath)
 
@@ -92,16 +87,13 @@ func runRemove(cmd *cobra.Command, args []string) error {
 }
 
 func validateRemoveTarget(rawPath string) (string, error) {
-	expandedPath, err := util.ExpandPath(rawPath)
+	expandedPath, err := validatePathExists(rawPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to expand file path %s: %w", rawPath, err)
+		return "", err
 	}
 
-	// Check if file/symlink exists
+	// Get file info for symlink check
 	fileInfo, err := os.Lstat(expandedPath)
-	if os.IsNotExist(err) {
-		return "", fmt.Errorf("file does not exist: %s", expandedPath)
-	}
 	if err != nil {
 		return "", fmt.Errorf("failed to stat file: %w", err)
 	}
@@ -178,7 +170,7 @@ func confirmRemoval(symlinkPath, trackedFile, mappingKey string) bool {
 	if deleteAll {
 		action = "delete both symlink and tracked file"
 	} else {
-		action = "remove symlink (keeping tracked file)"
+		action = "remove symlink and restore original file (keeping tracked file)"
 	}
 
 	fmt.Printf("\n⚠️  This will %s\n", action)
@@ -194,6 +186,13 @@ func confirmRemoval(symlinkPath, trackedFile, mappingKey string) bool {
 }
 
 func executeRemoval(cfg *config.SyncConfig, symlinkPath, trackedFile, mappingKey string) error {
+	// If not deleting all, restore the original file from repo to home location
+	if !deleteAll {
+		if err := restoreOriginalFile(trackedFile, symlinkPath); err != nil {
+			return fmt.Errorf("failed to restore original file: %w", err)
+		}
+	}
+
 	// Remove symlink
 	if err := os.Remove(symlinkPath); err != nil {
 		return fmt.Errorf("failed to remove symlink: %w", err)
@@ -204,6 +203,27 @@ func executeRemoval(cfg *config.SyncConfig, symlinkPath, trackedFile, mappingKey
 		if err := os.Remove(trackedFile); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove tracked file: %w", err)
 		}
+	}
+
+	return nil
+}
+
+func restoreOriginalFile(trackedFile, symlinkPath string) error {
+	// Get file info to preserve permissions
+	sourceInfo, err := os.Stat(trackedFile)
+	if err != nil {
+		return fmt.Errorf("failed to stat tracked file: %w", err)
+	}
+
+	// Copy the file from repository back to original home location
+	if err := copyFile(trackedFile, symlinkPath); err != nil {
+		return fmt.Errorf("failed to copy file from repository to home: %w", err)
+	}
+
+	// Preserve original file permissions
+	if err := os.Chmod(symlinkPath, sourceInfo.Mode()); err != nil {
+		// Non-fatal error - file was copied successfully
+		fmt.Printf("⚠️  Warning: could not preserve original file permissions: %v\n", err)
 	}
 
 	return nil

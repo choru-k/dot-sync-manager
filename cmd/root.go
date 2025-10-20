@@ -22,12 +22,6 @@ var (
 	verbose    bool
 )
 
-const (
-	// ConfigFileName is the PRD-standardized config filename
-	ConfigFileName = ".sync-config.json"
-	// LegacyConfigFileName is the historical config filename used before PRD standardization
-	LegacyConfigFileName = ".dotfile-sync.json"
-)
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{

@@ -137,15 +137,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 }
 
 func validateSourceFile(cmd *cobra.Command, rawPath string) (string, error) {
-	expandedPath, err := util.ExpandPath(rawPath)
+	expandedPath, err := validatePathExists(rawPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to expand file path %s: %w", rawPath, err)
+		return "", err
 	}
 
 	fileInfo, err := os.Lstat(expandedPath)
-	if os.IsNotExist(err) {
-		return "", fmt.Errorf("file does not exist: %s", expandedPath)
-	}
 	if err != nil {
 		return "", fmt.Errorf("failed to stat file: %w", err)
 	}
@@ -469,7 +466,9 @@ func copyFile(src, dst string) (err error) {
 	return destFile.Sync()
 }
 
-// isSensitiveFile checks if a file path matches patterns for sensitive files.
+// isSensitiveFile checks if a file path matches patterns for sensitive files that should not
+// be stored in version control. This includes SSH keys, credentials, GPG keys, and other
+// sensitive configuration files. Returns true if the file matches any sensitive pattern.
 func isSensitiveFile(path string) bool {
 	// Normalize path separators
 	path = filepath.ToSlash(path)

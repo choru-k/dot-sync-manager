@@ -2,8 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
+
+	"github.com/choru-k/dot-sync-manager/internal/util"
 )
 
 // Constants for validation
@@ -42,4 +45,28 @@ func validateConfigKey(key string) error {
 	}
 
 	return nil
+}
+
+// validatePathExists expands a path and checks if it exists
+// Returns the expanded path and any error encountered
+func validatePathExists(rawPath string) (string, error) {
+	if rawPath == "" {
+		return "", fmt.Errorf("path cannot be empty")
+	}
+
+	expandedPath, err := util.ExpandPath(rawPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to expand file path %s: %w", rawPath, err)
+	}
+
+	// Check if file/symlink exists
+	_, err = os.Lstat(expandedPath)
+	if os.IsNotExist(err) {
+		return "", fmt.Errorf("file does not exist: %s", expandedPath)
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to stat file: %w", err)
+	}
+
+	return expandedPath, nil
 }

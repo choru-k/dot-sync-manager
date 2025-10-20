@@ -18,6 +18,15 @@ const (
 	editorVSCode   = "code"
 )
 
+// Configuration file name constants
+const (
+	// ConfigFileName is the PRD-standardized config filename
+	ConfigFileName = ".sync-config.json"
+
+	// LegacyConfigFileName is the historical config filename used before PRD standardization
+	LegacyConfigFileName = ".dotfile-sync.json"
+)
+
 // Default .syncignore template with common exclusion patterns
 const defaultIgnoreContent = `# .syncignore - Files and directories to exclude from sync
 # Uses gitignore-style syntax
