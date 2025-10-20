@@ -481,24 +481,10 @@ func LoadFromFile(filename string) (*SyncConfig, error) {
 		return nil, fmt.Errorf("config: failed to read config file: %w", err)
 	}
 
-	// Parse JSON into a temporary config to preserve existing StartAtBoot value
-	// This handles the migration from StartAtBoot=false (old default) to StartAtBoot=true (new default)
-	var tempConfig struct {
-		UI struct {
-			StartAtBoot *bool `json:"start_at_boot"`
-		} `json:"ui"`
-	}
-	
-	// Try to parse the existing StartAtBoot value before full unmarshaling
-	if parseErr := json.Unmarshal(data, &tempConfig); parseErr == nil {
-		// If start_at_boot was explicitly set in the existing config, preserve it
-		if tempConfig.UI.StartAtBoot != nil {
-			config.UI.StartAtBoot = *tempConfig.UI.StartAtBoot
-		}
-		// If start_at_boot was not explicitly set (nil), keep the new default (true)
-	}
-
-	// Parse JSON into the full config
+	// Parse JSON into the config struct. Since we started with DefaultConfig(),
+	// any fields missing from the JSON (like 'start_at_boot' in older configs)
+	// will retain their new default values. Explicit values in the JSON
+	// (like 'start_at_boot: false') will correctly overwrite the defaults.
 	if err := json.Unmarshal(data, config); err != nil {
 		return nil, fmt.Errorf("config: failed to parse config file: %w", err)
 	}
