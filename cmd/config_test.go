@@ -192,10 +192,10 @@ func TestRunConfigEdit(t *testing.T) {
 				}
 			}
 
-			err := runConfigEdit(cmd, []string{})
+			err := runConfig(cmd, []string{})
 			// In test environment, this might fail to launch editor
 			// So we expect it might return an error
-			t.Logf("runConfigEdit() result: %v", err)
+			t.Logf("runConfig() result: %v", err)
 		})
 	}
 }

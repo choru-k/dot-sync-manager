@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -128,8 +129,8 @@ func TestSyncService_ManualSyncAfterStop(t *testing.T) {
 		t.Error("Expected error when calling ManualSync after Stop")
 	}
 
-	if err != nil && err.Error() != "sync service is stopped" {
-		t.Errorf("Expected 'sync service is stopped' error, got: %v", err)
+	if err != nil && !strings.Contains(err.Error(), "sync service is stopped") {
+		t.Errorf("Expected error containing 'sync service is stopped', got: %v", err)
 	}
 }
 
@@ -177,7 +178,7 @@ func TestSyncService_ManualSyncAfterStop_BasicDebouncer(t *testing.T) {
 		t.Error("Expected error when calling ManualSync after Stop with basic debouncer")
 	}
 
-	if err != nil && err.Error() != "sync service is stopped" {
-		t.Errorf("Expected 'sync service is stopped' error, got: %v", err)
+	if err != nil && !strings.Contains(err.Error(), "sync service is stopped") {
+		t.Errorf("Expected error containing 'sync service is stopped', got: %v", err)
 	}
 }

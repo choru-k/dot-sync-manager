@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -58,6 +59,14 @@ type AdvancedDebouncer struct {
 
 	// Shutdown handling
 	done chan struct{}
+
+	// Context for cancellation
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	// Start/stop state management
+	started int32 // atomic.Bool replacement: 1 = started, 0 = not started
+	startMu sync.Mutex
 }
 
 type manualSyncRequest struct {
@@ -124,7 +133,7 @@ func NewAdvanced(config AdvancedDebouncerConfig) *AdvancedDebouncer {
 		config.ManualSyncTimeout = DefaultAdvancedConfig().ManualSyncTimeout
 	}
 
-	return &AdvancedDebouncer{
+	debouncer := &AdvancedDebouncer{
 		baseDelay:          config.BaseDelay,
 		currentDelay:       config.BaseDelay,
 		maxDelay:           config.MaxDelay,
@@ -141,11 +150,22 @@ func NewAdvanced(config AdvancedDebouncerConfig) *AdvancedDebouncer {
 		manualSyncTimeout:  config.ManualSyncTimeout,
 		maxActivityHistory: DefaultMaxActivityHistory, // Cap to prevent unbounded growth
 		done:               make(chan struct{}),
+		started:            0, // Initialize as not started
 	}
+
+	// Initialize context for cancellation
+	debouncer.ctx, debouncer.cancel = context.WithCancel(context.Background())
+
+	return debouncer
 }
 
 // Add adds a function to be debounced with advanced backoff logic
 func (d *AdvancedDebouncer) Add(key string, fn func()) {
+	d.AddWithContext(context.Background(), key, fn)
+}
+
+// AddWithContext adds a function to be debounced with advanced backoff logic and context support
+func (d *AdvancedDebouncer) AddWithContext(ctx context.Context, key string, fn func()) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -165,22 +185,84 @@ func (d *AdvancedDebouncer) Add(key string, fn func()) {
 	// Store the callback
 	d.callback[key] = fn
 
-	// Capture the callback to avoid race conditions
+	// Capture the callback and context to avoid race conditions
 	capturedFn := fn
+	capturedCtx := ctx
 
 	// Create new timer with calculated delay
 	d.timers[key] = time.AfterFunc(delay, func() {
+		// Check if context is cancelled before proceeding
+		select {
+		case <-capturedCtx.Done():
+			// Context cancelled, don't execute callback
+			d.mu.Lock()
+			delete(d.timers, key)
+			delete(d.callback, key)
+			d.mu.Unlock()
+			return
+		case <-d.ctx.Done():
+			// Debouncer context cancelled, don't execute callback
+			d.mu.Lock()
+			delete(d.timers, key)
+			delete(d.callback, key)
+			d.mu.Unlock()
+			return
+		default:
+			// Both contexts are still valid, proceed
+		}
+
 		d.mu.Lock()
 		defer d.mu.Unlock()
 
-		// Execute the captured callback with panic recovery
+		// Double-check context cancellation after acquiring lock
+		select {
+		case <-capturedCtx.Done():
+			// Context cancelled, clean up and return
+			delete(d.timers, key)
+			delete(d.callback, key)
+			return
+		case <-d.ctx.Done():
+			// Debouncer context cancelled, clean up and return
+			delete(d.timers, key)
+			delete(d.callback, key)
+			return
+		default:
+			// Both contexts are still valid, proceed
+		}
+
+		// Execute the captured callback with panic recovery and context awareness
 		defer func() {
 			if r := recover(); r != nil {
 				// Log panic if needed, but don't crash
 				log.Printf("Warning: panic in debounced callback for key %s: %v", key, r)
 			}
 		}()
-		capturedFn()
+
+		// Execute callback in a separate goroutine to allow context cancellation
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("Warning: panic in debounced callback goroutine for key %s: %v", key, r)
+				}
+			}()
+			capturedFn()
+		}()
+
+		// Wait for callback completion or context cancellation
+		select {
+		case <-done:
+			// Callback completed successfully
+		case <-capturedCtx.Done():
+			// Context cancelled during execution
+			log.Printf("Callback for key %s cancelled by context", key)
+			// Note: We can't interrupt the running goroutine, but we can clean up
+		case <-d.ctx.Done():
+			// Debouncer context cancelled during execution
+			log.Printf("Callback for key %s cancelled by debouncer context", key)
+			// Note: We can't interrupt the running goroutine, but we can clean up
+		}
 
 		// Clean up
 		delete(d.timers, key)
@@ -515,6 +597,12 @@ func (d *AdvancedDebouncer) GetStats() map[string]interface{} {
 func (d *AdvancedDebouncer) Stop() {
 	d.CancelAll()
 
+	// Cancel the context to stop any pending callbacks
+	d.cancel()
+
+	// Reset started flag to allow restart if needed
+	atomic.StoreInt32(&d.started, 0)
+
 	// Signal shutdown to queue processor
 	close(d.done)
 
@@ -537,6 +625,27 @@ func (d *AdvancedDebouncer) Stop() {
 // Note: The manual sync queue processor is designed to be robust and will
 // handle requests even if called immediately after Start(). The queue has
 // a buffer of 100 items to handle rapid successive requests.
+//
+// This method is thread-safe and will only start the goroutine once,
+// even if called multiple times from different goroutines.
 func (d *AdvancedDebouncer) Start() {
+	// Use atomic check first for fast path (avoid lock if already started)
+	if atomic.LoadInt32(&d.started) == 1 {
+		return // Already started
+	}
+
+	// Use mutex to ensure only one goroutine is started
+	d.startMu.Lock()
+	defer d.startMu.Unlock()
+
+	// Double-check with mutex protection
+	if atomic.LoadInt32(&d.started) == 1 {
+		return // Already started (another goroutine won the race)
+	}
+
+	// Mark as started before launching goroutine
+	atomic.StoreInt32(&d.started, 1)
+
+	// Start the goroutine
 	go d.processManualSyncQueue()
 }

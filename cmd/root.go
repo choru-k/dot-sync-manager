@@ -126,6 +126,10 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 
 	gitCfg := cfg.ToGitManagerConfig()
+	// gitCfg is a struct, not a pointer, so we validate its fields instead of checking for nil
+	if gitCfg.RepoPath == "" {
+		return fmt.Errorf("failed to create git manager configuration: invalid repository path")
+	}
 	gitMgr, err := gitmanager.NewGitManager(ctx, gitCfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize git manager: %w", err)
@@ -142,8 +146,10 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	}
 
 	if err := process.WritePIDExclusive(os.Getpid()); err != nil {
-		if stopErr := service.Stop(); stopErr != nil {
-			return fmt.Errorf("failed to write PID file: %w; also failed to stop service: %w", err, stopErr)
+		if service != nil {
+			if stopErr := service.Stop(); stopErr != nil {
+				return fmt.Errorf("failed to write PID file: %w; also failed to stop service: %w", err, stopErr)
+			}
 		}
 		return fmt.Errorf("failed to write PID file: %w", err)
 	}
@@ -157,8 +163,10 @@ func runRoot(cmd *cobra.Command, args []string) error {
 
 	defer func() {
 		signal.Stop(signalCh)
-		if err := service.Stop(); err != nil {
-			log.Printf("sync: warning - failed to stop service gracefully: %v", err)
+		if service != nil {
+			if err := service.Stop(); err != nil {
+				log.Printf("sync: warning - failed to stop service gracefully: %v", err)
+			}
 		}
 		if err := process.RemovePID(); err != nil {
 			log.Printf("process: warning - failed to remove PID file: %v", err)

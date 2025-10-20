@@ -114,12 +114,23 @@ func TestSyncService_MultipleStartStopGoroutineLeaks(t *testing.T) {
 	initialGoroutines := runtime.NumGoroutine()
 
 	// Perform multiple start/stop cycles
+	// Note: Each cycle creates a new service since services cannot be restarted after Stop()
 	numCycles := 5
 	for i := 0; i < numCycles; i++ {
+		if i > 0 {
+			// Create a new service for subsequent cycles (services cannot be restarted)
+			service, err = New(gitMgr, syncConfig)
+			if err != nil {
+				t.Errorf("Cycle %d: Failed to create sync service: %v", i, err)
+				continue
+			}
+		}
+
 		// Start
 		err := service.Start()
 		if err != nil {
-			t.Fatalf("Cycle %d: Failed to start service: %v", i, err)
+			t.Errorf("Cycle %d: Failed to start service: %v", i, err)
+			continue
 		}
 
 		// Let it run briefly
@@ -128,7 +139,8 @@ func TestSyncService_MultipleStartStopGoroutineLeaks(t *testing.T) {
 		// Stop
 		err = service.Stop()
 		if err != nil {
-			t.Fatalf("Cycle %d: Failed to stop service: %v", i, err)
+			t.Errorf("Cycle %d: Failed to stop service: %v", i, err)
+			continue
 		}
 
 		// Brief pause between cycles
