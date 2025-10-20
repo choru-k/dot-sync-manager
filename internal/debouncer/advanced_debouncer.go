@@ -71,7 +71,10 @@ type AdvancedDebouncer struct {
 	done chan struct{}
 	stopped bool // Track stopped state to prevent race conditions
 
-// Context for cancellation
+	// Goroutine coordination for graceful shutdown
+	shutdownWG sync.WaitGroup
+
+	// Context for cancellation
 	ctx    context.Context
 	cancel context.CancelFunc
 
@@ -282,13 +285,13 @@ func (d *AdvancedDebouncer) AddImmediate(key string, fn func()) {
 			}
 		}()
 		fn()
-	}()
+	})
 }
 
-// TriggerManualSync executes a manual sync with proper queue handling
-func (d *AdvancedDebouncer) TriggerManualSync(key string, fn func()) error {
-	result := make(chan error, 1)
-
+// triggerManualSyncInternal implements the core logic for manual sync operations
+// with simplified locking pattern and optional context support.
+// Returns whether the request was queued to the channel or handled directly.
+func (d *AdvancedDebouncer) triggerManualSyncInternal(ctx context.Context, key string, fn func(), result chan error) (bool, error) {
 	request := manualSyncRequest{
 		fn:        fn,
 		key:       key,
@@ -296,37 +299,49 @@ func (d *AdvancedDebouncer) TriggerManualSync(key string, fn func()) error {
 		result:    result,
 	}
 
-	// Double-check pattern to handle Time-of-Check-Time-of-Use (TOCTOU) race:
-	// 1. Fast-path check without holding lock (optimization for common case)
-	// 2. Full check under lock before channel operations
-	// This prevents races where Stop() could be called between checks
-	// while avoiding holding the lock during potentially blocking channel operations
-
-	// Check if debouncer is stopped with proper synchronization
-	d.manualSyncMu.Lock()
-	stopped := d.stopped
-	d.manualSyncMu.Unlock()
-
-	if stopped {
-		return fmt.Errorf("debouncer is stopped")
-	}
-
-	// Send request to manual sync queue with proper synchronization
+	// Simplified locking pattern: single lock/unlock pair around check and select
 	d.manualSyncMu.Lock()
 	if d.stopped {
 		d.manualSyncMu.Unlock()
-		return fmt.Errorf("debouncer is stopped")
+		return false, fmt.Errorf("debouncer is stopped")
 	}
 
-	// Try to send to queue, but handle the race where Stop() closes the channel
+	// Try to send to queue. The select has a default so it won't block.
+	var sent bool
 	select {
 	case d.manualSyncQueue <- request:
-		d.manualSyncMu.Unlock()
+		sent = true
 		// Request queued successfully
-	default:
+	case <-ctx.Done():
+		// Context cancelled during send attempt
 		d.manualSyncMu.Unlock()
+		return false, ctx.Err()
+	default:
 		// Queue is full, execute directly
-		go d.handleManualSync(request)
+		sent = false
+	}
+	d.manualSyncMu.Unlock()
+
+	return sent, nil
+}
+
+// TriggerManualSync executes a manual sync with proper queue handling
+func (d *AdvancedDebouncer) TriggerManualSync(key string, fn func()) error {
+	result := make(chan error, 1)
+
+	sent, err := d.triggerManualSyncInternal(context.Background(), key, fn, result)
+	if err != nil {
+		return err
+	}
+
+	if !sent {
+		// Execute directly since queue was full
+		go d.handleManualSync(manualSyncRequest{
+			fn:        fn,
+			key:       key,
+			immediate: true,
+			result:    result,
+		})
 	}
 
 	// Wait for result or timeout
@@ -532,47 +547,19 @@ func (d *AdvancedDebouncer) GetActivityCount() int {
 func (d *AdvancedDebouncer) TriggerManualSyncWithContext(ctx context.Context, key string, fn func()) error {
 	result := make(chan error, 1)
 
-	request := manualSyncRequest{
-		fn:        fn,
-		key:       key,
-		immediate: true,
-		result:    result,
+	sent, err := d.triggerManualSyncInternal(ctx, key, fn, result)
+	if err != nil {
+		return err
 	}
 
-	// Double-check pattern to handle Time-of-Check-Time-of-Use (TOCTOU) race:
-	// 1. Fast-path check without holding lock (optimization for common case)
-	// 2. Full check under lock before channel operations
-	// This prevents races where Stop() could be called between checks
-	// while avoiding holding the lock during potentially blocking channel operations
-
-	// Check if debouncer is stopped with proper synchronization
-	d.manualSyncMu.Lock()
-	stopped := d.stopped
-	d.manualSyncMu.Unlock()
-
-	if stopped {
-		return fmt.Errorf("debouncer is stopped")
-	}
-
-	// Send request to manual sync queue with proper synchronization
-	d.manualSyncMu.Lock()
-	if d.stopped {
-		d.manualSyncMu.Unlock()
-		return fmt.Errorf("debouncer is stopped")
-	}
-
-	// Try to send to queue, but handle the race where Stop() closes the channel
-	select {
-	case d.manualSyncQueue <- request:
-		d.manualSyncMu.Unlock()
-		// Request queued successfully
-	case <-ctx.Done():
-		d.manualSyncMu.Unlock()
-		return ctx.Err()
-	default:
-		d.manualSyncMu.Unlock()
-		// Queue is full, execute directly
-		go d.handleManualSync(request)
+	if !sent {
+		// Execute directly since queue was full or context cancelled
+		go d.handleManualSync(manualSyncRequest{
+			fn:        fn,
+			key:       key,
+			immediate: true,
+			result:    result,
+		})
 	}
 
 	// Wait for result, timeout, or context cancellation
@@ -659,8 +646,12 @@ func (d *AdvancedDebouncer) Stop() {
 		// Close the queue to unblock any remaining operations
 		close(d.manualSyncQueue)
 
-		// Give a brief moment for clean shutdown
-		time.Sleep(DefaultShutdownTimeout)
+		// Wait for the goroutine to finish processing
+		// This ensures clean shutdown without relying on arbitrary timeouts
+		d.shutdownWG.Wait()
+
+		// The actual goroutine should exit quickly due to the done signal and queue closure
+		// Any remaining operations will naturally complete or timeout
 	})
 }
 
@@ -694,6 +685,10 @@ func (d *AdvancedDebouncer) Start() {
 	// Mark as started before launching goroutine
 	atomic.StoreInt32(&d.started, 1)
 
-	// Start the goroutine
-	go d.processManualSyncQueue()
+	// Start the goroutine with WaitGroup coordination
+	d.shutdownWG.Add(1)
+	go func() {
+		defer d.shutdownWG.Done()
+		d.processManualSyncQueue()
+	}()
 }
