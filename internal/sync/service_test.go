@@ -418,7 +418,7 @@ func TestSyncService_MultipleStopCalls(t *testing.T) {
 	}
 
 	// Test multiple sequential Stop() calls on non-started service
-	{
+	t.Run("on non-started service", func(t *testing.T) {
 		syncConfig := &Config{
 			RepoPath:        tmpDir,
 			AutoSyncEnabled: false,
@@ -438,10 +438,10 @@ func TestSyncService_MultipleStopCalls(t *testing.T) {
 		for i := 0; i < 5; i++ {
 			service.Stop() // Should not panic
 		}
-	}
+	})
 
 	// Test multiple sequential Stop() calls on running service
-	{
+	t.Run("on running service", func(t *testing.T) {
 		syncConfig := &Config{
 			RepoPath:        tmpDir,
 			AutoSyncEnabled: false,
@@ -464,7 +464,7 @@ func TestSyncService_MultipleStopCalls(t *testing.T) {
 
 		// Test multiple sequential Stop() calls on running service
 		for i := 0; i < 5; i++ {
-			service.Stop() // Should not panic, cleanup should happen only once
+			service.Stop()                    // Should not panic, cleanup should happen only once
 			time.Sleep(10 * time.Millisecond) // Small delay between calls
 		}
 
@@ -475,7 +475,7 @@ func TestSyncService_MultipleStopCalls(t *testing.T) {
 		if service.IsRunning() {
 			t.Error("Service should be stopped")
 		}
-	}
+	})
 
 	t.Log("Multiple Stop calls test completed successfully")
 }

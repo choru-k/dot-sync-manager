@@ -38,7 +38,7 @@ func TestAdvancedDebouncer_BasicDebounce(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	t.Cleanup(func() { debouncer.Stop() })
 
 	var callCount int
 	var mu sync.Mutex
@@ -81,7 +81,7 @@ func TestAdvancedDebouncer_ImmediateExecution(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	t.Cleanup(func() { debouncer.Stop() })
 
 	var callCount int
 	var mu sync.Mutex
@@ -109,7 +109,7 @@ func TestAdvancedDebouncer_TriggerManualSync(t *testing.T) {
 	config := DefaultAdvancedConfig()
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	t.Cleanup(func() { debouncer.Stop() })
 
 	var callCount int
 	var mu sync.Mutex
@@ -149,7 +149,7 @@ func TestAdvancedDebouncer_ChurnDetection(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	t.Cleanup(func() { debouncer.Stop() })
 
 	var callCount int
 	var mu sync.Mutex
@@ -209,7 +209,7 @@ func TestAdvancedDebouncer_ExponentialBackoff(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	t.Cleanup(func() { debouncer.Stop() })
 
 	var callCount int
 	var mu sync.Mutex
@@ -249,7 +249,7 @@ func TestAdvancedDebouncer_Cancel(t *testing.T) {
 	config := DefaultAdvancedConfig()
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	t.Cleanup(func() { debouncer.Stop() })
 
 	var callCount int
 	var mu sync.Mutex
@@ -284,7 +284,7 @@ func TestAdvancedDebouncer_CancelAll(t *testing.T) {
 	config := DefaultAdvancedConfig()
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	t.Cleanup(func() { debouncer.Stop() })
 
 	var callCount int
 	var mu sync.Mutex
@@ -321,7 +321,7 @@ func TestAdvancedDebouncer_GetStats(t *testing.T) {
 	config := DefaultAdvancedConfig()
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	t.Cleanup(func() { debouncer.Stop() })
 
 	var callCount int
 	var mu sync.Mutex
@@ -435,7 +435,7 @@ func TestAdvancedDebouncer_ConcurrentAccess(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	t.Cleanup(func() { debouncer.Stop() })
 
 	var wg sync.WaitGroup
 	numGoroutines := 10
@@ -564,7 +564,7 @@ func TestAdvancedDebouncer_ConcurrentStopWithOperations(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	t.Cleanup(func() { debouncer.Stop() })
 
 	var operationCount int64
 	var wg sync.WaitGroup

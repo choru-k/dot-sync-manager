@@ -61,9 +61,6 @@ type SyncService struct {
 	// Deadlock prevention: track if Stop() is called from eventLoop
 	inEventLoop int32 // atomic.Bool: 1 if in eventLoop, 0 otherwise
 
-	// Thread safety
-	stopOnce sync.Once
-
 	// Event callbacks
 	onSyncStart    func()
 	onSyncComplete func(files []string, err error)
