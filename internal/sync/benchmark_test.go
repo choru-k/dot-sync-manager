@@ -156,7 +156,11 @@ func BenchmarkSyncService_IsRunning(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to start service: %v", err)
 	}
-	defer service.Stop()
+	defer func() {
+		if err := service.Stop(); err != nil {
+			b.Fatalf("Failed to stop service: %v", err)
+		}
+	}()
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -200,7 +204,11 @@ func BenchmarkSyncService_ManualSync(b *testing.B) {
 	if err != nil {
 		b.Fatalf("Failed to start service: %v", err)
 	}
-	defer service.Stop()
+	defer func() {
+		if err := service.Stop(); err != nil {
+			b.Fatalf("Failed to stop service: %v", err)
+		}
+	}()
 
 	b.ResetTimer()
 	b.ReportAllocs()

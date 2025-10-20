@@ -60,7 +60,11 @@ func TestSyncService_ManualSyncWithAutoSyncDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to start sync service: %v", err)
 	}
-	defer syncService.Stop()
+	defer func() {
+		if err := syncService.Stop(); err != nil {
+			t.Fatalf("Failed to stop sync service: %v", err)
+		}
+	}()
 
 	// Test manual sync - should work even though AutoSyncEnabled is false
 	err = syncService.ManualSync()
@@ -121,7 +125,9 @@ func TestSyncService_ManualSyncAfterStop(t *testing.T) {
 	}
 
 	// Stop the service
-	syncService.Stop()
+	if err := syncService.Stop(); err != nil {
+		t.Fatalf("Failed to stop sync service: %v", err)
+	}
 
 	// Test manual sync after stop - should return error, not panic
 	err = syncService.ManualSync()
@@ -170,7 +176,9 @@ func TestSyncService_ManualSyncAfterStop_BasicDebouncer(t *testing.T) {
 		t.Fatalf("Failed to start sync service: %v", err)
 	}
 
-	syncService.Stop()
+	if err := syncService.Stop(); err != nil {
+		t.Fatalf("Failed to stop sync service: %v", err)
+	}
 
 	// Should also return error with basic debouncer
 	err = syncService.ManualSync()

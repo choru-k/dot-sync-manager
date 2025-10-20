@@ -154,7 +154,12 @@ func runForegroundDaemon(cfg *config.SyncConfig) error {
 	if err := syncSvc.Start(); err != nil {
 		return fmt.Errorf("failed to start sync service: %w", err)
 	}
-	defer syncSvc.Stop()
+	defer func() {
+		if err := syncSvc.Stop(); err != nil {
+			// Log error but don't fail shutdown
+			fmt.Printf("Warning: error stopping sync service: %v\n", err)
+		}
+	}()
 
 	if err := process.WritePIDExclusive(os.Getpid()); err != nil {
 		return fmt.Errorf("failed to write PID file: %w", err)
