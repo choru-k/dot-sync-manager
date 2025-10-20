@@ -75,7 +75,9 @@ func TestConfigValidation(t *testing.T) {
 			name: "empty machine name",
 			config: func() *SyncConfig {
 				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				c.Machine.Name = ""
 				return c
 			}(),
@@ -85,7 +87,9 @@ func TestConfigValidation(t *testing.T) {
 			name: "empty repo path",
 			config: func() *SyncConfig {
 				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				c.Git.RepoPath = ""
 				return c
 			}(),
@@ -95,7 +99,9 @@ func TestConfigValidation(t *testing.T) {
 			name: "relative repo path",
 			config: func() *SyncConfig {
 				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				c.Git.RepoPath = "relative/path"
 				return c
 			}(),
@@ -105,7 +111,9 @@ func TestConfigValidation(t *testing.T) {
 			name: "empty author name",
 			config: func() *SyncConfig {
 				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				c.Git.AuthorName = ""
 				return c
 			}(),
@@ -115,7 +123,9 @@ func TestConfigValidation(t *testing.T) {
 			name: "negative pull interval",
 			config: func() *SyncConfig {
 				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				c.Sync.PullIntervalSeconds = -1
 				return c
 			}(),
@@ -125,7 +135,9 @@ func TestConfigValidation(t *testing.T) {
 			name: "zero debounce",
 			config: func() *SyncConfig {
 				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				c.Sync.DebounceSeconds = 0
 				return c
 			}(),
@@ -523,7 +535,9 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			name: "empty version",
 			config: func() *SyncConfig {
 				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				c.Version = ""
 				return c
 			}(),
@@ -534,7 +548,9 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			name: "invalid email format",
 			config: func() *SyncConfig {
 				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				c.Git.AuthorEmail = "invalid-email"
 				return c
 			}(),
@@ -545,7 +561,9 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			name: "pull interval too short",
 			config: func() *SyncConfig {
 				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				c.Sync.PullIntervalSeconds = 30
 				return c
 			}(),
@@ -556,7 +574,9 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			name: "debounce exceeds pull interval",
 			config: func() *SyncConfig {
 				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				c.Sync.PullIntervalSeconds = 300
 				c.Sync.DebounceSeconds = 400
 				return c
@@ -568,7 +588,9 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			name: "invalid conflict strategy",
 			config: func() *SyncConfig {
 				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				c.ConflictResolution.Strategy = "invalid"
 				return c
 			}(),
@@ -579,7 +601,9 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			name: "empty conflict strategy",
 			config: func() *SyncConfig {
 				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				c.ConflictResolution.Strategy = ""
 				return c
 			}(),
@@ -590,7 +614,9 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			name: "backup retention too long",
 			config: func() *SyncConfig {
 				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				c.ConflictResolution.KeepBackupsDays = 500
 				return c
 			}(),
@@ -601,7 +627,9 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			name: "invalid UI theme",
 			config: func() *SyncConfig {
 				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				c.UI.Theme = "invalid"
 				return c
 			}(),
@@ -612,7 +640,9 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			name: "empty UI theme",
 			config: func() *SyncConfig {
 				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				c.UI.Theme = ""
 				return c
 			}(),
@@ -623,7 +653,9 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			name: "log size too large",
 			config: func() *SyncConfig {
 				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				c.Advanced.MaxLogSizeMB = 2000
 				return c
 			}(),
@@ -634,7 +666,9 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			name: "mapping target requires absolute path",
 			config: func() *SyncConfig {
 				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				c.Mappings = map[string]string{
 					"bashrc": "relative/path", // Relative path should fail validation
 				}
@@ -647,7 +681,9 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			name: "valid mapping target with absolute path",
 			config: func() *SyncConfig {
 				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				// Use absolute paths (as they would be after expandPaths())
 				homeDir, err := os.UserHomeDir()
 				if err != nil {
@@ -665,7 +701,9 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			name: "empty mapping source",
 			config: func() *SyncConfig {
 				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				if err != nil {
+					t.Fatal(err)
+				}
 				c.Mappings = map[string]string{
 					"": "~/.bashrc",
 				}
@@ -685,6 +723,267 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			}
 			if tt.wantErr && tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
 				t.Errorf("Expected error message to contain '%s', got '%s'", tt.errMsg, err.Error())
+			}
+		})
+	}
+}
+
+func TestMachineConfigJSONCompatibility(t *testing.T) {
+	tests := []struct {
+		name           string
+		jsonData       string
+		expectName     string
+		expectError    bool
+		expectedErrMsg string
+	}{
+		{
+			name:        "marshal to string",
+			jsonData:    "", // Not used for marshal test
+			expectName:  "test-machine",
+			expectError: false,
+		},
+		{
+			name:        "PRD string input",
+			jsonData:    `"prd-machine"`,
+			expectName:  "prd-machine",
+			expectError: false,
+		},
+		{
+			name:        "legacy object input",
+			jsonData:    `{"name": "legacy-machine"}`,
+			expectName:  "legacy-machine",
+			expectError: false,
+		},
+		{
+			name:           "invalid format error",
+			jsonData:       `123`,
+			expectName:     "",
+			expectError:    true,
+			expectedErrMsg: "machine config must be a string or object with 'name' field",
+		},
+		{
+			name:        "empty object valid legacy case",
+			jsonData:    `{}`,
+			expectName:  "", // Empty name is acceptable for legacy configs and validated later
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.name == "marshal to string" {
+				// Test marshaling to string format
+				mc := MachineConfig{Name: tt.expectName}
+				data, err := json.Marshal(mc)
+				if err != nil {
+					t.Fatalf("Failed to marshal MachineConfig: %v", err)
+				}
+
+				// Verify it's a string, not an object
+				var strVal string
+				if err := json.Unmarshal(data, &strVal); err != nil {
+					t.Errorf("Expected marshaled data to be a string, got: %s", string(data))
+				}
+
+				if strVal != tt.expectName {
+					t.Errorf("Expected marshaled name '%s', got '%s'", tt.expectName, strVal)
+				}
+				return
+			}
+
+			// Test unmarshaling from JSON
+			var mc MachineConfig
+			err := json.Unmarshal([]byte(tt.jsonData), &mc)
+
+			if tt.expectError {
+				if err == nil {
+					t.Error("Expected error but got none")
+					return
+				}
+				if tt.expectedErrMsg != "" && !strings.Contains(err.Error(), tt.expectedErrMsg) {
+					t.Errorf("Expected error message to contain '%s', got '%s'", tt.expectedErrMsg, err.Error())
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+
+			if mc.Name != tt.expectName {
+				t.Errorf("Expected name '%s', got '%s'", tt.expectName, mc.Name)
+			}
+		})
+	}
+}
+
+func TestGitConfigUnmarshalPreservesDefaults(t *testing.T) {
+	// Create a GitConfig with default values
+	originalConfig := GitConfig{
+		RepoPath:       "/default/repo",
+		RemoteURL:      "https://github.com/default/default.git",
+		RemoteName:     "origin",
+		Branch:         "main",
+		AuthorName:     "Default User",
+		AuthorEmail:    "default@example.com",
+		AuthType:       gitmanager.AuthStrategySSH,
+		Username:       "defaultuser",
+		Password:       "defaultpass",
+		SSHKeyPath:     "/default/key",
+		KnownHostsPath: "/default/known_hosts",
+	}
+
+	tests := []struct {
+		name     string
+		jsonData string
+	}{
+		{
+			name:     "empty JSON preserves all defaults",
+			jsonData: `{}`,
+		},
+		{
+			name:     "partial JSON only overwrites present fields",
+			jsonData: `{"repo_path": "/custom/repo"}`,
+		},
+		{
+			name:     "null JSON preserves all defaults",
+			jsonData: `{"repo_path": null, "remote_url": null, "remote": null, "branch": null, "user_name": null, "user_email": null}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Copy the original config to avoid modifying it
+			config := originalConfig
+
+			err := json.Unmarshal([]byte(tt.jsonData), &config)
+			if err != nil {
+				t.Fatalf("Unexpected error unmarshaling JSON: %v", err)
+			}
+
+			// Verify defaults are preserved based on what was in JSON
+			if strings.Contains(tt.jsonData, "repo_path") && !strings.Contains(tt.jsonData, "null") {
+				// If repo_path was set to a non-null value, it should be changed
+				if config.RepoPath != "/custom/repo" {
+					t.Errorf("Expected repo_path to be '/custom/repo', got '%s'", config.RepoPath)
+				}
+			} else {
+				// repo_path should remain default
+				if config.RepoPath != originalConfig.RepoPath {
+					t.Errorf("Expected repo_path to remain default '%s', got '%s'", originalConfig.RepoPath, config.RepoPath)
+				}
+			}
+
+			// Check that other fields remain default
+			if config.RemoteURL != originalConfig.RemoteURL {
+				t.Errorf("Expected remote_url to remain default '%s', got '%s'", originalConfig.RemoteURL, config.RemoteURL)
+			}
+			if config.RemoteName != originalConfig.RemoteName {
+				t.Errorf("Expected remote_name to remain default '%s', got '%s'", originalConfig.RemoteName, config.RemoteName)
+			}
+			if config.Branch != originalConfig.Branch {
+				t.Errorf("Expected branch to remain default '%s', got '%s'", originalConfig.Branch, config.Branch)
+			}
+			if config.AuthorName != originalConfig.AuthorName {
+				t.Errorf("Expected author_name to remain default '%s', got '%s'", originalConfig.AuthorName, config.AuthorName)
+			}
+			if config.AuthorEmail != originalConfig.AuthorEmail {
+				t.Errorf("Expected author_email to remain default '%s', got '%s'", originalConfig.AuthorEmail, config.AuthorEmail)
+			}
+			if config.AuthType != originalConfig.AuthType {
+				t.Errorf("Expected auth_type to remain default '%v', got '%v'", originalConfig.AuthType, config.AuthType)
+			}
+			if config.Username != originalConfig.Username {
+				t.Errorf("Expected username to remain default '%s', got '%s'", originalConfig.Username, config.Username)
+			}
+			if config.Password != originalConfig.Password {
+				t.Errorf("Expected password to remain default '%s', got '%s'", originalConfig.Password, config.Password)
+			}
+			if config.SSHKeyPath != originalConfig.SSHKeyPath {
+				t.Errorf("Expected ssh_key_path to remain default '%s', got '%s'", originalConfig.SSHKeyPath, config.SSHKeyPath)
+			}
+			if config.KnownHostsPath != originalConfig.KnownHostsPath {
+				t.Errorf("Expected known_hosts_path to remain default '%s', got '%s'", originalConfig.KnownHostsPath, config.KnownHostsPath)
+			}
+		})
+	}
+}
+
+func TestGitConfigUnmarshalFieldPreference(t *testing.T) {
+	// Create a GitConfig with initial values
+	config := GitConfig{
+		RepoPath:    "/initial/repo",
+		RemoteURL:   "",
+		RemoteName:  "initial-remote",
+		Branch:      "initial-branch",
+		AuthorName:  "Initial User",
+		AuthorEmail: "initial@example.com",
+		AuthType:    gitmanager.AuthStrategySSH,
+	}
+
+	tests := []struct {
+		name            string
+		jsonData        string
+		expectRemote    string
+		expectUserName  string
+		expectUserEmail string
+	}{
+		{
+			name: "PRD keys win when both PRD and legacy keys provided",
+			jsonData: `{
+				"remote": "prd-remote",
+				"remote_name": "legacy-remote",
+				"user_name": "prd-user",
+				"author_name": "legacy-user",
+				"user_email": "prd@example.com",
+				"author_email": "legacy@example.com"
+			}`,
+			expectRemote:    "prd-remote",
+			expectUserName:  "prd-user",
+			expectUserEmail: "prd@example.com",
+		},
+		{
+			name: "legacy keys populate fields when PRD keys absent",
+			jsonData: `{
+				"remote_name": "legacy-remote",
+				"author_name": "legacy-user",
+				"author_email": "legacy@example.com"
+			}`,
+			expectRemote:    "legacy-remote",
+			expectUserName:  "legacy-user",
+			expectUserEmail: "legacy@example.com",
+		},
+		{
+			name: "PRD keys work independently",
+			jsonData: `{
+				"remote": "prd-only-remote",
+				"user_name": "prd-only-user",
+				"user_email": "prd-only@example.com"
+			}`,
+			expectRemote:    "prd-only-remote",
+			expectUserName:  "prd-only-user",
+			expectUserEmail: "prd-only@example.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Reset config to initial values
+			testConfig := config
+
+			err := json.Unmarshal([]byte(tt.jsonData), &testConfig)
+			if err != nil {
+				t.Fatalf("Unexpected error unmarshaling JSON: %v", err)
+			}
+
+			if testConfig.RemoteName != tt.expectRemote {
+				t.Errorf("Expected remote_name to be '%s', got '%s'", tt.expectRemote, testConfig.RemoteName)
+			}
+			if testConfig.AuthorName != tt.expectUserName {
+				t.Errorf("Expected author_name to be '%s', got '%s'", tt.expectUserName, testConfig.AuthorName)
+			}
+			if testConfig.AuthorEmail != tt.expectUserEmail {
+				t.Errorf("Expected author_email to be '%s', got '%s'", tt.expectUserEmail, testConfig.AuthorEmail)
 			}
 		})
 	}
