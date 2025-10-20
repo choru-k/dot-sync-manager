@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +12,9 @@ import (
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
 	"github.com/choru-k/dot-sync-manager/internal/util"
 )
+
+// defaultFilePerms is the default file permission for config files (read/write for owner, read-only for others)
+const defaultFilePerms = 0644
 
 // mustDefaultConfig is a test helper that calls DefaultConfig and fails the test if it errors
 func mustDefaultConfig(t *testing.T) *SyncConfig {
@@ -74,8 +78,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "empty machine name",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				c := mustDefaultConfig(t)
 				c.Machine.Name = ""
 				return c
 			}(),
@@ -84,8 +87,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "empty repo path",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				c := mustDefaultConfig(t)
 				c.Git.RepoPath = ""
 				return c
 			}(),
@@ -94,8 +96,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "relative repo path",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				c := mustDefaultConfig(t)
 				c.Git.RepoPath = "relative/path"
 				return c
 			}(),
@@ -104,8 +105,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "empty author name",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				c := mustDefaultConfig(t)
 				c.Git.AuthorName = ""
 				return c
 			}(),
@@ -114,8 +114,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "negative pull interval",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				c := mustDefaultConfig(t)
 				c.Sync.PullIntervalSeconds = -1
 				return c
 			}(),
@@ -124,8 +123,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "zero debounce",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				c := mustDefaultConfig(t)
 				c.Sync.DebounceSeconds = 0
 				return c
 			}(),
@@ -522,8 +520,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "empty version",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				c := mustDefaultConfig(t)
 				c.Version = ""
 				return c
 			}(),
@@ -533,8 +530,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "invalid email format",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				c := mustDefaultConfig(t)
 				c.Git.AuthorEmail = "invalid-email"
 				return c
 			}(),
@@ -544,8 +540,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "pull interval too short",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				c := mustDefaultConfig(t)
 				c.Sync.PullIntervalSeconds = 30
 				return c
 			}(),
@@ -555,8 +550,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "debounce exceeds pull interval",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				c := mustDefaultConfig(t)
 				c.Sync.PullIntervalSeconds = 300
 				c.Sync.DebounceSeconds = 400
 				return c
@@ -567,8 +561,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "invalid conflict strategy",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				c := mustDefaultConfig(t)
 				c.ConflictResolution.Strategy = "invalid"
 				return c
 			}(),
@@ -578,8 +571,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "empty conflict strategy",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				c := mustDefaultConfig(t)
 				c.ConflictResolution.Strategy = ""
 				return c
 			}(),
@@ -589,8 +581,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "backup retention too long",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				c := mustDefaultConfig(t)
 				c.ConflictResolution.KeepBackupsDays = 500
 				return c
 			}(),
@@ -600,8 +591,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "invalid UI theme",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				c := mustDefaultConfig(t)
 				c.UI.Theme = "invalid"
 				return c
 			}(),
@@ -611,8 +601,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "empty UI theme",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				c := mustDefaultConfig(t)
 				c.UI.Theme = ""
 				return c
 			}(),
@@ -622,8 +611,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "log size too large",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				c := mustDefaultConfig(t)
 				c.Advanced.MaxLogSizeMB = 2000
 				return c
 			}(),
@@ -633,8 +621,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "mapping target requires absolute path",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				c := mustDefaultConfig(t)
 				c.Mappings = map[string]string{
 					"bashrc": "relative/path", // Relative path should fail validation
 				}
@@ -646,8 +633,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "valid mapping target with absolute path",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				c := mustDefaultConfig(t)
 				// Use absolute paths (as they would be after expandPaths())
 				homeDir, err := os.UserHomeDir()
 				if err != nil {
@@ -664,8 +650,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "empty mapping source",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil { t.Fatal(err) }
+				c := mustDefaultConfig(t)
 				c.Mappings = map[string]string{
 					"": "~/.bashrc",
 				}
@@ -685,6 +670,231 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			}
 			if tt.wantErr && tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
 				t.Errorf("Expected error message to contain '%s', got '%s'", tt.errMsg, err.Error())
+			}
+		})
+	}
+}
+
+func TestMachineConfigJSONCompatibility(t *testing.T) {
+	tests := []struct {
+		name           string
+		jsonData       string
+		expectName     string
+		expectError    bool
+		expectedErrMsg string
+	}{
+		{
+			name:        "marshal to string",
+			jsonData:    "", // Not used for marshal test
+			expectName:  "test-machine",
+			expectError: false,
+		},
+		{
+			name:        "PRD string input",
+			jsonData:    `"prd-machine"`,
+			expectName:  "prd-machine",
+			expectError: false,
+		},
+		{
+			name:        "legacy object input",
+			jsonData:    `{"name": "legacy-machine"}`,
+			expectName:  "legacy-machine",
+			expectError: false,
+		},
+		{
+			name:           "invalid format error",
+			jsonData:       `123`,
+			expectName:     "",
+			expectError:    true,
+			expectedErrMsg: "machine config must be a string or object with 'name' field",
+		},
+		{
+			name:        "empty object valid legacy case",
+			jsonData:    `{}`,
+			expectName:  "", // Empty name is acceptable for legacy configs and validated later
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.name == "marshal to string" {
+				// Test marshaling to string format
+				mc := MachineConfig{Name: tt.expectName}
+				data, err := json.Marshal(mc)
+				if err != nil {
+					t.Fatalf("Failed to marshal MachineConfig: %v", err)
+				}
+
+				// Verify it's a string, not an object
+				var strVal string
+				if err := json.Unmarshal(data, &strVal); err != nil {
+					t.Errorf("Expected marshaled data to be a string, got: %s", string(data))
+				}
+
+				if strVal != tt.expectName {
+					t.Errorf("Expected marshaled name '%s', got '%s'", tt.expectName, strVal)
+				}
+				return
+			}
+
+			// Test unmarshaling from JSON
+			var mc MachineConfig
+			err := json.Unmarshal([]byte(tt.jsonData), &mc)
+
+			if tt.expectError {
+				if err == nil {
+					t.Error("Expected error but got none")
+					return
+				}
+				if tt.expectedErrMsg != "" && !strings.Contains(err.Error(), tt.expectedErrMsg) {
+					t.Errorf("Expected error message to contain '%s', got '%s'", tt.expectedErrMsg, err.Error())
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+
+			if mc.Name != tt.expectName {
+				t.Errorf("Expected name '%s', got '%s'", tt.expectName, mc.Name)
+			}
+		})
+	}
+}
+
+func TestGitConfigUnmarshalPreservesDefaults(t *testing.T) {
+	originalConfig := GitConfig{
+		RepoPath:       "/default/repo",
+		RemoteURL:      "https://github.com/default/default.git",
+		RemoteName:     "origin",
+		Branch:         "main",
+		AuthorName:     "Default User",
+		AuthorEmail:    "default@example.com",
+		AuthType:       gitmanager.AuthStrategySSH,
+		Username:       "defaultuser",
+		Password:       "defaultpass",
+		SSHKeyPath:     "/default/key",
+		KnownHostsPath: "/default/known_hosts",
+	}
+
+	tests := []struct {
+		name     string
+		jsonData string
+		expected GitConfig
+	}{
+		{
+			name:     "empty JSON preserves all defaults",
+			jsonData: `{}`,
+			expected: originalConfig,
+		},
+		{
+			name:     "partial JSON only overwrites present fields",
+			jsonData: `{"repo_path": "/custom/repo"}`,
+			expected: func() GitConfig {
+				cfg := originalConfig
+				cfg.RepoPath = "/custom/repo"
+				return cfg
+			}(),
+		},
+		{
+			name:     "null JSON preserves all defaults",
+			jsonData: `{"repo_path": null, "remote_url": null, "remote": null, "branch": null, "user_name": null, "user_email": null}`,
+			expected: originalConfig,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := originalConfig // Start with a fresh copy
+			err := json.Unmarshal([]byte(tt.jsonData), &config)
+			if err != nil {
+				t.Fatalf("Unexpected error: %v", err)
+			}
+
+			if !reflect.DeepEqual(config, tt.expected) {
+				t.Errorf("Config mismatch. got=%+v, want=%+v", config, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGitConfigUnmarshalFieldPreference(t *testing.T) {
+	// Create a GitConfig with initial values
+	config := GitConfig{
+		RepoPath:    "/initial/repo",
+		RemoteURL:   "",
+		RemoteName:  "initial-remote",
+		Branch:      "initial-branch",
+		AuthorName:  "Initial User",
+		AuthorEmail: "initial@example.com",
+		AuthType:    gitmanager.AuthStrategySSH,
+	}
+
+	tests := []struct {
+		name            string
+		jsonData        string
+		expectRemote    string
+		expectUserName  string
+		expectUserEmail string
+	}{
+		{
+			name: "PRD keys win when both PRD and legacy keys provided",
+			jsonData: `{
+				"remote": "prd-remote",
+				"remote_name": "legacy-remote",
+				"user_name": "prd-user",
+				"author_name": "legacy-user",
+				"user_email": "prd@example.com",
+				"author_email": "legacy@example.com"
+			}`,
+			expectRemote:    "prd-remote",
+			expectUserName:  "prd-user",
+			expectUserEmail: "prd@example.com",
+		},
+		{
+			name: "legacy keys populate fields when PRD keys absent",
+			jsonData: `{
+				"remote_name": "legacy-remote",
+				"author_name": "legacy-user",
+				"author_email": "legacy@example.com"
+			}`,
+			expectRemote:    "legacy-remote",
+			expectUserName:  "legacy-user",
+			expectUserEmail: "legacy@example.com",
+		},
+		{
+			name: "PRD keys work independently",
+			jsonData: `{
+				"remote": "prd-only-remote",
+				"user_name": "prd-only-user",
+				"user_email": "prd-only@example.com"
+			}`,
+			expectRemote:    "prd-only-remote",
+			expectUserName:  "prd-only-user",
+			expectUserEmail: "prd-only@example.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Reset config to initial values
+			testConfig := config
+
+			err := json.Unmarshal([]byte(tt.jsonData), &testConfig)
+			if err != nil {
+				t.Fatalf("Unexpected error unmarshaling JSON: %v", err)
+			}
+
+			if testConfig.RemoteName != tt.expectRemote {
+				t.Errorf("Expected remote_name to be '%s', got '%s'", tt.expectRemote, testConfig.RemoteName)
+			}
+			if testConfig.AuthorName != tt.expectUserName {
+				t.Errorf("Expected author_name to be '%s', got '%s'", tt.expectUserName, testConfig.AuthorName)
+			}
+			if testConfig.AuthorEmail != tt.expectUserEmail {
+				t.Errorf("Expected author_email to be '%s', got '%s'", tt.expectUserEmail, testConfig.AuthorEmail)
 			}
 		})
 	}
@@ -735,4 +945,263 @@ func TestExpandPath(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSyncConfigMarshalPRDFormat(t *testing.T) {
+	// Create a full config with all fields populated
+	config := mustDefaultConfig(t)
+	
+	// Set additional fields to ensure comprehensive testing
+	config.Git.RemoteURL = "https://github.com/example/dotfiles.git"
+	config.Git.Username = "testuser"
+	config.Mappings = map[string]string{
+		".bashrc": "/home/user/.bashrc",
+		".vimrc":  "/home/user/.vimrc",
+	}
+	config.Sync.AutoCommit = false
+	config.Notifications.ShowSuccess = true
+	config.ConflictResolution.Strategy = "auto_keep_local"
+	config.UI.MinimizeToTray = false
+	config.Advanced.DebugLogging = true
+
+	// Marshal to JSON
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		t.Fatalf("Failed to marshal config: %v", err)
+	}
+
+	// Parse the JSON to verify structure
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Failed to unmarshal marshaled JSON: %v", err)
+	}
+
+	// Verify machine is serialized as a string (PRD format)
+	if machine, ok := parsed["machine"].(string); !ok {
+		t.Errorf("Expected 'machine' to be a string in JSON, got %T", parsed["machine"])
+	} else if machine != config.Machine.Name {
+		t.Errorf("Expected machine name %q, got %q", config.Machine.Name, machine)
+	}
+
+	// Verify git section uses PRD field names
+	if gitSection, ok := parsed["git"].(map[string]interface{}); !ok {
+		t.Fatal("Expected 'git' to be an object in JSON")
+	} else {
+		// Check for PRD fields
+		if _, hasRemote := gitSection["remote"]; !hasRemote && config.Git.RemoteName != "" {
+			t.Error("Expected 'remote' field in git section for PRD format")
+		}
+		if _, hasUserName := gitSection["user_name"]; !hasUserName && config.Git.AuthorName != "" {
+			t.Error("Expected 'user_name' field in git section for PRD format")
+		}
+		if _, hasUserEmail := gitSection["user_email"]; !hasUserEmail && config.Git.AuthorEmail != "" {
+			t.Error("Expected 'user_email' field in git section for PRD format")
+		}
+
+		// Verify legacy fields are NOT present
+		if _, hasRemoteName := gitSection["remote_name"]; hasRemoteName {
+			t.Error("Legacy field 'remote_name' should not be present in PRD format output")
+		}
+		if _, hasAuthorName := gitSection["author_name"]; hasAuthorName {
+			t.Error("Legacy field 'author_name' should not be present in PRD format output")
+		}
+		if _, hasAuthorEmail := gitSection["author_email"]; hasAuthorEmail {
+			t.Error("Legacy field 'author_email' should not be present in PRD format output")
+		}
+	}
+
+	// Verify required PRD fields are present
+	requiredFields := []string{"version", "machine", "git", "sync", "notifications", "conflict_resolution", "ui", "advanced"}
+	for _, field := range requiredFields {
+		if _, exists := parsed[field]; !exists {
+			t.Errorf("Required field %q missing from marshaled JSON", field)
+		}
+	}
+}
+
+func TestStartAtBootMigration(t *testing.T) {
+	// Test 1: New config files (no explicit start_at_boot) should use new default (true)
+	t.Run("new_config_uses_new_default", func(t *testing.T) {
+		jsonData := `{
+			"version": "1.0",
+			"machine": "test-machine",
+			"git": {
+				"repo_path": "/tmp/dotfiles",
+				"remote_url": "https://github.com/example/dotfiles.git",
+				"remote": "origin",
+				"branch": "main",
+				"user_name": "Test User",
+				"user_email": "test@example.com",
+				"auth_type": "ssh"
+			},
+			"sync": {
+				"auto_sync_enabled": true,
+				"pull_interval_seconds": 300,
+				"debounce_seconds": 30,
+				"auto_commit": true,
+				"auto_push": true,
+				"auto_pull": true
+			},
+			"notifications": {
+				"enabled": true,
+				"show_success": false,
+				"show_pulls": true,
+				"play_sound_on_conflict": false
+			},
+			"conflict_resolution": {
+				"strategy": "manual",
+				"backup_dir": "/tmp/dotfiles/.backup",
+				"keep_backups_days": 7
+			},
+			"ui": {
+				"theme": "auto"
+			},
+			"advanced": {
+				"debug_logging": false,
+				"log_file": "/tmp/.dotfile-sync.log",
+				"max_log_size_mb": 10
+			}
+		}`
+
+		// Create temporary config file
+		tmpFile := t.TempDir() + "/config.json"
+		if err := os.WriteFile(tmpFile, []byte(jsonData), defaultFilePerms); err != nil {
+			t.Fatalf("Failed to write test config: %v", err)
+		}
+
+		// Load the config
+		config, err := LoadFromFile(tmpFile)
+		if err != nil {
+			t.Fatalf("Failed to load config: %v", err)
+		}
+
+		// Should use new default (true) since no explicit start_at_boot was provided
+		if !config.UI.StartAtBoot {
+			t.Error("Expected StartAtBoot to be true (new default) for configs without explicit setting")
+		}
+	})
+
+	// Test 2: Existing config files with explicit start_at_boot=false should preserve false
+	t.Run("existing_config_preserves_false", func(t *testing.T) {
+		jsonData := `{
+			"version": "1.0",
+			"machine": "test-machine",
+			"git": {
+				"repo_path": "/tmp/dotfiles",
+				"remote_url": "https://github.com/example/dotfiles.git",
+				"remote": "origin",
+				"branch": "main",
+				"user_name": "Test User",
+				"user_email": "test@example.com",
+				"auth_type": "ssh"
+			},
+			"sync": {
+				"auto_sync_enabled": true,
+				"pull_interval_seconds": 300,
+				"debounce_seconds": 30,
+				"auto_commit": true,
+				"auto_push": true,
+				"auto_pull": true
+			},
+			"notifications": {
+				"enabled": true,
+				"show_success": false,
+				"show_pulls": true,
+				"play_sound_on_conflict": false
+			},
+			"conflict_resolution": {
+				"strategy": "manual",
+				"backup_dir": "/tmp/dotfiles/.backup",
+				"keep_backups_days": 7
+			},
+			"ui": {
+				"start_at_boot": false,
+				"theme": "auto"
+			},
+			"advanced": {
+				"debug_logging": false,
+				"log_file": "/tmp/.dotfile-sync.log",
+				"max_log_size_mb": 10
+			}
+		}`
+
+		// Create temporary config file
+		tmpFile := t.TempDir() + "/config.json"
+		if err := os.WriteFile(tmpFile, []byte(jsonData), defaultFilePerms); err != nil {
+			t.Fatalf("Failed to write test config: %v", err)
+		}
+
+		// Load the config
+		config, err := LoadFromFile(tmpFile)
+		if err != nil {
+			t.Fatalf("Failed to load config: %v", err)
+		}
+
+		// Should preserve explicit false value
+		if config.UI.StartAtBoot {
+			t.Error("Expected StartAtBoot to be preserved as false from existing config")
+		}
+	})
+
+	// Test 3: Existing config files with explicit start_at_boot=true should preserve true
+	t.Run("existing_config_preserves_true", func(t *testing.T) {
+		jsonData := `{
+			"version": "1.0",
+			"machine": "test-machine",
+			"git": {
+				"repo_path": "/tmp/dotfiles",
+				"remote_url": "https://github.com/example/dotfiles.git",
+				"remote": "origin",
+				"branch": "main",
+				"user_name": "Test User",
+				"user_email": "test@example.com",
+				"auth_type": "ssh"
+			},
+			"sync": {
+				"auto_sync_enabled": true,
+				"pull_interval_seconds": 300,
+				"debounce_seconds": 30,
+				"auto_commit": true,
+				"auto_push": true,
+				"auto_pull": true
+			},
+			"notifications": {
+				"enabled": true,
+				"show_success": false,
+				"show_pulls": true,
+				"play_sound_on_conflict": false
+			},
+			"conflict_resolution": {
+				"strategy": "manual",
+				"backup_dir": "/tmp/dotfiles/.backup",
+				"keep_backups_days": 7
+			},
+			"ui": {
+				"start_at_boot": true,
+				"theme": "auto"
+			},
+			"advanced": {
+				"debug_logging": false,
+				"log_file": "/tmp/.dotfile-sync.log",
+				"max_log_size_mb": 10
+			}
+		}`
+
+		// Create temporary config file
+		tmpFile := t.TempDir() + "/config.json"
+		if err := os.WriteFile(tmpFile, []byte(jsonData), defaultFilePerms); err != nil {
+			t.Fatalf("Failed to write test config: %v", err)
+		}
+
+		// Load the config
+		config, err := LoadFromFile(tmpFile)
+		if err != nil {
+			t.Fatalf("Failed to load config: %v", err)
+		}
+
+		// Should preserve explicit true value
+		if !config.UI.StartAtBoot {
+			t.Error("Expected StartAtBoot to be preserved as true from existing config")
+		}
+	})
 }

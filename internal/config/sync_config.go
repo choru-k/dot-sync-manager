@@ -71,7 +71,66 @@ type SyncConfig struct {
 // MachineConfig holds machine-specific settings
 type MachineConfig struct {
 	// Name of this machine (e.g., "work-laptop", "personal-mac")
-	Name string `json:"name"`
+	Name string `json:"-"` // Don't serialize directly, handle in custom methods
+}
+
+// machineConfigJSON is used for JSON marshaling/unmarshaling
+type machineConfigJSON struct {
+	Name string `json:"name,omitempty"`
+}
+
+// MarshalJSON implements custom JSON marshaling for MachineConfig.
+// It serializes the config as a plain string containing the machine name,
+// which aligns with the format specified in PRD §5.
+func (m MachineConfig) MarshalJSON() ([]byte, error) {
+	return json.Marshal(m.Name)
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling for MachineConfig.
+// It provides backward compatibility by accepting both the new PRD format (a plain string)
+// and the legacy format (an object with a "name" field).
+//
+// Note: Empty machine names are accepted during unmarshaling for backward compatibility.
+// Validation of the machine name (ensuring it's not empty) occurs later in the Validate() method.
+func (m *MachineConfig) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as string first (new PRD format)
+	var nameStr string
+	stringErr := json.Unmarshal(data, &nameStr)
+	if stringErr == nil {
+		m.Name = nameStr
+		return nil
+	}
+
+	// Try to unmarshal as object (legacy format)
+	var obj machineConfigJSON
+	objectErr := json.Unmarshal(data, &obj)
+	if objectErr == nil {
+		m.Name = obj.Name
+		return nil
+	}
+
+	// Return both parsing errors to help users understand what went wrong
+	return fmt.Errorf("machine config must be a string or object with 'name' field: string parsing failed: %w, object parsing failed: %w", stringErr, objectErr)
+}
+
+// selectValue helper chooses between PRD and legacy values without duplicating logic.
+// It returns the PRD value if present, otherwise the legacy value, and indicates whether a value was found.
+func selectValue[T any](prd, legacy *T) (value T, hasValue bool) {
+	if prd != nil {
+		return *prd, true
+	}
+	if legacy != nil {
+		return *legacy, true
+	}
+	return value, false
+}
+
+// assignIfPresent helper assigns a value to target if the source pointer is not nil.
+// This is used in unmarshaling to preserve defaults when JSON fields are absent.
+func assignIfPresent[T any](source *T, target *T) {
+	if source != nil {
+		*target = *source
+	}
 }
 
 // GitConfig extends the gitmanager.Config with additional fields
@@ -82,15 +141,17 @@ type GitConfig struct {
 	// Remote repository URL
 	RemoteURL string `json:"remote_url"`
 
-	// Remote name (usually "origin")
-	RemoteName string `json:"remote_name"`
+	// Remote name (usually "origin") - kept for internal compatibility
+	// DEPRECATED: Use "remote" field in JSON for PRD compatibility, but this field remains for backward compatibility with legacy JSON keys
+	RemoteName string `json:"-"` // Don't serialize directly, handle in custom methods
 
 	// Branch name (usually "main" or "master")
 	Branch string `json:"branch"`
 
-	// Author information for commits
-	AuthorName  string `json:"author_name"`
-	AuthorEmail string `json:"author_email"`
+	// Author information for commits - kept for internal compatibility
+	// DEPRECATED: Use "user_name" and "user_email" fields in JSON for PRD compatibility, but these fields remain for backward compatibility with legacy JSON keys
+	AuthorName  string `json:"-"` // Don't serialize directly, handle in custom methods
+	AuthorEmail string `json:"-"` // Don't serialize directly, handle in custom methods
 
 	// Authentication settings
 	AuthType         gitmanager.AuthStrategy `json:"auth_type"`
@@ -99,6 +160,131 @@ type GitConfig struct {
 	SSHKeyPath       string                  `json:"ssh_key_path,omitempty"`
 	SSHKeyPassphrase string                  `json:"ssh_key_passphrase,omitempty"`
 	KnownHostsPath   string                  `json:"known_hosts_path,omitempty"`
+}
+
+// gitConfigJSONInput is used for JSON unmarshaling with pointer fields for presence detection
+type gitConfigJSONInput struct {
+	// Repository path (absolute path to dotfiles directory)
+	RepoPath *string `json:"repo_path"`
+
+	// Remote repository URL
+	RemoteURL *string `json:"remote_url"`
+
+	// Remote name (PRD format) with legacy support
+	Remote     *string `json:"remote,omitempty"`
+	RemoteName *string `json:"remote_name,omitempty"` // Legacy
+
+	// Branch name (usually "main" or "master")
+	Branch *string `json:"branch"`
+
+	// User information (PRD format) with legacy support
+	UserName    *string `json:"user_name,omitempty"`
+	UserEmail   *string `json:"user_email,omitempty"`
+	AuthorName  *string `json:"author_name,omitempty"`  // Legacy
+	AuthorEmail *string `json:"author_email,omitempty"` // Legacy
+
+	// Authentication settings
+	AuthType         *gitmanager.AuthStrategy `json:"auth_type"`
+	Username         *string                  `json:"username,omitempty"`
+	Password         *string                  `json:"password,omitempty"`
+	SSHKeyPath       *string                  `json:"ssh_key_path,omitempty"`
+	SSHKeyPassphrase *string                  `json:"ssh_key_passphrase,omitempty"`
+	KnownHostsPath   *string                  `json:"known_hosts_path,omitempty"`
+}
+
+// gitConfigJSONOutput is used for JSON marshaling only (PRD keys plus auth data)
+type gitConfigJSONOutput struct {
+	// Repository path (absolute path to dotfiles directory)
+	RepoPath string `json:"repo_path"`
+
+	// Remote repository URL
+	RemoteURL string `json:"remote_url"`
+
+	// Remote name (PRD format)
+	Remote *string `json:"remote,omitempty"`
+
+	// Branch name (usually "main" or "master")
+	Branch string `json:"branch"`
+
+	// User information (PRD format)
+	UserName  *string `json:"user_name,omitempty"`
+	UserEmail *string `json:"user_email,omitempty"`
+
+	// Authentication settings
+	AuthType         gitmanager.AuthStrategy `json:"auth_type"`
+	Username         string                  `json:"username,omitempty"`
+	Password         string                  `json:"password,omitempty"`
+	SSHKeyPath       string                  `json:"ssh_key_path,omitempty"`
+	SSHKeyPassphrase string                  `json:"ssh_key_passphrase,omitempty"`
+	KnownHostsPath   string                  `json:"known_hosts_path,omitempty"`
+}
+
+// MarshalJSON implements custom JSON marshaling for GitConfig.
+// It uses the PRD-specified keys `remote`, `user_name`, and `user_email` for serialization.
+func (g GitConfig) MarshalJSON() ([]byte, error) {
+	jsonObj := gitConfigJSONOutput{
+		RepoPath:         g.RepoPath,
+		RemoteURL:        g.RemoteURL,
+		Branch:           g.Branch,
+		AuthType:         g.AuthType,
+		Username:         g.Username,
+		Password:         g.Password,
+		SSHKeyPath:       g.SSHKeyPath,
+		SSHKeyPassphrase: g.SSHKeyPassphrase,
+		KnownHostsPath:   g.KnownHostsPath,
+	}
+
+	if g.RemoteName != "" {
+		jsonObj.Remote = &g.RemoteName
+	}
+	if g.AuthorName != "" {
+		jsonObj.UserName = &g.AuthorName
+	}
+	if g.AuthorEmail != "" {
+		jsonObj.UserEmail = &g.AuthorEmail
+	}
+
+	return json.Marshal(jsonObj)
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling for GitConfig.
+// It provides backward compatibility by accepting both the new PRD keys (`remote`, `user_name`, `user_email`)
+// and legacy keys (`remote_name`, `author_name`, `author_email`), preferring the new keys when both are present.
+// Only overwrites fields when JSON keys are present, preserving existing defaults.
+// Callers should supply a struct pre-populated with defaults (e.g., via DefaultConfig) so omitted keys retain their values.
+func (g *GitConfig) UnmarshalJSON(data []byte) error {
+	var jsonObj gitConfigJSONInput
+	if err := json.Unmarshal(data, &jsonObj); err != nil {
+		return fmt.Errorf("failed to parse git config: %w", err)
+	}
+
+	// Only assign fields when they are present in JSON (non-nil pointers)
+	assignIfPresent(jsonObj.RepoPath, &g.RepoPath)
+	assignIfPresent(jsonObj.RemoteURL, &g.RemoteURL)
+	assignIfPresent(jsonObj.Branch, &g.Branch)
+	assignIfPresent(jsonObj.AuthType, &g.AuthType)
+	assignIfPresent(jsonObj.Username, &g.Username)
+	assignIfPresent(jsonObj.Password, &g.Password)
+	assignIfPresent(jsonObj.SSHKeyPath, &g.SSHKeyPath)
+	assignIfPresent(jsonObj.SSHKeyPassphrase, &g.SSHKeyPassphrase)
+	assignIfPresent(jsonObj.KnownHostsPath, &g.KnownHostsPath)
+
+	// Handle remote name with PRD preference, preserving default if not provided
+	if remoteName, hasValue := selectValue(jsonObj.Remote, jsonObj.RemoteName); hasValue {
+		g.RemoteName = remoteName
+	}
+
+	// Handle user name with PRD preference, preserving default if not provided
+	if authorName, hasValue := selectValue(jsonObj.UserName, jsonObj.AuthorName); hasValue {
+		g.AuthorName = authorName
+	}
+
+	// Handle user email with PRD preference, preserving default if not provided
+	if authorEmail, hasValue := selectValue(jsonObj.UserEmail, jsonObj.AuthorEmail); hasValue {
+		g.AuthorEmail = authorEmail
+	}
+
+	return nil
 }
 
 // BackoffSettings controls advanced debouncer behavior
@@ -257,7 +443,7 @@ func DefaultConfig() (*SyncConfig, error) {
 		},
 		Mappings: make(map[string]string),
 		UI: UIConfig{
-			StartAtBoot:    false,
+			StartAtBoot:    true,
 			MinimizeToTray: true,
 			Theme:          "auto",
 		},
@@ -295,7 +481,10 @@ func LoadFromFile(filename string) (*SyncConfig, error) {
 		return nil, fmt.Errorf("config: failed to read config file: %w", err)
 	}
 
-	// Parse JSON
+	// Parse JSON into the config struct. Since we started with DefaultConfig(),
+	// any fields missing from the JSON (like 'start_at_boot' in older configs)
+	// will retain their new default values. Explicit values in the JSON
+	// (like 'start_at_boot: false') will correctly overwrite the defaults.
 	if err := json.Unmarshal(data, config); err != nil {
 		return nil, fmt.Errorf("config: failed to parse config file: %w", err)
 	}
@@ -663,8 +852,6 @@ func (c *SyncConfig) ToGitManagerConfig() gitmanager.Config {
 		KnownHostsPath:   c.Git.KnownHostsPath,
 	}
 }
-
-
 
 // ToSyncConfig converts to sync.Config
 func (c *SyncConfig) ToSyncConfig() *sync.Config {

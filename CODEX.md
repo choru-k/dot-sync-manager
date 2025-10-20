@@ -43,6 +43,7 @@ This guide provides concise workflow instructions for Codex agents working on th
 - `--skip-permissions-unsafe` removes all safeguards and must only run inside disposable sandboxes; it cannot be combined with any `--auto` flag
 - Prefer `--session-id` to continue an existing run only when explicitly coordinating with teammates; otherwise each exec should stay isolated
 - Capture outputs (logs, artifacts) immediately after the command finishes—`droid exec` exits once the task is complete
+- Note: This command can be long-running. Allow it to complete without interruption.
 
 ## PR Review Handling
 
