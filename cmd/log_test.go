@@ -67,7 +67,7 @@ func TestGetLogFile(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logFile, err := getLogFile(tt.configPath)
+			logFile, err := getLogFile()
 
 			if (err != nil) != tt.expectError {
 				t.Errorf("getLogFile() error = %v, expectError %v", err, tt.expectError)

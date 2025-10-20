@@ -322,8 +322,8 @@ func TestValidateResolutionState(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repoPath, conflictsDir := tt.setup(t)
-			err := validateResolutionState(repoPath, conflictsDir)
+			repoPath, _ := tt.setup(t)
+			err := validateResolutionState(repoPath)
 
 			if (err != nil) != tt.expectError {
 				t.Errorf("validateResolutionState() error = %v, expectError %v", err, tt.expectError)

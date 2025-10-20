@@ -196,7 +196,7 @@ func restartDaemonAfterResolve() error {
 }
 
 // Helper functions for check tests
-func validateResolutionState(repoPath, conflictsDir string) error {
+func validateResolutionState(repoPath string) error {
 	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
 		return fmt.Errorf("repository not found")
 	}
@@ -384,11 +384,7 @@ func getEditorCommand(filePath string) string {
 }
 
 // Helper functions for log tests
-func getLogFile(configPath string) (string, error) {
-	if configPath == "" {
-		return "/tmp/dsm.log", nil
-	}
-
+func getLogFile() (string, error) {
 	// In a real implementation, would read config to get log file path
 	return "/tmp/dsm.log", nil
 }
@@ -533,7 +529,7 @@ func validateIgnoreContent(content string) error {
 	return nil
 }
 
-func editIgnoreFile(ignorePath, editor string) error {
+func editIgnoreFile(ignorePath string) error {
 	// Simplified implementation - would actually launch editor in real code
 	return validateIgnoreFile(ignorePath)
 }

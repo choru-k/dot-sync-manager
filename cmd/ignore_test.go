@@ -202,7 +202,7 @@ func TestEditIgnoreFile(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ignorePath := tt.setup(t)
 
-			err := editIgnoreFile(ignorePath, tt.editor)
+			err := editIgnoreFile(ignorePath)
 			// In test environment, editor commands may fail
 			t.Logf("editIgnoreFile() result: %v", err)
 		})

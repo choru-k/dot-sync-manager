@@ -64,7 +64,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	}
 
 	// Execute removal
-	if err := executeRemoval(cfg, filePath, trackedFile, mappingKey); err != nil {
+	if err := executeRemoval(filePath, trackedFile); err != nil {
 		return err
 	}
 
@@ -185,7 +185,7 @@ func confirmRemoval(symlinkPath, trackedFile, mappingKey string) bool {
 	return response == "y" || response == "yes"
 }
 
-func executeRemoval(cfg *config.SyncConfig, symlinkPath, trackedFile, mappingKey string) error {
+func executeRemoval(symlinkPath, trackedFile string) error {
 	// If not deleting all, restore the original file from repo to home location
 	if !deleteAll {
 		if err := restoreOriginalFile(trackedFile, symlinkPath); err != nil {
