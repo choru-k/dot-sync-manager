@@ -26,6 +26,13 @@ const (
 
 // AdvancedDebouncer provides configurable debounce with exponential backoff
 // and rapid file churn detection
+//
+// Thread Safety:
+// - All public methods are thread-safe and can be called concurrently
+// - Stop() is idempotent and can be called multiple times safely
+// - Uses sync.Once to ensure cleanup operations happen exactly once
+// - Manual sync operations are safely rejected after Stop()
+// - The debouncer can be safely used from multiple goroutines
 type AdvancedDebouncer struct {
 	// Basic debounce settings
 	baseDelay      time.Duration
@@ -288,7 +295,14 @@ func (d *AdvancedDebouncer) TriggerManualSync(key string, fn func()) error {
 		result:    result,
 	}
 
-	// Send request to manual sync queue
+	// Send request to manual sync queue, checking if stopped first
+	select {
+	case <-d.done:
+		// Debouncer is stopped, return error
+		return fmt.Errorf("debouncer is stopped")
+	default:
+	}
+
 	select {
 	case d.manualSyncQueue <- request:
 		// Request queued successfully
@@ -507,7 +521,14 @@ func (d *AdvancedDebouncer) TriggerManualSyncWithContext(ctx context.Context, ke
 		result:    result,
 	}
 
-	// Send request to manual sync queue
+	// Send request to manual sync queue, checking if stopped first
+	select {
+	case <-d.done:
+		// Debouncer is stopped, return error
+		return fmt.Errorf("debouncer is stopped")
+	default:
+	}
+
 	select {
 	case d.manualSyncQueue <- request:
 		// Request queued successfully
