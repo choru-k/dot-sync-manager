@@ -68,7 +68,7 @@ type AdvancedDebouncer struct {
 	manualSyncTimeout time.Duration
 
 	// Shutdown handling
-	done chan struct{}
+	done    chan struct{}
 	stopped bool // Track stopped state to prevent race conditions
 
 	// Goroutine coordination for graceful shutdown
@@ -285,7 +285,7 @@ func (d *AdvancedDebouncer) AddImmediate(key string, fn func()) {
 			}
 		}()
 		fn()
-	})
+	}()
 }
 
 // triggerManualSyncInternal implements the core logic for manual sync operations

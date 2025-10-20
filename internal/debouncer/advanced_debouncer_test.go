@@ -524,8 +524,7 @@ func TestAdvancedDebouncer_MultipleStopCalls(t *testing.T) {
 		debouncer.Stop() // Should not panic, cleanup should happen only once
 	}
 
-	// Wait a bit for any pending operations to complete
-	time.Sleep(50 * time.Millisecond)
+	// Stop() now blocks until cleanup is complete via shutdownWG.Wait() - no sleep needed
 
 	t.Log("Multiple Stop calls test completed successfully")
 }
@@ -538,8 +537,7 @@ func TestAdvancedDebouncer_StopIdempotency(t *testing.T) {
 	// First stop should cancel all operations and close channels
 	debouncer.Stop()
 
-	// Wait for cleanup to complete
-	time.Sleep(DefaultShutdownTimeout + 50*time.Millisecond)
+	// Stop() now blocks until cleanup is complete via shutdownWG.Wait() - no sleep needed
 
 	// Multiple subsequent stops should not panic
 	for i := 0; i < 10; i++ {
@@ -605,8 +603,7 @@ func TestAdvancedDebouncer_ConcurrentStopWithOperations(t *testing.T) {
 	wg.Wait()
 	stopWg.Wait()
 
-	// Wait for cleanup
-	time.Sleep(DefaultShutdownTimeout + 50*time.Millisecond)
+	// Stop() now blocks until cleanup is complete via shutdownWG.Wait() - no sleep needed
 
 	// Test should complete without panics
 	t.Logf("Concurrent Stop with operations test completed successfully. Operations: %d", atomic.LoadInt64(&operationCount))

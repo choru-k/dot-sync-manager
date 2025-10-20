@@ -384,8 +384,7 @@ func TestSyncService_ConcurrentStop(t *testing.T) {
 
 	wg.Wait()
 
-	// Wait for cleanup to complete
-	time.Sleep(50 * time.Millisecond)
+	// Stop() now blocks until cleanup is complete via sync.Once - no sleep needed
 
 	// Additional verification: multiple calls should be safe
 	// Call Stop a few more times sequentially
@@ -589,8 +588,7 @@ func TestSyncService_PrematureStopDoesNotDisableCleanup(t *testing.T) {
 	// This should perform proper cleanup and not be blocked by the premature Stop() call
 	service.Stop()
 
-	// Wait a moment for cleanup to complete
-	time.Sleep(50 * time.Millisecond)
+	// Stop() now blocks until cleanup is complete via sync.Once - no sleep needed
 
 	// Verify service is stopped
 	if service.IsRunning() {
