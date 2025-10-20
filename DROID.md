@@ -41,7 +41,7 @@ This document serves as the system prompt for automation droids working on Dotfi
 
 ### Path Handling
 - Expand all user paths via `expandPaths()` method
-- Use `path[2:]` for `~/` prefix removal
+- Use `strings.TrimLeft(path[1:], "/\\")` for `~/` prefix removal
 - Always validate path expansion returns
 
 ### Validation Rules
