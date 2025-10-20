@@ -14,6 +14,11 @@ import (
 // getDefaultEditor returns the appropriate text editor for the current platform
 // It checks the EDITOR environment variable first, then falls back to platform defaults
 func getDefaultEditor() (string, error) {
+	// Check if we're in a test environment and should avoid launching real editors
+	if os.Getenv("DSM_TEST_MODE") != "" || os.Getenv("CI") != "" {
+		return "echo", nil // Use echo as a safe test editor
+	}
+
 	// Check environment variable first
 	if editor := os.Getenv("EDITOR"); editor != "" {
 		return validateEditorCommand(editor)

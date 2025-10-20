@@ -45,6 +45,11 @@ func init() {
 // or opens an existing file in the user's preferred editor for manual editing.
 // The --show flag displays current contents without editing.
 func runIgnore(cmd *cobra.Command, args []string) error {
+	// ignore command should not accept any arguments
+	if len(args) > 0 {
+		return fmt.Errorf("ignore command accepts no arguments")
+	}
+
 	cfg, err := getConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)

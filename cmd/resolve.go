@@ -29,6 +29,11 @@ func init() {
 }
 
 func runResolve(cmd *cobra.Command, args []string) error {
+	// resolve command should not accept any arguments
+	if len(args) > 0 {
+		return fmt.Errorf("resolve command accepts no arguments")
+	}
+
 	cfg, err := getConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)

@@ -30,6 +30,7 @@ var timeNow = time.Now
 var safeEditors = map[string]bool{
 	"atom":         true,
 	"code":         true,
+	"echo":         true,  // Safe for testing
 	"emacs":        true,
 	"gedit":        true,
 	"gvim":         true,

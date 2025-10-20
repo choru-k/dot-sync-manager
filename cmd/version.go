@@ -33,6 +33,11 @@ func init() {
 // It shows the application version, commit hash, and build date, with
 // additional guidance for development versions.
 func runVersion(cmd *cobra.Command, args []string) error {
+	// version command should not accept any arguments
+	if len(args) > 0 {
+		return fmt.Errorf("version command accepts no arguments")
+	}
+
 	fmt.Println("Dotfile Sync Manager (DSM)")
 	fmt.Printf("Version: %s\n", Version)
 	fmt.Printf("Commit: %s\n", Commit)

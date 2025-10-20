@@ -32,6 +32,11 @@ func init() {
 // waits for completion, then starts the daemon again. Provides detailed
 // status feedback throughout the process.
 func runRestart(cmd *cobra.Command, args []string) error {
+	// restart command should not accept any arguments
+	if len(args) > 0 {
+		return fmt.Errorf("restart command accepts no arguments")
+	}
+
 	fmt.Println("🔄 Restarting dotfile sync daemon...")
 
 	// First, stop the daemon if it's running

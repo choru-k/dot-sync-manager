@@ -33,6 +33,11 @@ func init() {
 // It can open the repository directory in the default file manager or
 // open it in a text editor, with cross-platform support for different operating systems.
 func runOpen(cmd *cobra.Command, args []string) error {
+	// open command should not accept any arguments
+	if len(args) > 0 {
+		return fmt.Errorf("open command accepts no arguments")
+	}
+
 	cfg, err := getConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)

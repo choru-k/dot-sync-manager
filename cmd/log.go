@@ -41,6 +41,11 @@ func init() {
 // It determines the log file location, handles user path expansion,
 // and provides options for showing recent lines or following the log in real-time.
 func runLog(cmd *cobra.Command, args []string) error {
+	// log command should not accept any arguments
+	if len(args) > 0 {
+		return fmt.Errorf("log command accepts no arguments")
+	}
+
 	cfg, err := getConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)

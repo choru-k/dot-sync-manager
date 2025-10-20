@@ -81,6 +81,12 @@ Examples:
 }
 
 func runConfig(cmd *cobra.Command, args []string) error {
+	// config command should require at least one argument when called directly from dsm
+	// Check if this is the main config command (not a subcommand like get/set/edit)
+	if (cmd.Use == "config [subcommand]" || cmd.Use == "config") && len(args) == 0 {
+		return fmt.Errorf("config command requires a subcommand (get, set, edit)")
+	}
+
 	cfg, err := getConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)

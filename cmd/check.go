@@ -38,6 +38,11 @@ func init() {
 }
 
 func runCheck(cmd *cobra.Command, args []string) error {
+	// check command should not accept any arguments
+	if len(args) > 0 {
+		return fmt.Errorf("check command accepts no arguments")
+	}
+
 	cfg, err := getConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
