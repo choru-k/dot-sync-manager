@@ -69,6 +69,7 @@ type AdvancedDebouncer struct {
 
 	// Shutdown handling
 	done chan struct{}
+	stopped bool // Track stopped state to prevent race conditions
 
 // Context for cancellation
 	ctx    context.Context
@@ -295,18 +296,29 @@ func (d *AdvancedDebouncer) TriggerManualSync(key string, fn func()) error {
 		result:    result,
 	}
 
-	// Send request to manual sync queue, checking if stopped first
-	select {
-	case <-d.done:
-		// Debouncer is stopped, return error
+	// Check if debouncer is stopped with proper synchronization
+	d.manualSyncMu.Lock()
+	stopped := d.stopped
+	d.manualSyncMu.Unlock()
+
+	if stopped {
 		return fmt.Errorf("debouncer is stopped")
-	default:
 	}
 
+	// Send request to manual sync queue with proper synchronization
+	d.manualSyncMu.Lock()
+	if d.stopped {
+		d.manualSyncMu.Unlock()
+		return fmt.Errorf("debouncer is stopped")
+	}
+
+	// Try to send to queue, but handle the race where Stop() closes the channel
 	select {
 	case d.manualSyncQueue <- request:
+		d.manualSyncMu.Unlock()
 		// Request queued successfully
 	default:
+		d.manualSyncMu.Unlock()
 		// Queue is full, execute directly
 		go d.handleManualSync(request)
 	}
@@ -521,20 +533,32 @@ func (d *AdvancedDebouncer) TriggerManualSyncWithContext(ctx context.Context, ke
 		result:    result,
 	}
 
-	// Send request to manual sync queue, checking if stopped first
-	select {
-	case <-d.done:
-		// Debouncer is stopped, return error
+	// Check if debouncer is stopped with proper synchronization
+	d.manualSyncMu.Lock()
+	stopped := d.stopped
+	d.manualSyncMu.Unlock()
+
+	if stopped {
 		return fmt.Errorf("debouncer is stopped")
-	default:
 	}
 
+	// Send request to manual sync queue with proper synchronization
+	d.manualSyncMu.Lock()
+	if d.stopped {
+		d.manualSyncMu.Unlock()
+		return fmt.Errorf("debouncer is stopped")
+	}
+
+	// Try to send to queue, but handle the race where Stop() closes the channel
 	select {
 	case d.manualSyncQueue <- request:
+		d.manualSyncMu.Unlock()
 		// Request queued successfully
 	case <-ctx.Done():
+		d.manualSyncMu.Unlock()
 		return ctx.Err()
 	default:
+		d.manualSyncMu.Unlock()
 		// Queue is full, execute directly
 		go d.handleManualSync(request)
 	}
@@ -604,6 +628,11 @@ func (d *AdvancedDebouncer) GetStats() map[string]interface{} {
 // Stop stops the debouncer and cleans up resources with graceful shutdown
 func (d *AdvancedDebouncer) Stop() {
 	d.stopOnce.Do(func() {
+		// Set stopped flag to prevent new operations
+		d.manualSyncMu.Lock()
+		d.stopped = true
+		d.manualSyncMu.Unlock()
+
 		d.CancelAll()
 
 		// Cancel the context to stop any pending callbacks

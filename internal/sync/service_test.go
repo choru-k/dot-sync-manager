@@ -11,6 +11,12 @@ import (
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
 )
 
+// fileModeUserReadWrite defines standard file permissions for user read/write access
+const fileModeUserReadWrite = 0644
+
+// testDebounceDelay defines the debounce delay used in tests for faster execution
+const testDebounceDelay = 100 * time.Millisecond
+
 func TestSyncService_New(t *testing.T) {
 	// Create a temporary directory for testing
 	tmpDir := t.TempDir()
@@ -171,8 +177,10 @@ func TestSyncService_IgnoreFile(t *testing.T) {
 !important.log
 node_modules/
 `
-	ignoreFile := filepath.Join(tmpDir, ".syncignore")
-	err := os.WriteFile(ignoreFile, []byte(ignoreContent), 0644)
+	// ignoreFilePath defines the path to the ignore file relative to repo root
+	const ignoreFilePath = ".syncignore"
+	ignoreFile := filepath.Join(tmpDir, ignoreFilePath)
+	err := os.WriteFile(ignoreFile, []byte(ignoreContent), fileModeUserReadWrite)
 	if err != nil {
 		t.Fatalf("Failed to write ignore file: %v", err)
 	}
@@ -194,7 +202,7 @@ node_modules/
 	syncConfig := &Config{
 		RepoPath:        tmpDir,
 		AutoSyncEnabled: false,
-		IgnoreFile:      ".syncignore",
+		IgnoreFile:      ignoreFilePath,
 	}
 
 	service, err := New(gitMgr, syncConfig)
@@ -284,7 +292,7 @@ func TestSyncService_DynamicDirectoryWatching(t *testing.T) {
 
 	syncConfig := &Config{
 		RepoPath:        tmpDir,
-		DebounceDelay:   100 * time.Millisecond,
+		DebounceDelay:   testDebounceDelay,
 		AutoSyncEnabled: false, // Disable to prevent actual sync
 	}
 
@@ -317,7 +325,7 @@ func TestSyncService_DynamicDirectoryWatching(t *testing.T) {
 
 	// Create a file in the new directory to verify it's being watched
 	testFile := filepath.Join(newDir, "test.txt")
-	if err := os.WriteFile(testFile, []byte("test content"), 0644); err != nil {
+	if err := os.WriteFile(testFile, []byte("test content"), fileModeUserReadWrite); err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
@@ -348,7 +356,7 @@ func TestSyncService_ConcurrentStop(t *testing.T) {
 
 	syncConfig := &Config{
 		RepoPath:        tmpDir,
-		DebounceDelay:   100 * time.Millisecond,
+		DebounceDelay:   testDebounceDelay,
 		AutoSyncEnabled: false, // Disable to prevent actual sync
 	}
 
