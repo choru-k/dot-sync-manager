@@ -5,7 +5,7 @@
 - [x] [Implement fsnotify watchers for dotfiles repository with debounce logic tuned to PRD latency goals, including the inactivity guard that only triggers auto-commit when the repo has been quiet for the configured period.](https://github.com/choru-k/dot-sync-manager/issues/2) - **Completed** in PR #27 with full fsnotify integration, thread-safe debouncer, and gitignore-style pattern matching.
 - [ ] [Deliver configurable debounce/backoff engine covering rapid file churn and manual sync triggers.](https://github.com/choru-k/dot-sync-manager/issues/3)
 - [ ] [Create initial `.sync-config.json` loader with validation and defaults described in PRD §5.](https://github.com/choru-k/dot-sync-manager/issues/4)
-- [ ] [Implement CLI commands (`init`, `add`, `start`, `stop`) matching behaviors in PRD §6.](https://github.com/choru-k/dot-sync-manager/issues/5)
+- [x] [Implement CLI commands (`init`, `add`, `start`, `stop`) matching behaviors in PRD §6.](https://github.com/choru-k/dot-sync-manager/issues/5) - **Completed** in PR #XX with full PRD §6 compliance including all required commands: setup (init), file management (add, remove, list), sync control (start, stop, restart, sync, push, pull), conflict management (check, conflicts, resolve), configuration (config, ignore), and utilities (log, open, version).
 
 ## Phase 2: Symlink Management (Week 3)
 - [ ] [Create symlink manager that provisions and verifies mappings defined in `.sync-config.json`.](https://github.com/choru-k/dot-sync-manager/issues/6)

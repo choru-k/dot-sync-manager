@@ -5,6 +5,10 @@
 *.so
 *.dylib
 dotfile-sync-manager
+dsm
+dsm-*
+bin/dsm
+bin/dsm-*
 
 # Test binary, built with `go test -c`
 *.test

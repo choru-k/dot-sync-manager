@@ -11,16 +11,16 @@ Dotfile Sync Manager (DSM) is a Go application that automatically syncs dotfiles
 ### Build and Run
 ```bash
 # Build the main application
-go build -v -o bin/dotfile-sync-manager .
+go build -v -o bin/dsm .
 
 # Run the application
-./bin/dotfile-sync-manager -config ~/.dotfile-sync.json
+./bin/dsm -config ~/.dotfile-sync.json
 
 # Run with verbose logging
-./bin/dotfile-sync-manager -config ~/.dotfile-sync.json -verbose
+./bin/dsm -config ~/.dotfile-sync.json -verbose
 
 # Show version
-./bin/dotfile-sync-manager -version
+./bin/dsm -version
 ```
 
 ### Testing
@@ -54,8 +54,8 @@ go mod tidy
 go vet ./...
 
 # Build for specific platforms
-GOOS=linux GOARCH=amd64 go build -v -o bin/dotfile-sync-manager-linux .
-GOOS=darwin GOARCH=arm64 go build -v -o bin/dotfile-sync-manager-darwin .
+GOOS=linux GOARCH=amd64 go build -v -o bin/dsm-linux .
+GOOS=darwin GOARCH=arm64 go build -v -o bin/dsm-darwin .
 ```
 
 ### GitHub CLI
