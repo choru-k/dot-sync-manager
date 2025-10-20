@@ -1,68 +1,107 @@
-# Gemini Code Assist Configuration
-# This file customizes how Gemini reviews code in this repository
+# Gemini Code Assist Configuration for Dotfile Sync Manager
+# Combines code review focus, style guide reference, and ignore patterns for Go project workflows
 
-# Style guide configuration
+have_fun: false
 style_guide: ".gemini/styleguide.md"
 
-# Review settings
+code_review:
+  disable: false
+  comment_severity_threshold: MEDIUM
+  max_review_comments: -1
+  pull_request_opened:
+    help: false
+    summary: true
+    code_review: true
+    include_drafts: true
+
 review:
-  # Focus areas for code review
   focus:
     - path_handling
     - error_handling
     - validation_patterns
     - test_quality
     - code_duplication
-  
-  # Severity levels to report
   severity:
     - critical
     - high
     - medium
-  
-  # Skip low priority suggestions unless specifically requested
   skip_low_priority: false
 
-# File patterns to review
 include:
   - "**/*.go"
   - "**/*_test.go"
 
-# File patterns to skip
 exclude:
   - "vendor/**"
   - "**/testdata/**"
   - "**/*.pb.go"
   - "**/*_generated.go"
 
-# Project-specific rules
 custom_rules:
   - name: "path_expansion"
     description: "All user-provided paths must be expanded via expandPaths() method"
     pattern: "ExpandPath"
     enabled: true
-  
   - name: "validation_mutations"
     description: "Validate() methods should never mutate state"
     pattern: "func.*Validate.*error"
     enabled: true
-  
   - name: "test_cleanup"
     description: "Tests should use t.Cleanup not defer for teardown"
     pattern: "defer.*Setenv"
     enabled: true
 
-# Language and framework versions
 language:
   go:
     version: "1.23"
     modules: true
 
-# Review tone
 tone: "constructive"
-
-# Provide code suggestions
 suggestions: true
-
-# Include examples in feedback
 examples: true
+
+ignore_patterns:
+  # Build artifacts and binaries
+  - "bin/**"
+  - "dotfile-sync-manager"
+  - "*.exe"
+  
+  # Test coverage and reports
+  - "coverage.out"
+  - "*.coverprofile"
+  
+  # Go dependency files (auto-generated)
+  - "go.sum"
+  
+  # Git internals
+  - ".git/**"
+  
+  # Documentation files - excluding important project docs from review
+  - "README.md"
+  - "CHANGELOG.md"
+  
+  # CI/CD workflows (optional - remove if you want workflow reviews)
+  - ".github/**"
+  
+  # Vendor directory (if using vendoring)
+  - "vendor/**"
+  
+  # IDE and editor files
+  - ".vscode/**"
+  - ".idea/**"
+  - "*.swp"
+  - "*.swo"
+  - "*~"
+  
+  # OS files
+  - ".DS_Store"
+  - "Thumbs.db"
+  
+  # Test fixtures and test data
+  - "testdata/**"
+  - "fixtures/**"
+  
+  # Temporary files
+  - "tmp/**"
+  - "temp/**"
+  - "*.tmp"

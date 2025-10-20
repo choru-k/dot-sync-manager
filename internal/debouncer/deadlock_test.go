@@ -29,7 +29,7 @@ func TestAdvancedDebouncer_NoDeadlockInCalculateDelay(t *testing.T) {
 	// Start multiple goroutines that will trigger the potential deadlock
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
-		go func(id int) {
+		go func(_ int) {
 			defer wg.Done()
 			for j := 0; j < numOperations; j++ {
 				// This will call calculateDelay() internally
@@ -93,7 +93,7 @@ func TestAdvancedDebouncer_ConcurrentActivityAccess(t *testing.T) {
 	// Multiple goroutines access activity statistics
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
-		go func(id int) {
+		go func(_ int) {
 			defer wg.Done()
 			for j := 0; j < 20; j++ {
 				// These methods access activityHistory and could potentially deadlock
@@ -139,7 +139,7 @@ func TestAdvancedDebouncer_RapidChurnDetection(t *testing.T) {
 
 	for i := 0; i < numTriggers; i++ {
 		wg.Add(1)
-		go func(id int) {
+		go func(_ int) {
 			defer wg.Done()
 			debouncer.Add("rapid_churn", func() {})
 		}(i)
@@ -198,7 +198,7 @@ func TestAdvancedDebouncer_MemoryUsageUnderConcurrency(t *testing.T) {
 	// Launch many concurrent operations
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
-		go func(id int) {
+		go func(_ int) {
 			defer wg.Done()
 			for j := 0; j < operationsPerGoroutine; j++ {
 				debouncer.Add("memory_test", func() {})
