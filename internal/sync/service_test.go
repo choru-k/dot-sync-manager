@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -326,4 +327,205 @@ func TestSyncService_DynamicDirectoryWatching(t *testing.T) {
 	// The test passes if no panics occurred and the watcher handled the events
 	// In a real scenario, we'd verify the file event was detected
 	t.Log("Dynamic directory watching test completed successfully")
+}
+
+func TestSyncService_ConcurrentStop(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	gitConfig := gitmanager.Config{
+		RepoPath:    tmpDir,
+		RemoteURL:   "https://github.com/test/test.git",
+		RemoteName:  "origin",
+		AuthorName:  "Test User",
+		AuthorEmail: "test@example.com",
+		AuthType:    gitmanager.AuthStrategyNone,
+	}
+
+	gitMgr, err := gitmanager.NewGitManager(context.Background(), gitConfig)
+	if err != nil {
+		t.Fatalf("Failed to create git manager: %v", err)
+	}
+
+	syncConfig := &Config{
+		RepoPath:        tmpDir,
+		DebounceDelay:   100 * time.Millisecond,
+		AutoSyncEnabled: false, // Disable to prevent actual sync
+	}
+
+	service, err := New(gitMgr, syncConfig)
+	if err != nil {
+		t.Fatalf("Failed to create sync service: %v", err)
+	}
+
+	// Start the service to have something to stop
+	if err := service.Start(); err != nil {
+		t.Fatalf("Failed to start service: %v", err)
+	}
+
+	// Test concurrent Stop calls
+	numGoroutines := 10
+	var wg sync.WaitGroup
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			service.Stop()
+		}()
+	}
+
+	wg.Wait()
+
+	// Wait for cleanup to complete
+	time.Sleep(50 * time.Millisecond)
+
+	// Additional verification: multiple calls should be safe
+	// Call Stop a few more times sequentially
+	for i := 0; i < 3; i++ {
+		service.Stop() // Should not panic
+	}
+
+	// Service should still be stopped
+	if service.IsRunning() {
+		t.Error("Service should still be stopped after multiple Stop() calls")
+	}
+
+	t.Log("Concurrent Stop test completed successfully")
+}
+
+func TestSyncService_MultipleStopCalls(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	gitConfig := gitmanager.Config{
+		RepoPath:    tmpDir,
+		RemoteURL:   "https://github.com/test/test.git",
+		RemoteName:  "origin",
+		AuthorName:  "Test User",
+		AuthorEmail: "test@example.com",
+		AuthType:    gitmanager.AuthStrategyNone,
+	}
+
+	gitMgr, err := gitmanager.NewGitManager(context.Background(), gitConfig)
+	if err != nil {
+		t.Fatalf("Failed to create git manager: %v", err)
+	}
+
+	// Test multiple sequential Stop() calls on non-started service
+	{
+		syncConfig := &Config{
+			RepoPath:        tmpDir,
+			AutoSyncEnabled: false,
+		}
+
+		service, err := New(gitMgr, syncConfig)
+		if err != nil {
+			t.Fatalf("Failed to create sync service: %v", err)
+		}
+
+		// Verify service is not running initially
+		if service.IsRunning() {
+			t.Error("Service should not be running without Start()")
+		}
+
+		// Test multiple sequential Stop() calls on non-started service
+		for i := 0; i < 5; i++ {
+			service.Stop() // Should not panic
+		}
+	}
+
+	// Test multiple sequential Stop() calls on running service
+	{
+		syncConfig := &Config{
+			RepoPath:        tmpDir,
+			AutoSyncEnabled: false,
+		}
+
+		service, err := New(gitMgr, syncConfig)
+		if err != nil {
+			t.Fatalf("Failed to create sync service: %v", err)
+		}
+
+		// Start the service
+		if err := service.Start(); err != nil {
+			t.Fatalf("Failed to start service: %v", err)
+		}
+
+		// Verify service is running
+		if !service.IsRunning() {
+			t.Error("Service should be running after Start()")
+		}
+
+		// Test multiple sequential Stop() calls on running service
+		for i := 0; i < 5; i++ {
+			service.Stop() // Should not panic, cleanup should happen only once
+			time.Sleep(10 * time.Millisecond) // Small delay between calls
+		}
+
+		// Wait for cleanup to complete
+		time.Sleep(50 * time.Millisecond)
+
+		// Verify service is stopped
+		if service.IsRunning() {
+			t.Error("Service should be stopped")
+		}
+	}
+
+	t.Log("Multiple Stop calls test completed successfully")
+}
+
+func TestSyncService_StopIdempotency(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	gitConfig := gitmanager.Config{
+		RepoPath:    tmpDir,
+		RemoteURL:   "https://github.com/test/test.git",
+		RemoteName:  "origin",
+		AuthorName:  "Test User",
+		AuthorEmail: "test@example.com",
+		AuthType:    gitmanager.AuthStrategyNone,
+	}
+
+	gitMgr, err := gitmanager.NewGitManager(context.Background(), gitConfig)
+	if err != nil {
+		t.Fatalf("Failed to create git manager: %v", err)
+	}
+
+	syncConfig := &Config{
+		RepoPath:        tmpDir,
+		AutoSyncEnabled: false,
+	}
+
+	service, err := New(gitMgr, syncConfig)
+	if err != nil {
+		t.Fatalf("Failed to create sync service: %v", err)
+	}
+
+	// Start the service
+	if err := service.Start(); err != nil {
+		t.Fatalf("Failed to start service: %v", err)
+	}
+
+	// First stop should stop the service
+	service.Stop()
+
+	if service.IsRunning() {
+		t.Error("Service should be stopped after first Stop() call")
+	}
+
+	// Get initial stats
+	initialStats := service.GetStats()
+
+	// Multiple subsequent stops should not change the state
+	for i := 0; i < 10; i++ {
+		service.Stop()
+	}
+
+	// Verify stats are unchanged
+	finalStats := service.GetStats()
+
+	if initialStats["running"] != finalStats["running"] {
+		t.Error("Running state should not change after multiple Stop() calls")
+	}
+
+	t.Log("Stop idempotency test completed successfully")
 }

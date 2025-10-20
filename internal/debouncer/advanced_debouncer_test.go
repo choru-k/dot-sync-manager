@@ -3,6 +3,7 @@ package debouncer
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -468,4 +469,145 @@ func TestAdvancedDebouncer_ConcurrentAccess(t *testing.T) {
 	if stats["activity_count"] == nil {
 		t.Error("Expected activity count in stats")
 	}
+}
+
+func TestAdvancedDebouncer_ConcurrentStopNew(t *testing.T) {
+	config := DefaultAdvancedConfig()
+	debouncer := NewAdvanced(config)
+	debouncer.Start()
+
+	// Test concurrent Stop calls
+	numGoroutines := 10
+	var wg sync.WaitGroup
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			debouncer.Stop()
+		}()
+	}
+
+	wg.Wait()
+
+	// Additional verification: multiple calls should be safe
+	// Call Stop a few more times sequentially
+	for i := 0; i < 3; i++ {
+		debouncer.Stop() // Should not panic
+	}
+
+	t.Log("Concurrent Stop test completed successfully")
+}
+
+func TestAdvancedDebouncer_MultipleStopCalls(t *testing.T) {
+	config := DefaultAdvancedConfig()
+	debouncer := NewAdvanced(config)
+	debouncer.Start()
+
+	// Add some pending operations
+	var callCount int64
+	var mu sync.Mutex
+
+	fn := func() {
+		mu.Lock()
+		defer mu.Unlock()
+		atomic.AddInt64(&callCount, 1)
+	}
+
+	// Add some operations
+	for i := 0; i < 3; i++ {
+		debouncer.Add(fmt.Sprintf("test-%d", i), fn)
+	}
+
+	// Test multiple sequential Stop() calls
+	for i := 0; i < 5; i++ {
+		debouncer.Stop() // Should not panic, cleanup should happen only once
+	}
+
+	// Wait a bit for any pending operations to complete
+	time.Sleep(50 * time.Millisecond)
+
+	t.Log("Multiple Stop calls test completed successfully")
+}
+
+func TestAdvancedDebouncer_StopIdempotency(t *testing.T) {
+	config := DefaultAdvancedConfig()
+	debouncer := NewAdvanced(config)
+	debouncer.Start()
+
+	// First stop should cancel all operations and close channels
+	debouncer.Stop()
+
+	// Wait for cleanup to complete
+	time.Sleep(DefaultShutdownTimeout + 50*time.Millisecond)
+
+	// Multiple subsequent stops should not panic
+	for i := 0; i < 10; i++ {
+		debouncer.Stop()
+	}
+
+	// The debouncer should be in a consistent state
+	// Note: After stop, the debouncer is in a shutdown state and cannot be restarted
+	// This is expected behavior
+
+	t.Log("Stop idempotency test completed successfully")
+}
+
+func TestAdvancedDebouncer_ConcurrentStopWithOperations(t *testing.T) {
+	config := AdvancedDebouncerConfig{
+		BaseDelay:          50 * time.Millisecond,
+		MaxDelay:           1 * time.Second,
+		BackoffEnabled:     false,
+		ChurnThreshold:     10,
+		ChurnWindow:        200 * time.Millisecond,
+		DecayResetDuration: 1 * time.Second,
+		ManualSyncTimeout:  100 * time.Millisecond,
+	}
+
+	debouncer := NewAdvanced(config)
+	debouncer.Start()
+	defer debouncer.Stop()
+
+	var operationCount int64
+	var wg sync.WaitGroup
+
+	// Start adding operations concurrently
+	numOperationGoroutines := 5
+	for i := 0; i < numOperationGoroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for j := 0; j < 10; j++ {
+				fn := func() {
+					atomic.AddInt64(&operationCount, 1)
+				}
+				debouncer.Add(fmt.Sprintf("concurrent-test-%d-%d", id, j), fn)
+				time.Sleep(5 * time.Millisecond)
+			}
+		}(i)
+	}
+
+	// Wait for some operations to be added
+	time.Sleep(20 * time.Millisecond)
+
+	// Start concurrent Stop calls
+	numStopGoroutines := 3
+	var stopWg sync.WaitGroup
+	for i := 0; i < numStopGoroutines; i++ {
+		stopWg.Add(1)
+		go func() {
+			defer stopWg.Done()
+			debouncer.Stop()
+		}()
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+	stopWg.Wait()
+
+	// Wait for cleanup
+	time.Sleep(DefaultShutdownTimeout + 50*time.Millisecond)
+
+	// Test should complete without panics
+	t.Logf("Concurrent Stop with operations test completed successfully. Operations: %d", atomic.LoadInt64(&operationCount))
 }

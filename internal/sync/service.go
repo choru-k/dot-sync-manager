@@ -61,6 +61,9 @@ type SyncService struct {
 	// Deadlock prevention: track if Stop() is called from eventLoop
 	inEventLoop int32 // atomic.Bool: 1 if in eventLoop, 0 otherwise
 
+	// Thread safety
+	stopOnce sync.Once
+
 	// Event callbacks
 	onSyncStart    func()
 	onSyncComplete func(files []string, err error)
@@ -221,7 +224,7 @@ func (s *SyncService) Stop() error {
 			}
 		}
 
-			log.Println("sync: shutdown initiated")
+		log.Println("sync: shutdown initiated")
 	})
 
 	// Wait for the eventLoop goroutine to finish processing

@@ -63,7 +63,7 @@ type AdvancedDebouncer struct {
 	// Shutdown handling
 	done chan struct{}
 
-	// Context for cancellation
+// Context for cancellation
 	ctx    context.Context
 	cancel context.CancelFunc
 
