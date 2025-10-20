@@ -79,18 +79,16 @@ type machineConfigJSON struct {
 	Name string `json:"name,omitempty"`
 }
 
-// MarshalJSON implements custom JSON marshaling for MachineConfig
-// Serializes as a plain string (the machine name) to match PRD §5
-// Empty names serialize to "" to maintain JSON shape; validation enforces non-empty names later
+// MarshalJSON implements custom JSON marshaling for MachineConfig.
+// It serializes the config as a plain string containing the machine name,
+// which aligns with the format specified in PRD §5.
 func (m MachineConfig) MarshalJSON() ([]byte, error) {
-	if m.Name == "" {
-		return []byte(`""`), nil
-	}
 	return json.Marshal(m.Name)
 }
 
-// UnmarshalJSON implements custom JSON unmarshaling for MachineConfig
-// Accepts both string form (new PRD format) and object form (legacy format)
+// UnmarshalJSON implements custom JSON unmarshaling for MachineConfig.
+// It provides backward compatibility by accepting both the new PRD format (a plain string)
+// and the legacy format (an object with a "name" field).
 func (m *MachineConfig) UnmarshalJSON(data []byte) error {
 	// Try to unmarshal as string first (new PRD format)
 	var nameStr string
@@ -112,7 +110,8 @@ func (m *MachineConfig) UnmarshalJSON(data []byte) error {
 	return fmt.Errorf("machine config must be a string or object with 'name' field: string parsing failed: %w, object parsing failed: %w", stringErr, objectErr)
 }
 
-// selectValue helper chooses between PRD and legacy values without duplicating logic
+// selectValue helper chooses between PRD and legacy values without duplicating logic.
+// It returns the PRD value if present, otherwise the legacy value, and indicates whether a value was found.
 func selectValue[T any](prd, legacy *T) (value T, hasValue bool) {
 	if prd != nil {
 		return *prd, true
@@ -123,7 +122,8 @@ func selectValue[T any](prd, legacy *T) (value T, hasValue bool) {
 	return value, false
 }
 
-// assignIfPresent helper assigns a value to target if the source pointer is not nil
+// assignIfPresent helper assigns a value to target if the source pointer is not nil.
+// This is used in unmarshaling to preserve defaults when JSON fields are absent.
 func assignIfPresent[T any](source *T, target *T) {
 	if source != nil {
 		*target = *source
@@ -216,16 +216,13 @@ type gitConfigJSONOutput struct {
 	KnownHostsPath   string                  `json:"known_hosts_path,omitempty"`
 }
 
-// MarshalJSON implements custom JSON marshaling for GitConfig
-// Uses PRD keys: remote, user_name, user_email
+// MarshalJSON implements custom JSON marshaling for GitConfig.
+// It uses the PRD-specified keys `remote`, `user_name`, and `user_email` for serialization.
 func (g GitConfig) MarshalJSON() ([]byte, error) {
 	jsonObj := gitConfigJSONOutput{
 		RepoPath:         g.RepoPath,
 		RemoteURL:        g.RemoteURL,
-		Remote:           &g.RemoteName,
 		Branch:           g.Branch,
-		UserName:         &g.AuthorName,
-		UserEmail:        &g.AuthorEmail,
 		AuthType:         g.AuthType,
 		Username:         g.Username,
 		Password:         g.Password,
@@ -233,11 +230,23 @@ func (g GitConfig) MarshalJSON() ([]byte, error) {
 		SSHKeyPassphrase: g.SSHKeyPassphrase,
 		KnownHostsPath:   g.KnownHostsPath,
 	}
+
+	if g.RemoteName != "" {
+		jsonObj.Remote = &g.RemoteName
+	}
+	if g.AuthorName != "" {
+		jsonObj.UserName = &g.AuthorName
+	}
+	if g.AuthorEmail != "" {
+		jsonObj.UserEmail = &g.AuthorEmail
+	}
+
 	return json.Marshal(jsonObj)
 }
 
-// UnmarshalJSON implements custom JSON unmarshaling for GitConfig
-// Accepts both PRD keys (remote, user_name, user_email) and legacy keys (remote_name, author_name, author_email)
+// UnmarshalJSON implements custom JSON unmarshaling for GitConfig.
+// It provides backward compatibility by accepting both the new PRD keys (`remote`, `user_name`, `user_email`)
+// and legacy keys (`remote_name`, `author_name`, `author_email`), preferring the new keys when both are present.
 // Only overwrites fields when JSON keys are present, preserving existing defaults.
 // Callers should supply a struct pre-populated with defaults (e.g., via DefaultConfig) so omitted keys retain their values.
 func (g *GitConfig) UnmarshalJSON(data []byte) error {

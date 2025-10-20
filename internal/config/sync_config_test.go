@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -74,10 +75,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "empty machine name",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil {
-					t.Fatal(err)
-				}
+				c := mustDefaultConfig(t)
 				c.Machine.Name = ""
 				return c
 			}(),
@@ -86,10 +84,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "empty repo path",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil {
-					t.Fatal(err)
-				}
+				c := mustDefaultConfig(t)
 				c.Git.RepoPath = ""
 				return c
 			}(),
@@ -98,10 +93,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "relative repo path",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil {
-					t.Fatal(err)
-				}
+				c := mustDefaultConfig(t)
 				c.Git.RepoPath = "relative/path"
 				return c
 			}(),
@@ -110,10 +102,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "empty author name",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil {
-					t.Fatal(err)
-				}
+				c := mustDefaultConfig(t)
 				c.Git.AuthorName = ""
 				return c
 			}(),
@@ -122,10 +111,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "negative pull interval",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil {
-					t.Fatal(err)
-				}
+				c := mustDefaultConfig(t)
 				c.Sync.PullIntervalSeconds = -1
 				return c
 			}(),
@@ -134,10 +120,7 @@ func TestConfigValidation(t *testing.T) {
 		{
 			name: "zero debounce",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil {
-					t.Fatal(err)
-				}
+				c := mustDefaultConfig(t)
 				c.Sync.DebounceSeconds = 0
 				return c
 			}(),
@@ -534,10 +517,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "empty version",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil {
-					t.Fatal(err)
-				}
+				c := mustDefaultConfig(t)
 				c.Version = ""
 				return c
 			}(),
@@ -547,10 +527,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "invalid email format",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil {
-					t.Fatal(err)
-				}
+				c := mustDefaultConfig(t)
 				c.Git.AuthorEmail = "invalid-email"
 				return c
 			}(),
@@ -560,10 +537,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "pull interval too short",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil {
-					t.Fatal(err)
-				}
+				c := mustDefaultConfig(t)
 				c.Sync.PullIntervalSeconds = 30
 				return c
 			}(),
@@ -573,10 +547,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "debounce exceeds pull interval",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil {
-					t.Fatal(err)
-				}
+				c := mustDefaultConfig(t)
 				c.Sync.PullIntervalSeconds = 300
 				c.Sync.DebounceSeconds = 400
 				return c
@@ -587,10 +558,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "invalid conflict strategy",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil {
-					t.Fatal(err)
-				}
+				c := mustDefaultConfig(t)
 				c.ConflictResolution.Strategy = "invalid"
 				return c
 			}(),
@@ -600,10 +568,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "empty conflict strategy",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil {
-					t.Fatal(err)
-				}
+				c := mustDefaultConfig(t)
 				c.ConflictResolution.Strategy = ""
 				return c
 			}(),
@@ -613,10 +578,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "backup retention too long",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil {
-					t.Fatal(err)
-				}
+				c := mustDefaultConfig(t)
 				c.ConflictResolution.KeepBackupsDays = 500
 				return c
 			}(),
@@ -626,10 +588,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "invalid UI theme",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil {
-					t.Fatal(err)
-				}
+				c := mustDefaultConfig(t)
 				c.UI.Theme = "invalid"
 				return c
 			}(),
@@ -652,10 +611,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "log size too large",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil {
-					t.Fatal(err)
-				}
+				c := mustDefaultConfig(t)
 				c.Advanced.MaxLogSizeMB = 2000
 				return c
 			}(),
@@ -665,10 +621,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "mapping target requires absolute path",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil {
-					t.Fatal(err)
-				}
+				c := mustDefaultConfig(t)
 				c.Mappings = map[string]string{
 					"bashrc": "relative/path", // Relative path should fail validation
 				}
@@ -680,10 +633,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "valid mapping target with absolute path",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil {
-					t.Fatal(err)
-				}
+				c := mustDefaultConfig(t)
 				// Use absolute paths (as they would be after expandPaths())
 				homeDir, err := os.UserHomeDir()
 				if err != nil {
@@ -700,10 +650,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "empty mapping source",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil {
-					t.Fatal(err)
-				}
+				c := mustDefaultConfig(t)
 				c.Mappings = map[string]string{
 					"": "~/.bashrc",
 				}
@@ -818,7 +765,6 @@ func TestMachineConfigJSONCompatibility(t *testing.T) {
 }
 
 func TestGitConfigUnmarshalPreservesDefaults(t *testing.T) {
-	// Create a GitConfig with default values
 	originalConfig := GitConfig{
 		RepoPath:       "/default/repo",
 		RemoteURL:      "https://github.com/default/default.git",
@@ -836,74 +782,39 @@ func TestGitConfigUnmarshalPreservesDefaults(t *testing.T) {
 	tests := []struct {
 		name     string
 		jsonData string
+		expected GitConfig
 	}{
 		{
 			name:     "empty JSON preserves all defaults",
 			jsonData: `{}`,
+			expected: originalConfig,
 		},
 		{
 			name:     "partial JSON only overwrites present fields",
 			jsonData: `{"repo_path": "/custom/repo"}`,
+			expected: func() GitConfig {
+				cfg := originalConfig
+				cfg.RepoPath = "/custom/repo"
+				return cfg
+			}(),
 		},
 		{
 			name:     "null JSON preserves all defaults",
 			jsonData: `{"repo_path": null, "remote_url": null, "remote": null, "branch": null, "user_name": null, "user_email": null}`,
+			expected: originalConfig,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Copy the original config to avoid modifying it
-			config := originalConfig
-
+			config := originalConfig // Start with a fresh copy
 			err := json.Unmarshal([]byte(tt.jsonData), &config)
 			if err != nil {
-				t.Fatalf("Unexpected error unmarshaling JSON: %v", err)
+				t.Fatalf("Unexpected error: %v", err)
 			}
 
-			// Verify defaults are preserved based on what was in JSON
-			if strings.Contains(tt.jsonData, "repo_path") && !strings.Contains(tt.jsonData, "null") {
-				// If repo_path was set to a non-null value, it should be changed
-				if config.RepoPath != "/custom/repo" {
-					t.Errorf("Expected repo_path to be '/custom/repo', got '%s'", config.RepoPath)
-				}
-			} else {
-				// repo_path should remain default
-				if config.RepoPath != originalConfig.RepoPath {
-					t.Errorf("Expected repo_path to remain default '%s', got '%s'", originalConfig.RepoPath, config.RepoPath)
-				}
-			}
-
-			// Check that other fields remain default
-			if config.RemoteURL != originalConfig.RemoteURL {
-				t.Errorf("Expected remote_url to remain default '%s', got '%s'", originalConfig.RemoteURL, config.RemoteURL)
-			}
-			if config.RemoteName != originalConfig.RemoteName {
-				t.Errorf("Expected remote_name to remain default '%s', got '%s'", originalConfig.RemoteName, config.RemoteName)
-			}
-			if config.Branch != originalConfig.Branch {
-				t.Errorf("Expected branch to remain default '%s', got '%s'", originalConfig.Branch, config.Branch)
-			}
-			if config.AuthorName != originalConfig.AuthorName {
-				t.Errorf("Expected author_name to remain default '%s', got '%s'", originalConfig.AuthorName, config.AuthorName)
-			}
-			if config.AuthorEmail != originalConfig.AuthorEmail {
-				t.Errorf("Expected author_email to remain default '%s', got '%s'", originalConfig.AuthorEmail, config.AuthorEmail)
-			}
-			if config.AuthType != originalConfig.AuthType {
-				t.Errorf("Expected auth_type to remain default '%v', got '%v'", originalConfig.AuthType, config.AuthType)
-			}
-			if config.Username != originalConfig.Username {
-				t.Errorf("Expected username to remain default '%s', got '%s'", originalConfig.Username, config.Username)
-			}
-			if config.Password != originalConfig.Password {
-				t.Errorf("Expected password to remain default '%s', got '%s'", originalConfig.Password, config.Password)
-			}
-			if config.SSHKeyPath != originalConfig.SSHKeyPath {
-				t.Errorf("Expected ssh_key_path to remain default '%s', got '%s'", originalConfig.SSHKeyPath, config.SSHKeyPath)
-			}
-			if config.KnownHostsPath != originalConfig.KnownHostsPath {
-				t.Errorf("Expected known_hosts_path to remain default '%s', got '%s'", originalConfig.KnownHostsPath, config.KnownHostsPath)
+			if !reflect.DeepEqual(config, tt.expected) {
+				t.Errorf("Config mismatch. got=%+v, want=%+v", config, tt.expected)
 			}
 		})
 	}
