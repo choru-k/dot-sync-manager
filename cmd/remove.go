@@ -120,21 +120,24 @@ func findTrackedFile(cfg *config.SyncConfig, symlinkPath string) (string, string
 		return "", "", false, fmt.Errorf("failed to get absolute path: %w", err)
 	}
 
-	// Check if symlink target is in our mappings
+	// Create reverse map for O(1) lookup: target path -> source path
+	reverseMap := make(map[string]string)
 	for sourceRepoPath, targetHomePath := range cfg.Mappings {
 		absTarget, err := filepath.Abs(targetHomePath)
 		if err != nil {
 			continue // skip this mapping, continue checking others
 		}
+		reverseMap[absTarget] = sourceRepoPath
+	}
 
-		if absSymlink == absTarget {
-			absRepo, err := filepath.Abs(cfg.Git.RepoPath)
-			if err != nil {
-				return "", "", false, fmt.Errorf("failed to resolve repository path: %w", err)
-			}
-			sourceFile := filepath.Join(absRepo, sourceRepoPath)
-			return sourceRepoPath, sourceFile, true, nil
+	// O(1) lookup in reverse map
+	if sourceRepoPath, found := reverseMap[absSymlink]; found {
+		absRepo, err := filepath.Abs(cfg.Git.RepoPath)
+		if err != nil {
+			return "", "", false, fmt.Errorf("failed to resolve repository path: %w", err)
 		}
+		sourceFile := filepath.Join(absRepo, sourceRepoPath)
+		return sourceRepoPath, sourceFile, true, nil
 	}
 
 	// Not found in mappings, check if symlink points to repository

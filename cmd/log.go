@@ -97,36 +97,118 @@ func showLastLines(logFile string, lines int) error {
 		}
 	}()
 
-	// Read all lines
-	var allLines []string
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		allLines = append(allLines, scanner.Text())
+	// Get file size
+	stat, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to get file info: %w", err)
 	}
 
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("failed to read log file: %w", err)
-	}
-
-	if len(allLines) == 0 {
+	if stat.Size() == 0 {
 		fmt.Println("(log file is empty)")
 		return nil
 	}
 
-	// Show last N lines
-	start := 0
-	if len(allLines) > lines {
-		start = len(allLines) - lines
+	// Seek to end and read backwards to find lines
+	result, err := readLastLines(file, lines)
+	if err != nil {
+		return fmt.Errorf("failed to read last lines: %w", err)
+	}
+
+	if len(result.lines) == 0 {
+		fmt.Println("(log file is empty)")
+		return nil
 	}
 
 	fmt.Println(strings.Repeat("=", 50))
-	for i := start; i < len(allLines); i++ {
-		fmt.Println(allLines[i])
+	for _, line := range result.lines {
+		fmt.Println(line)
 	}
 	fmt.Println(strings.Repeat("=", 50))
-	fmt.Printf("Showing last %d of %d total lines\n", len(allLines)-start, len(allLines))
+	fmt.Printf("Showing last %d of %d total lines\n", len(result.lines), result.totalLines)
 
 	return nil
+}
+
+// readLastLines efficiently reads the last N lines from a file by reading backwards
+func readLastLines(file *os.File, n int) (*LogResult, error) {
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	size := stat.Size()
+	if size == 0 {
+		return &LogResult{lines: []string{}, totalLines: 0}, nil
+	}
+
+	// Start reading from the end
+	const chunkSize = 4096
+	var lines []string
+	var buf []byte
+	var pos = size
+	var lineCount int
+
+	for pos > 0 && lineCount < n {
+		// Calculate chunk start position
+		chunkStart := pos - chunkSize
+		if chunkStart < 0 {
+			chunkStart = 0
+		}
+
+		// Read chunk
+		chunk := make([]byte, pos-chunkStart)
+		_, err := file.ReadAt(chunk, chunkStart)
+		if err != nil {
+			return nil, err
+		}
+
+		// Prepend to buffer
+		buf = append(chunk, buf...)
+		pos = chunkStart
+
+		// Count newlines in combined buffer
+		newlines := 0
+		for _, b := range buf {
+			if b == '\n' {
+				newlines++
+			}
+		}
+
+		// If we have enough lines, extract them
+		if newlines >= n {
+			break
+		}
+	}
+
+	// Extract the last N lines from buffer
+	if len(buf) == 0 {
+		return &LogResult{lines: []string{}, totalLines: 0}, nil
+	}
+
+	// Split buffer into lines
+	allLines := strings.Split(string(buf), "\n")
+
+	// Remove empty string at the end if file ends with newline
+	if len(allLines) > 0 && allLines[len(allLines)-1] == "" {
+		allLines = allLines[:len(allLines)-1]
+	}
+
+	// Get the last N lines
+	start := 0
+	if len(allLines) > n {
+		start = len(allLines) - n
+	}
+
+	lines = allLines[start:]
+	totalLines := len(allLines)
+
+	return &LogResult{lines: lines, totalLines: totalLines}, nil
+}
+
+// LogResult holds the result of reading log lines
+type LogResult struct {
+	lines      []string
+	totalLines int
 }
 
 func followLog(logFile string) error {

@@ -91,7 +91,11 @@ func runIgnore(cmd *cobra.Command, args []string) error {
 	fmt.Printf("📝 Opening .syncignore file: %s\n", ignoreFile)
 	fmt.Printf("Using editor: %s\n", editor)
 
-	execCmd := exec.Command(editor, ignoreFile)
+	// Parse editor command to handle spaces properly
+	editorCmd, editorArgs := parseCommand(editor)
+	editorArgs = append(editorArgs, ignoreFile)
+
+	execCmd := exec.Command(editorCmd, editorArgs...)
 	if output, err := execCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to open editor: %w\nOutput: %s", err, string(output))
 	}

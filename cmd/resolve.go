@@ -38,7 +38,14 @@ func runResolve(cmd *cobra.Command, args []string) error {
 
 	// Check for conflict artifacts
 	conflictDir := filepath.Join(cfg.Git.RepoPath, ".dsm", "conflicts")
-	if stat, err := os.Stat(conflictDir); os.IsNotExist(err) || !stat.IsDir() {
+	stat, err := os.Stat(conflictDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Println("✅ No conflict artifacts found")
+		} else {
+			return fmt.Errorf("failed to access conflict directory: %w", err)
+		}
+	} else if !stat.IsDir() {
 		fmt.Println("✅ No conflict artifacts found")
 	} else {
 		entries, err := os.ReadDir(conflictDir)

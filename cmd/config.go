@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -8,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/choru-k/dot-sync-manager/internal/config"
 	"github.com/spf13/cobra"
 )
 
@@ -109,7 +111,11 @@ func runConfig(cmd *cobra.Command, args []string) error {
 	fmt.Printf("📝 Opening configuration file: %s\n", configPath)
 	fmt.Printf("Using editor: %s\n", editor)
 
-	execCmd := exec.Command(editor, configPath)
+	// Parse editor command to handle spaces properly
+	editorCmd, editorArgs := parseCommand(editor)
+	editorArgs = append(editorArgs, configPath)
+
+	execCmd := exec.Command(editorCmd, editorArgs...)
 	if output, err := execCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to open editor: %w\nOutput: %s", err, string(output))
 	}
@@ -123,8 +129,14 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
+	// Convert struct to map for nested access
+	cfgMap, err := structToMap(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to convert configuration: %w", err)
+	}
+
 	key := args[0]
-	value := getNestedValue(cfg, key)
+	value := getNestedValue(cfgMap, key)
 
 	if value == nil {
 		return fmt.Errorf("configuration key not found: %s", key)
@@ -140,19 +152,31 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
+	// Convert struct to map for nested access
+	cfgMap, err := structToMap(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to convert configuration: %w", err)
+	}
+
 	key := args[0]
 	value := args[1]
 
 	// Try to parse value as appropriate type
 	parsedValue := parseConfigValue(value)
 
-	if !setNestedValue(cfg, key, parsedValue) {
+	if !setNestedValue(cfgMap, key, parsedValue) {
 		return fmt.Errorf("failed to set configuration key: %s", key)
+	}
+
+	// Convert back to struct and save
+	updatedCfg, err := mapToStruct(cfgMap)
+	if err != nil {
+		return fmt.Errorf("failed to convert back to configuration: %w", err)
 	}
 
 	// Save updated configuration
 	configPath := cfg.GetConfigPath()
-	if err := cfg.SaveToFile(configPath); err != nil {
+	if err := updatedCfg.SaveToFile(configPath); err != nil {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
 
@@ -248,4 +272,38 @@ func parseConfigValue(value string) interface{} {
 
 	// Return as string
 	return value
+}
+
+// structToMap converts a struct to a map[string]interface{} using JSON marshaling
+func structToMap(obj interface{}) (map[string]interface{}, error) {
+	// Marshal to JSON
+	jsonBytes, err := json.Marshal(obj)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal struct: %w", err)
+	}
+
+	// Unmarshal to map
+	var result map[string]interface{}
+	if err := json.Unmarshal(jsonBytes, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal to map: %w", err)
+	}
+
+	return result, nil
+}
+
+// mapToStruct converts a map[string]interface{} to the config struct type
+func mapToStruct(data map[string]interface{}) (*config.SyncConfig, error) {
+	// Marshal to JSON
+	jsonBytes, err := json.Marshal(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal map: %w", err)
+	}
+
+	// Unmarshal to struct
+	var result config.SyncConfig
+	if err := json.Unmarshal(jsonBytes, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal to struct: %w", err)
+	}
+
+	return &result, nil
 }
