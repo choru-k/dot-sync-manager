@@ -136,7 +136,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	// Perform git operations unless --no-commit flag is specified
 	if !noCommit {
-		if err := commitAddedFile(cmd, cfg, targetPath, filePath); err != nil {
+		if err := commitAddedFile(cmd, cfg, targetPath); err != nil {
 			// Git operation failed, but file operations succeeded
 			fmt.Printf("\n⚠️  Warning: Git commit failed: %v\n", err)
 			fmt.Printf("📝 Note: File was added but not committed. Run 'dsm sync' or wait for auto-sync.\n")
@@ -493,7 +493,7 @@ func isSensitiveFile(path string) bool {
 }
 
 // commitAddedFile stages and commits the added file to git using GitManager
-func commitAddedFile(cmd *cobra.Command, cfg *config.SyncConfig, targetPath, _ string) error {
+func commitAddedFile(cmd *cobra.Command, cfg *config.SyncConfig, targetPath string) error {
 	// Create GitManager instance
 	gmCfg := cfg.ToGitManagerConfig()
 

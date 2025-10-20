@@ -94,7 +94,7 @@ func runRemove(cmd *cobra.Command, args []string) error {
 
 	// Perform git operations unless --no-commit flag is specified
 	if !removeNoCommit {
-		if err := commitRemovedFile(cmd, cfg, trackedFile, filePath); err != nil {
+		if err := commitRemovedFile(cmd, cfg, trackedFile); err != nil {
 			// Git operation failed, but file operations succeeded
 			fmt.Printf("\n⚠️  Warning: Git commit failed: %v\n", err)
 			fmt.Printf("📝 Note: Changes were made but not committed. Run 'dsm sync' or wait for auto-sync to commit.\n")
@@ -251,7 +251,7 @@ func updateConfigAfterRemoval(cfg *config.SyncConfig, mappingKey string) error {
 
 
 // commitRemovedFile stages and commits the removal changes to git using GitManager
-func commitRemovedFile(cmd *cobra.Command, cfg *config.SyncConfig, trackedFile, _ string) error {
+func commitRemovedFile(cmd *cobra.Command, cfg *config.SyncConfig, trackedFile string) error {
 	// Create GitManager instance
 	gmCfg := cfg.ToGitManagerConfig()
 
@@ -267,7 +267,7 @@ func commitRemovedFile(cmd *cobra.Command, cfg *config.SyncConfig, trackedFile, 
 	}
 
 	// Also remove the mapping from config file
-	configRelPath := "sync-config.json"
+	configRelPath := ConfigFileName
 	var changedFiles []string
 	if _, err := os.Stat(filepath.Join(cfg.Git.RepoPath, configRelPath)); err == nil {
 		// Config file exists and should be committed too

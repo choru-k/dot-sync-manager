@@ -86,16 +86,12 @@ func runLog(cmd *cobra.Command, args []string) error {
 	return showLastLines(logFile, logLines)
 }
 
-func showLastLines(logFile string, lines int) error {
+func showLastLines(logFile string, lines int) (err error) {
 	file, err := os.Open(logFile)
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %w", err)
 	}
-	defer func() {
-		if closeErr := file.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close log file: %v\n", closeErr)
-		}
-	}()
+	defer util.CloseAndCaptureErr(file, &err)
 
 	// Read all lines
 	var allLines []string
@@ -129,16 +125,12 @@ func showLastLines(logFile string, lines int) error {
 	return nil
 }
 
-func followLog(logFile string) error {
+func followLog(logFile string) (err error) {
 	file, err := os.Open(logFile)
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %w", err)
 	}
-	defer func() {
-		if closeErr := file.Close(); closeErr != nil {
-			fmt.Printf("Warning: failed to close log file: %v\n", closeErr)
-		}
-	}()
+	defer util.CloseAndCaptureErr(file, &err)
 
 	// Seek to end of file
 	if _, err := file.Seek(0, 2); err != nil {
