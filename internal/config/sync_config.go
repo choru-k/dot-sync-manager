@@ -71,7 +71,41 @@ type SyncConfig struct {
 // MachineConfig holds machine-specific settings
 type MachineConfig struct {
 	// Name of this machine (e.g., "work-laptop", "personal-mac")
-	Name string `json:"name"`
+	Name string `json:"-"` // Don't serialize directly, handle in custom methods
+}
+
+// machineConfigJSON is used for JSON marshaling/unmarshaling
+type machineConfigJSON struct {
+	Name string `json:"name,omitempty"`
+}
+
+// MarshalJSON implements custom JSON marshaling for MachineConfig
+// Serializes as a plain string (the machine name) to match PRD §5
+func (m MachineConfig) MarshalJSON() ([]byte, error) {
+	if m.Name == "" {
+		return []byte(`""`), nil
+	}
+	return json.Marshal(m.Name)
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling for MachineConfig
+// Accepts both string form (new PRD format) and object form (legacy format)
+func (m *MachineConfig) UnmarshalJSON(data []byte) error {
+	// Try to unmarshal as string first (new PRD format)
+	var nameStr string
+	if err := json.Unmarshal(data, &nameStr); err == nil {
+		m.Name = nameStr
+		return nil
+	}
+
+	// Try to unmarshal as object (legacy format)
+	var obj machineConfigJSON
+	if err := json.Unmarshal(data, &obj); err == nil {
+		m.Name = obj.Name
+		return nil
+	}
+
+	return fmt.Errorf("machine config must be a string or object with 'name' field")
 }
 
 // GitConfig extends the gitmanager.Config with additional fields
@@ -82,15 +116,15 @@ type GitConfig struct {
 	// Remote repository URL
 	RemoteURL string `json:"remote_url"`
 
-	// Remote name (usually "origin")
-	RemoteName string `json:"remote_name"`
+	// Remote name (usually "origin") - kept for internal compatibility
+	RemoteName string `json:"-"` // Don't serialize directly, handle in custom methods
 
 	// Branch name (usually "main" or "master")
 	Branch string `json:"branch"`
 
-	// Author information for commits
-	AuthorName  string `json:"author_name"`
-	AuthorEmail string `json:"author_email"`
+	// Author information for commits - kept for internal compatibility
+	AuthorName  string `json:"-"` // Don't serialize directly, handle in custom methods
+	AuthorEmail string `json:"-"` // Don't serialize directly, handle in custom methods
 
 	// Authentication settings
 	AuthType         gitmanager.AuthStrategy `json:"auth_type"`
@@ -99,6 +133,105 @@ type GitConfig struct {
 	SSHKeyPath       string                  `json:"ssh_key_path,omitempty"`
 	SSHKeyPassphrase string                  `json:"ssh_key_passphrase,omitempty"`
 	KnownHostsPath   string                  `json:"known_hosts_path,omitempty"`
+}
+
+// gitConfigJSON is used for JSON marshaling/unmarshaling
+type gitConfigJSON struct {
+	// Repository path (absolute path to dotfiles directory)
+	RepoPath string `json:"repo_path"`
+
+	// Remote repository URL
+	RemoteURL string `json:"remote_url"`
+
+	// Remote name (PRD format) with legacy support
+	Remote     *string `json:"remote,omitempty"`
+	RemoteName *string `json:"remote_name,omitempty"` // Legacy
+
+	// Branch name (usually "main" or "master")
+	Branch string `json:"branch"`
+
+	// User information (PRD format) with legacy support
+	UserName    *string `json:"user_name,omitempty"`
+	UserEmail   *string `json:"user_email,omitempty"`
+	AuthorName  *string `json:"author_name,omitempty"`  // Legacy
+	AuthorEmail *string `json:"author_email,omitempty"` // Legacy
+
+	// Authentication settings
+	AuthType         gitmanager.AuthStrategy `json:"auth_type"`
+	Username         string                  `json:"username,omitempty"`
+	Password         string                  `json:"password,omitempty"`
+	SSHKeyPath       string                  `json:"ssh_key_path,omitempty"`
+	SSHKeyPassphrase string                  `json:"ssh_key_passphrase,omitempty"`
+	KnownHostsPath   string                  `json:"known_hosts_path,omitempty"`
+}
+
+// MarshalJSON implements custom JSON marshaling for GitConfig
+// Uses PRD keys: remote, user_name, user_email
+func (g GitConfig) MarshalJSON() ([]byte, error) {
+	jsonObj := gitConfigJSON{
+		RepoPath:         g.RepoPath,
+		RemoteURL:        g.RemoteURL,
+		Remote:           &g.RemoteName,
+		Branch:           g.Branch,
+		UserName:         &g.AuthorName,
+		UserEmail:        &g.AuthorEmail,
+		AuthType:         g.AuthType,
+		Username:         g.Username,
+		Password:         g.Password,
+		SSHKeyPath:       g.SSHKeyPath,
+		SSHKeyPassphrase: g.SSHKeyPassphrase,
+		KnownHostsPath:   g.KnownHostsPath,
+	}
+	return json.Marshal(jsonObj)
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling for GitConfig
+// Accepts both PRD keys (remote, user_name, user_email) and legacy keys (remote_name, author_name, author_email)
+func (g *GitConfig) UnmarshalJSON(data []byte) error {
+	var jsonObj gitConfigJSON
+	if err := json.Unmarshal(data, &jsonObj); err != nil {
+		return fmt.Errorf("failed to parse git config: %w", err)
+	}
+
+	// Copy basic fields
+	g.RepoPath = jsonObj.RepoPath
+	g.RemoteURL = jsonObj.RemoteURL
+	g.Branch = jsonObj.Branch
+	g.AuthType = jsonObj.AuthType
+	g.Username = jsonObj.Username
+	g.Password = jsonObj.Password
+	g.SSHKeyPath = jsonObj.SSHKeyPath
+	g.SSHKeyPassphrase = jsonObj.SSHKeyPassphrase
+	g.KnownHostsPath = jsonObj.KnownHostsPath
+
+	// Handle remote name with PRD preference
+	if jsonObj.Remote != nil {
+		g.RemoteName = *jsonObj.Remote
+	} else if jsonObj.RemoteName != nil {
+		g.RemoteName = *jsonObj.RemoteName
+	} else {
+		g.RemoteName = "origin" // default
+	}
+
+	// Handle user name with PRD preference
+	if jsonObj.UserName != nil {
+		g.AuthorName = *jsonObj.UserName
+	} else if jsonObj.AuthorName != nil {
+		g.AuthorName = *jsonObj.AuthorName
+	} else {
+		g.AuthorName = "" // will be set to default later
+	}
+
+	// Handle user email with PRD preference
+	if jsonObj.UserEmail != nil {
+		g.AuthorEmail = *jsonObj.UserEmail
+	} else if jsonObj.AuthorEmail != nil {
+		g.AuthorEmail = *jsonObj.AuthorEmail
+	} else {
+		g.AuthorEmail = "" // will be set to default later
+	}
+
+	return nil
 }
 
 // BackoffSettings controls advanced debouncer behavior
@@ -257,7 +390,7 @@ func DefaultConfig() (*SyncConfig, error) {
 		},
 		Mappings: make(map[string]string),
 		UI: UIConfig{
-			StartAtBoot:    false,
+			StartAtBoot:    true,
 			MinimizeToTray: true,
 			Theme:          "auto",
 		},
@@ -663,8 +796,6 @@ func (c *SyncConfig) ToGitManagerConfig() gitmanager.Config {
 		KnownHostsPath:   c.Git.KnownHostsPath,
 	}
 }
-
-
 
 // ToSyncConfig converts to sync.Config
 func (c *SyncConfig) ToSyncConfig() *sync.Config {
