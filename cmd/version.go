@@ -29,6 +29,9 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 }
 
+// runVersion executes the version command to display build information.
+// It shows the application version, commit hash, and build date, with
+// additional guidance for development versions.
 func runVersion(cmd *cobra.Command, args []string) error {
 	fmt.Println("Dotfile Sync Manager (DSM)")
 	fmt.Printf("Version: %s\n", Version)

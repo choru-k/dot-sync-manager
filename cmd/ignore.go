@@ -40,6 +40,10 @@ func init() {
 	ignoreCmd.Flags().BoolVar(&ignoreShow, "show", false, "Show current .syncignore contents instead of editing")
 }
 
+// runIgnore executes the ignore command to manage .syncignore files.
+// It creates a new .syncignore file with default patterns if it doesn't exist,
+// or opens an existing file in the user's preferred editor for manual editing.
+// The --show flag displays current contents without editing.
 func runIgnore(cmd *cobra.Command, args []string) error {
 	cfg, err := getConfig()
 	if err != nil {
@@ -58,55 +62,7 @@ func runIgnore(cmd *cobra.Command, args []string) error {
 	// Create .syncignore file if it doesn't exist
 	if _, err := os.Stat(ignoreFile); os.IsNotExist(err) {
 		// Create with helpful comments and default patterns
-		defaultContent := `# .syncignore - Files and directories to exclude from sync
-# Uses gitignore-style syntax
-# Lines starting with # are comments
-
-# Common files to exclude
-*.log
-*.tmp
-*.swp
-*.swo
-*~
-
-# Temporary directories
-temp/
-tmp/
-.cache/
-
-# Editor files
-.vscode/settings.json
-.idea/workspace.xml
-*.sublime-*
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Build artifacts
-build/
-dist/
-target/
-bin/
-
-# Node modules
-node_modules/
-
-# Python cache
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Add your own patterns below
-`
-
-		if err := os.WriteFile(ignoreFile, []byte(defaultContent), 0644); err != nil {
+		if err := os.WriteFile(ignoreFile, []byte(defaultIgnoreContent), defaultFilePerms); err != nil {
 			return fmt.Errorf("failed to create .syncignore file: %w", err)
 		}
 		fmt.Printf("📝 Created new .syncignore file: %s\n", ignoreFile)

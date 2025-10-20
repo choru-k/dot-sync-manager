@@ -29,6 +29,9 @@ func init() {
 	openCmd.Flags().BoolVar(&openEditor, "editor", false, "Open in default editor instead of file manager")
 }
 
+// runOpen executes the open command to launch the dotfiles repository.
+// It can open the repository directory in the default file manager or
+// open it in a text editor, with cross-platform support for different operating systems.
 func runOpen(cmd *cobra.Command, args []string) error {
 	cfg, err := getConfig()
 	if err != nil {
@@ -56,11 +59,11 @@ func runOpen(cmd *cobra.Command, args []string) error {
 			// Fallback editors by platform
 			switch runtime.GOOS {
 			case "windows":
-				editor = "notepad"
+				editor = editorNotepad
 			case "darwin":
-				editor = "open -a TextEdit"
+				editor = editorTextEdit
 			default: // Linux and others
-				editor = "nano"
+				editor = editorNano
 			}
 		}
 		openCmd, openArgs = parseCommand(editor)

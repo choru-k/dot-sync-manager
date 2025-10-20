@@ -26,9 +26,8 @@ const (
 	// forceConfirmationKeyword is the exact string users must type to confirm destructive operations
 	forceConfirmationKeyword = "DELETE"
 
-	// File permission constants
-	restrictiveConfigFilePerms = 0600 // owner read/write only (for sensitive config data)
-	defaultFilePerms           = 0644 // owner rw, group/others read (for normal files)
+	// restrictiveConfigFilePerms is for sensitive configuration data
+	restrictiveConfigFilePerms = 0600 // owner read/write only
 )
 
 // initCmd represents the init command

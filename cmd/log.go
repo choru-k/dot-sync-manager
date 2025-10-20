@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/choru-k/dot-sync-manager/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -32,10 +33,13 @@ var (
 
 func init() {
 	rootCmd.AddCommand(logCmd)
-	logCmd.Flags().IntVarP(&logLines, "lines", "n", 50, "Number of lines to show from end of log")
+	logCmd.Flags().IntVarP(&logLines, "lines", "n", defaultLogLines, "Number of lines to show from end of log")
 	logCmd.Flags().BoolVarP(&logFollow, "follow", "f", false, "Follow log output (like tail -f)")
 }
 
+// runLog executes the log command to view sync daemon activity.
+// It determines the log file location, handles user path expansion,
+// and provides options for showing recent lines or following the log in real-time.
 func runLog(cmd *cobra.Command, args []string) error {
 	cfg, err := getConfig()
 	if err != nil {
@@ -56,12 +60,12 @@ func runLog(cmd *cobra.Command, args []string) error {
 	}
 
 	// Expand user path in log file
-	if strings.HasPrefix(logFile, "~/") {
-		homeDir, err := os.UserHomeDir()
+	if strings.HasPrefix(logFile, "~") {
+		expandedPath, err := util.ExpandPath(logFile)
 		if err != nil {
 			return fmt.Errorf("failed to expand log file path: %w", err)
 		}
-		logFile = filepath.Join(homeDir, logFile[2:])
+		logFile = expandedPath
 	}
 
 	// Check if log file exists

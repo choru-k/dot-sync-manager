@@ -27,6 +27,10 @@ func init() {
 	restartCmd.Flags().BoolVar(&restartForeground, "foreground", false, "Run in foreground instead of daemonizing")
 }
 
+// runRestart executes the restart command to stop and start the daemon.
+// It checks if the daemon is currently running, performs a graceful shutdown,
+// waits for completion, then starts the daemon again. Provides detailed
+// status feedback throughout the process.
 func runRestart(cmd *cobra.Command, args []string) error {
 	fmt.Println("🔄 Restarting dotfile sync daemon...")
 
@@ -51,7 +55,7 @@ func runRestart(cmd *cobra.Command, args []string) error {
 		}
 
 		// Give the daemon a moment to clean up
-		time.Sleep(1 * time.Second)
+		time.Sleep(time.Duration(daemonSleepTime) * time.Second)
 	} else {
 		fmt.Println("ℹ️  No running daemon found")
 	}
