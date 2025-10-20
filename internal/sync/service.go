@@ -55,6 +55,9 @@ type SyncService struct {
 	// Thread safety
 	stopOnce sync.Once
 
+	// Deadlock prevention: track if Stop() is called from eventLoop
+	inEventLoop int32 // atomic.Bool: 1 if in eventLoop, 0 otherwise
+
 	// Event callbacks
 	onSyncStart    func()
 	onSyncComplete func(files []string, err error)
@@ -167,6 +170,8 @@ func (s *SyncService) Start() error {
 	s.shutdownWG.Add(1)
 	go func() {
 		defer s.shutdownWG.Done()
+		atomic.StoreInt32(&s.inEventLoop, 1)
+		defer atomic.StoreInt32(&s.inEventLoop, 0)
 		s.eventLoop()
 	}()
 
@@ -217,12 +222,17 @@ func (s *SyncService) Stop() error {
 	})
 
 	// Wait for the eventLoop goroutine to finish processing
-	// This is done outside the sync.Once to prevent deadlock when Stop()
-	// is called from within the event loop (e.g., from callbacks)
-	s.shutdownWG.Wait()
-
-	// Set watcher to nil after eventLoop has exited so it can be recreated in Start()
-	s.watcher = nil
+	// This is done outside the sync.Once, but we need to handle the case where
+	// Stop() is called from within the event loop goroutine to prevent deadlock
+	if atomic.LoadInt32(&s.inEventLoop) == 0 {
+		// We're not in the eventLoop goroutine, so it's safe to wait
+		s.shutdownWG.Wait()
+		// Set watcher to nil after eventLoop has exited so it can be recreated in Start()
+		s.watcher = nil
+	}
+	// If we're in the eventLoop goroutine, the Wait() would cause deadlock,
+	// so we skip it. The eventLoop will exit naturally due to context cancellation.
+	// In this case, we don't set watcher to nil as it could cause nil pointer dereference
 
 	log.Println("sync: stopped")
 
