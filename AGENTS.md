@@ -3,6 +3,9 @@
 ## Purpose
 This guide defines how we track work for the Dotfile Sync Manager (DSM) project using GitHub issues, labels, and the `DSM Roadmap` project board.
 
+## Tooling
+- Use the `gh` CLI for GitHub lookups and updates; do not rely on generic `fetch` or browser-based commands when GitHub data is needed.
+
 ## Daily Triage
 - Check new notifications and confirm any newly created issues are added to the `DSM Roadmap` board.
 - Assign the `Phase` field to match the PRD timeline and set `Status` to `Todo` unless work has started.
@@ -63,7 +66,7 @@ bin/review_report.sh https://github.com/choru-k/dot-sync-manager/pull/<n>
 ### Pre-Commit Checklist
 - [ ] All user-provided paths expanded via `expandPaths()` method
 - [ ] Path expansion functions return errors (never silently fail)
-- [ ] Tilde expansion uses `path[2:]` for `~/` prefix
+- [ ] Tilde expansion uses `strings.TrimLeft(path[1:], "/\\")` for `~/` prefix
 - [ ] Validation methods only check state (never mutate)
 - [ ] Error messages use "must" not "should"
 - [ ] Magic numbers extracted to named constants
