@@ -63,12 +63,6 @@ func validateRepoPath(path string) error {
 - Validate email addresses using RFC 5322 compliant parsing
 - Provide clear prompts and error messages
 
-## Error Handling
-- Return descriptive errors with context
-- Use `fmt.Errorf` with `%w` for error wrapping
-- Log errors at appropriate levels (Debug, Info, Warning, Error)
-- Handle edge cases explicitly (empty files, missing directories, etc.)
-
 ## Git Operations
 - Use go-git library, not shell commands
 - Implement stash-based conflict resolution for pull operations
@@ -192,7 +186,7 @@ func ExpandPath(path string) (string, error) {
     if err != nil {
         return "", fmt.Errorf("failed to get home directory: %w", err)
     }
-    return filepath.Join(homeDir, path[2:]), nil
+    return filepath.Join(homeDir, strings.TrimLeft(path[1:], "/\\")), nil
 }
 ```
 
@@ -204,14 +198,14 @@ func ExpandPath(path string) string {
     if err != nil {
         return path // Silently returns unexpanded path!
     }
-    return filepath.Join(homeDir, path[2:])
+    return filepath.Join(homeDir, strings.TrimLeft(path[1:], "/\\"))
 }
 ```
 
 **Rationale**: Callers need to know if expansion failed to handle errors appropriately.
 
 ### Rule 3: Handle Tilde Expansion Correctly
-**Context**: `~/path` requires special handling - must use `path[2:]` not `path[1:]`.
+**Context**: `~/path` requires special handling - must use `strings.TrimLeft(path[1:], "/\\")` not `path[2:]`.
 
 **✅ DO:**
 ```go
@@ -223,7 +217,7 @@ if path == "~" || strings.HasPrefix(path, "~/") {
     if path == "~" {
         return homeDir, nil
     }
-    return filepath.Join(homeDir, path[2:]), nil  // path[2:] skips "~/"
+    return filepath.Join(homeDir, strings.TrimLeft(path[1:], "/\\")), nil  // More robust than path[2:]
 }
 ```
 
@@ -235,7 +229,7 @@ if strings.HasPrefix(path, "~/") {
 }
 ```
 
-**Rationale**: `path[1:]` on `~/path` yields `/path` which `filepath.Join` treats as absolute, discarding the home directory.
+**Rationale**: `path[1:]` on `~/path` yields `/path` which `filepath.Join` treats as absolute, discarding the home directory. `strings.TrimLeft(path[1:], "/\\")` correctly handles both Unix and Windows path separators.
 
 ### Rule 4: Expand ALL Path Fields Consistently
 **Context**: Configuration often has multiple path fields.
@@ -1050,7 +1044,7 @@ When writing configuration-related code, ensure:
 **Path Handling:**
 - [ ] All path fields are expanded consistently in a dedicated method
 - [ ] Path expansion returns errors, not silently failing
-- [ ] Tilde expansion uses `path[2:]` for `~/` prefix
+- [ ] Tilde expansion uses `strings.TrimLeft(path[1:], "/\\")` for `~/` prefix
 - [ ] Path resolution errors propagated immediately (no silent fallbacks)
 
 **Validation:**

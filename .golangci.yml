@@ -5,16 +5,12 @@ run:
   tests: true
   modules-download-mode: readonly
 
-formatters:
-  enable:
-    - gofmt          # Checks Go code formatting
-    - goimports      # Checks import ordering and formatting
-
 linters:
   enable:
     - govet          # Reports suspicious constructs
     - misspell       # Finds commonly misspelled English words
     - ineffassign    # Detects ineffectual assignments
+    - unused         # Finds unused code
   # Disabled in pre-commit to allow faster commits, run in CI instead
   disable:
     - errcheck       # Too strict for pre-commit
@@ -22,14 +18,13 @@ linters:
     - staticcheck    # Some issues require manual review
     - whitespace     # Handled by gofmt
 
-formatters-settings:
+linters-settings:
   gofmt:
     simplify: true
-  
+
   goimports:
     local-prefixes: github.com/choru-k/dot-sync-manager
-  
-linters-settings:
+
   revive:
     confidence: 0.8
 
