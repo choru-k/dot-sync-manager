@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
+	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
 	"github.com/choru-k/dot-sync-manager/internal/util"
 	"github.com/spf13/cobra"
 )
@@ -19,11 +20,12 @@ var addCmd = &cobra.Command{
 	Use:   "add <filepath>",
 	Short: "Add file to dotfiles",
 	Long: `Add a file to your dotfiles repository. The file will be moved to the dotfiles
-directory and a symlink will be created in its original location.
+directory and a symlink will be created in its original location. By default, the file
+will be automatically committed to git unless --no-commit is specified.
 
 Examples:
   dsm add ~/.bashrc
-  dsm add ~/.vimrc
+  dsm add ~/.vimrc --no-commit
   dsm add ~/.config/nvim/init.vim`,
 	Args: cobra.ExactArgs(1),
 	RunE: runAdd,
@@ -31,6 +33,7 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(addCmd)
+	addCmd.Flags().BoolVar(&noCommit, "no-commit", false, "Skip automatic git commit of added files")
 }
 
 const (
@@ -54,6 +57,7 @@ var (
 	symlinkFunc  = os.Symlink
 	renameFunc   = os.Rename
 	timeNow      = time.Now
+	noCommit     bool
 
 	copyFileFunc = copyFile
 	saveConfigFn = func(cfg *config.SyncConfig, path string) error {
@@ -131,7 +135,18 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	fmt.Printf("🔗 Symlink: %s\n", filePath)
 	fmt.Printf("📂 Repository: %s\n", cfg.Git.RepoPath)
 
-	fmt.Printf("\n📝 Note: File staged for git commit. Run 'dsm sync' or wait for auto-sync.\n")
+	// Perform git operations unless --no-commit flag is specified
+	if !noCommit {
+		if err := commitAddedFile(cmd, cfg, targetPath, filePath); err != nil {
+			// Git operation failed, but file operations succeeded
+			fmt.Printf("\n⚠️  Warning: Git commit failed: %v\n", err)
+			fmt.Printf("📝 Note: File was added but not committed. Run 'dsm sync' or wait for auto-sync.\n")
+		} else {
+			fmt.Printf("✅ Committed to git repository\n")
+		}
+	} else {
+		fmt.Printf("\n📝 Note: --no-commit specified. Run 'dsm sync' or wait for auto-sync to commit changes.\n")
+	}
 
 	return nil
 }
@@ -503,4 +518,41 @@ func isSensitiveFile(path string) bool {
 	}
 
 	return false
+}
+
+// commitAddedFile stages and commits the added file to git using GitManager
+func commitAddedFile(cmd *cobra.Command, cfg *config.SyncConfig, targetPath, filePath string) error {
+	// Create GitManager instance
+	gmCfg := cfg.ToGitManagerConfig()
+
+	gm, err := gitmanager.NewGitManager(cmd.Context(), gmCfg)
+	if err != nil {
+		return fmt.Errorf("failed to create git manager: %w", err)
+	}
+
+	// Stage and commit the added file
+	changedFiles, err := gm.StageAndCommit(cmd.Context(), timeNow())
+	if err != nil {
+		return fmt.Errorf("failed to stage and commit changes: %w", err)
+	}
+
+	// Only push if there's a remote configured
+	if cfg.Git.RemoteURL != "" {
+		if err := gm.Push(cmd.Context()); err != nil {
+			// Commit succeeded but push failed - still consider operation successful
+			fmt.Printf("⚠️  Warning: Git push failed: %v\n", err)
+			fmt.Printf("📝 Note: Changes were committed locally but not pushed. Run 'dsm sync' or wait for auto-sync to push.\n")
+		}
+	}
+
+	// Log which files were committed for transparency
+	if len(changedFiles) > 0 {
+		relTargetPath, err := filepath.Rel(cfg.Git.RepoPath, targetPath)
+		if err != nil {
+			relTargetPath = targetPath
+		}
+		fmt.Printf("📝 Committed: %s\n", relTargetPath)
+	}
+
+	return nil
 }
