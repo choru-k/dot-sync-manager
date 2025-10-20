@@ -93,19 +93,33 @@ func (m MachineConfig) MarshalJSON() ([]byte, error) {
 func (m *MachineConfig) UnmarshalJSON(data []byte) error {
 	// Try to unmarshal as string first (new PRD format)
 	var nameStr string
-	if err := json.Unmarshal(data, &nameStr); err == nil {
+	stringErr := json.Unmarshal(data, &nameStr)
+	if stringErr == nil {
 		m.Name = nameStr
 		return nil
 	}
 
 	// Try to unmarshal as object (legacy format)
 	var obj machineConfigJSON
-	if err := json.Unmarshal(data, &obj); err == nil {
+	objectErr := json.Unmarshal(data, &obj)
+	if objectErr == nil {
 		m.Name = obj.Name
 		return nil
 	}
 
-	return fmt.Errorf("machine config must be a string or object with 'name' field")
+	// Return both parsing errors to help users understand what went wrong
+	return fmt.Errorf("machine config must be a string or object with 'name' field: string parsing failed: %w, object parsing failed: %w", stringErr, objectErr)
+}
+
+// selectValue helper chooses between PRD and legacy values without duplicating logic
+func selectValue[T any](prd, legacy *T) (value T, hasValue bool) {
+	if prd != nil {
+		return *prd, true
+	}
+	if legacy != nil {
+		return *legacy, true
+	}
+	return value, false
 }
 
 // GitConfig extends the gitmanager.Config with additional fields
@@ -133,6 +147,36 @@ type GitConfig struct {
 	SSHKeyPath       string                  `json:"ssh_key_path,omitempty"`
 	SSHKeyPassphrase string                  `json:"ssh_key_passphrase,omitempty"`
 	KnownHostsPath   string                  `json:"known_hosts_path,omitempty"`
+}
+
+// gitConfigJSONInput is used for JSON unmarshaling with pointer fields for presence detection
+type gitConfigJSONInput struct {
+	// Repository path (absolute path to dotfiles directory)
+	RepoPath *string `json:"repo_path"`
+
+	// Remote repository URL
+	RemoteURL *string `json:"remote_url"`
+
+	// Remote name (PRD format) with legacy support
+	Remote     *string `json:"remote,omitempty"`
+	RemoteName *string `json:"remote_name,omitempty"` // Legacy
+
+	// Branch name (usually "main" or "master")
+	Branch *string `json:"branch"`
+
+	// User information (PRD format) with legacy support
+	UserName    *string `json:"user_name,omitempty"`
+	UserEmail   *string `json:"user_email,omitempty"`
+	AuthorName  *string `json:"author_name,omitempty"`  // Legacy
+	AuthorEmail *string `json:"author_email,omitempty"` // Legacy
+
+	// Authentication settings
+	AuthType         *gitmanager.AuthStrategy `json:"auth_type"`
+	Username         *string                  `json:"username,omitempty"`
+	Password         *string                  `json:"password,omitempty"`
+	SSHKeyPath       *string                  `json:"ssh_key_path,omitempty"`
+	SSHKeyPassphrase *string                  `json:"ssh_key_passphrase,omitempty"`
+	KnownHostsPath   *string                  `json:"known_hosts_path,omitempty"`
 }
 
 // gitConfigJSON is used for JSON marshaling/unmarshaling
@@ -187,48 +231,55 @@ func (g GitConfig) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON implements custom JSON unmarshaling for GitConfig
 // Accepts both PRD keys (remote, user_name, user_email) and legacy keys (remote_name, author_name, author_email)
+// Only overwrites fields when JSON keys are present, preserving existing defaults
 func (g *GitConfig) UnmarshalJSON(data []byte) error {
-	var jsonObj gitConfigJSON
+	var jsonObj gitConfigJSONInput
 	if err := json.Unmarshal(data, &jsonObj); err != nil {
 		return fmt.Errorf("failed to parse git config: %w", err)
 	}
 
-	// Copy basic fields
-	g.RepoPath = jsonObj.RepoPath
-	g.RemoteURL = jsonObj.RemoteURL
-	g.Branch = jsonObj.Branch
-	g.AuthType = jsonObj.AuthType
-	g.Username = jsonObj.Username
-	g.Password = jsonObj.Password
-	g.SSHKeyPath = jsonObj.SSHKeyPath
-	g.SSHKeyPassphrase = jsonObj.SSHKeyPassphrase
-	g.KnownHostsPath = jsonObj.KnownHostsPath
-
-	// Handle remote name with PRD preference
-	if jsonObj.Remote != nil {
-		g.RemoteName = *jsonObj.Remote
-	} else if jsonObj.RemoteName != nil {
-		g.RemoteName = *jsonObj.RemoteName
-	} else {
-		g.RemoteName = "origin" // default
+	// Only assign fields when they are present in JSON (non-nil pointers)
+	if jsonObj.RepoPath != nil {
+		g.RepoPath = *jsonObj.RepoPath
+	}
+	if jsonObj.RemoteURL != nil {
+		g.RemoteURL = *jsonObj.RemoteURL
+	}
+	if jsonObj.Branch != nil {
+		g.Branch = *jsonObj.Branch
+	}
+	if jsonObj.AuthType != nil {
+		g.AuthType = *jsonObj.AuthType
+	}
+	if jsonObj.Username != nil {
+		g.Username = *jsonObj.Username
+	}
+	if jsonObj.Password != nil {
+		g.Password = *jsonObj.Password
+	}
+	if jsonObj.SSHKeyPath != nil {
+		g.SSHKeyPath = *jsonObj.SSHKeyPath
+	}
+	if jsonObj.SSHKeyPassphrase != nil {
+		g.SSHKeyPassphrase = *jsonObj.SSHKeyPassphrase
+	}
+	if jsonObj.KnownHostsPath != nil {
+		g.KnownHostsPath = *jsonObj.KnownHostsPath
 	}
 
-	// Handle user name with PRD preference
-	if jsonObj.UserName != nil {
-		g.AuthorName = *jsonObj.UserName
-	} else if jsonObj.AuthorName != nil {
-		g.AuthorName = *jsonObj.AuthorName
-	} else {
-		g.AuthorName = "" // will be set to default later
+	// Handle remote name with PRD preference, preserving default if not provided
+	if remoteName, hasValue := selectValue(jsonObj.Remote, jsonObj.RemoteName); hasValue {
+		g.RemoteName = remoteName
 	}
 
-	// Handle user email with PRD preference
-	if jsonObj.UserEmail != nil {
-		g.AuthorEmail = *jsonObj.UserEmail
-	} else if jsonObj.AuthorEmail != nil {
-		g.AuthorEmail = *jsonObj.AuthorEmail
-	} else {
-		g.AuthorEmail = "" // will be set to default later
+	// Handle user name with PRD preference, preserving default if not provided
+	if authorName, hasValue := selectValue(jsonObj.UserName, jsonObj.AuthorName); hasValue {
+		g.AuthorName = authorName
+	}
+
+	// Handle user email with PRD preference, preserving default if not provided
+	if authorEmail, hasValue := selectValue(jsonObj.UserEmail, jsonObj.AuthorEmail); hasValue {
+		g.AuthorEmail = authorEmail
 	}
 
 	return nil
