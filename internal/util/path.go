@@ -72,9 +72,11 @@ func CreateFileSecurely(filePath string, data []byte, perm os.FileMode) error {
 		}
 		return fmt.Errorf("failed to create file: %w", err)
 	}
-	if err := file.Close(); err != nil {
-		return fmt.Errorf("failed to close file: %w", err)
-	}
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			log.Printf("Warning: failed to close file: %v", closeErr)
+		}
+	}()
 
 	// Write the data
 	if _, err := file.Write(data); err != nil {

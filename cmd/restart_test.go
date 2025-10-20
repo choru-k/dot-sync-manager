@@ -148,10 +148,7 @@ func TestRestartCmd_Concurrency(t *testing.T) {
 
 func TestDaemonStatusCheck(t *testing.T) {
 	// Test status check when no PID file exists
-	running, status, err := checkDaemonStatus()
-	if err != nil {
-		t.Errorf("checkDaemonStatus() returned error when no PID file: %v", err)
-	}
+	running, status := checkDaemonStatus()
 	if running {
 		t.Error("expected daemon to not be running when no PID file exists")
 	}
