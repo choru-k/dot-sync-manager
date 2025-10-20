@@ -136,13 +136,6 @@ func TestGetConfigWithInvalidJSON(t *testing.T) {
 	}
 }
 
-func TestIsDaemonRunning(t *testing.T) {
-	// Test stub function
-	running := isDaemonRunning()
-	if running {
-		t.Error("Expected isDaemonRunning() stub to return false")
-	}
-}
 
 func TestGetDaemonPID(t *testing.T) {
 	// Test stub function

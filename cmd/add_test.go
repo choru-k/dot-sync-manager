@@ -4,7 +4,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -12,28 +11,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func requireSymlinkSupport(t *testing.T) {
-	t.Helper()
-
-	tempDir := t.TempDir()
-	src := filepath.Join(tempDir, "src")
-	dst := filepath.Join(tempDir, "dst")
-
-	if err := os.WriteFile(src, []byte("test"), filePerms); err != nil {
-		t.Fatalf("failed to create test file: %v", err)
-	}
-
-	if err := os.Symlink(src, dst); err != nil {
-		if runtime.GOOS == "windows" {
-			t.Skipf("symlink creation not supported: %v", err)
-		}
-		t.Fatalf("failed to create symlink: %v", err)
-	}
-
-	if err := os.Remove(dst); err != nil {
-		t.Fatalf("failed to cleanup symlink: %v", err)
-	}
-}
 
 func writeTestConfig(t *testing.T, homeDir string) (configPath, repoPath string) {
 	t.Helper()
