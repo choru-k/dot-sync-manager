@@ -960,11 +960,11 @@ func TestSyncService_ErrorHandlingDuringGracefulShutdown(t *testing.T) {
 
 		// At least one Stop() should succeed without errors
 		mu.Lock()
-		if errorCount == numConcurrentStops {
+		if int(errorCount) == numConcurrentStops {
 			t.Errorf("All %d concurrent Stop() calls failed - expected at least one to succeed", numConcurrentStops)
 		} else {
 			t.Logf("Concurrent shutdown test: %d/%d calls failed, %d succeeded",
-				errorCount, numConcurrentStops, numConcurrentStops-errorCount)
+				errorCount, numConcurrentStops, numConcurrentStops-int(errorCount))
 		}
 		mu.Unlock()
 

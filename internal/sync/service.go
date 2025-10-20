@@ -202,8 +202,8 @@ func (s *SyncService) Stop() error {
 		// This provides both performance (atomic reads) and thread safety
 		// with minimal complexity and no race conditions
 
-		// Check if service was running atomically and transition to stopped
-		wasRunning := atomic.SwapInt32(&s.running, 0) == 1
+		// Atomically set running state to 0 and mark as stopped
+		atomic.StoreInt32(&s.running, 0)
 
 		// Mark service as stopped before cleanup to prevent reuse
 		atomic.StoreInt32(&s.stopped, 1)
@@ -234,6 +234,23 @@ func (s *SyncService) Stop() error {
 
 		log.Println("sync: shutdown initiated")
 	})
+
+	// Wait for the eventLoop goroutine to finish processing
+	// This is done outside the sync.Once to prevent deadlock when Stop()
+	// is called from within the event loop (e.g., from callbacks)
+	s.shutdownWG.Wait()
+
+	log.Println("sync: stopped")
+
+	// Combine any shutdown errors into a single error
+	if len(shutdownErrors) > 0 {
+		if len(shutdownErrors) == 1 {
+			return shutdownErrors[0]
+		}
+		return fmt.Errorf("multiple errors during shutdown: %v", shutdownErrors)
+	}
+
+	return nil
 }
 
 // watchRecursive adds all subdirectories to the watcher
@@ -367,7 +384,7 @@ func (s *SyncService) performManualSync() {
 	}
 
 	if err != nil {
-		errMsg := fmt.Sprintf("manual sync failed on repository %s: %w", s.config.RepoPath, err)
+		errMsg := fmt.Sprintf("manual sync failed on repository %s: %v", s.config.RepoPath, err)
 		log.Printf("sync: %s", errMsg)
 		if s.onError != nil {
 			s.onError(fmt.Errorf("sync: %s", errMsg))

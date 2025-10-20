@@ -657,16 +657,6 @@ func (d *AdvancedDebouncer) Stop() error {
 		// Any remaining operations will naturally complete or timeout
 	})
 
-	// Check for any queued manual sync requests that might be stuck
-	select {
-	case <-d.done:
-		// Normal shutdown - done channel properly closed by stopOnce
-	default:
-		// This indicates a race condition where stopOnce completed
-		// but the done channel wasn't closed properly
-		shutdownErrors = append(shutdownErrors, fmt.Errorf("debouncer shutdown incomplete: done channel not closed"))
-	}
-
 	if len(shutdownErrors) > 0 {
 		if len(shutdownErrors) == 1 {
 			return shutdownErrors[0]
