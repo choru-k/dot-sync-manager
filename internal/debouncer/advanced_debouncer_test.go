@@ -38,7 +38,11 @@ func TestAdvancedDebouncer_BasicDebounce(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	t.Cleanup(func() { debouncer.Stop() })
+	t.Cleanup(func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
+	})
 
 	var callCount int
 	var mu sync.Mutex
@@ -81,7 +85,11 @@ func TestAdvancedDebouncer_ImmediateExecution(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	t.Cleanup(func() { debouncer.Stop() })
+	t.Cleanup(func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
+	})
 
 	var callCount int
 	var mu sync.Mutex
@@ -109,7 +117,11 @@ func TestAdvancedDebouncer_TriggerManualSync(t *testing.T) {
 	config := DefaultAdvancedConfig()
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	t.Cleanup(func() { debouncer.Stop() })
+	t.Cleanup(func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
+	})
 
 	var callCount int
 	var mu sync.Mutex
@@ -149,7 +161,11 @@ func TestAdvancedDebouncer_ChurnDetection(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	t.Cleanup(func() { debouncer.Stop() })
+	t.Cleanup(func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
+	})
 
 	var callCount int
 	var mu sync.Mutex
@@ -209,7 +225,11 @@ func TestAdvancedDebouncer_ExponentialBackoff(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	t.Cleanup(func() { debouncer.Stop() })
+	t.Cleanup(func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
+	})
 
 	var callCount int
 	var mu sync.Mutex
@@ -249,7 +269,11 @@ func TestAdvancedDebouncer_Cancel(t *testing.T) {
 	config := DefaultAdvancedConfig()
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	t.Cleanup(func() { debouncer.Stop() })
+	t.Cleanup(func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
+	})
 
 	var callCount int
 	var mu sync.Mutex
@@ -284,7 +308,11 @@ func TestAdvancedDebouncer_CancelAll(t *testing.T) {
 	config := DefaultAdvancedConfig()
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	t.Cleanup(func() { debouncer.Stop() })
+	t.Cleanup(func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
+	})
 
 	var callCount int
 	var mu sync.Mutex
@@ -321,7 +349,11 @@ func TestAdvancedDebouncer_GetStats(t *testing.T) {
 	config := DefaultAdvancedConfig()
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	t.Cleanup(func() { debouncer.Stop() })
+	t.Cleanup(func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
+	})
 
 	var callCount int
 	var mu sync.Mutex
@@ -435,7 +467,11 @@ func TestAdvancedDebouncer_ConcurrentAccess(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	t.Cleanup(func() { debouncer.Stop() })
+	t.Cleanup(func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
+	})
 
 	var wg sync.WaitGroup
 	numGoroutines := 10
@@ -484,7 +520,9 @@ func TestAdvancedDebouncer_ConcurrentStopNew(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			debouncer.Stop()
+			if err := debouncer.Stop(); err != nil {
+				t.Logf("Concurrent Stop() error: %v", err)
+			}
 		}()
 	}
 
@@ -493,7 +531,9 @@ func TestAdvancedDebouncer_ConcurrentStopNew(t *testing.T) {
 	// Additional verification: multiple calls should be safe
 	// Call Stop a few more times sequentially
 	for i := 0; i < 3; i++ {
-		debouncer.Stop() // Should not panic
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Sequential Stop() error: %v", err)
+		} // Should not panic
 	}
 
 	t.Log("Concurrent Stop test completed successfully")
@@ -521,7 +561,9 @@ func TestAdvancedDebouncer_MultipleStopCalls(t *testing.T) {
 
 	// Test multiple sequential Stop() calls
 	for i := 0; i < 5; i++ {
-		debouncer.Stop() // Should not panic, cleanup should happen only once
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Multiple Stop() error: %v", err)
+		} // Should not panic, cleanup should happen only once
 	}
 
 	// Stop() now blocks until cleanup is complete via shutdownWG.Wait() - no sleep needed
@@ -535,13 +577,17 @@ func TestAdvancedDebouncer_StopIdempotency(t *testing.T) {
 	debouncer.Start()
 
 	// First stop should cancel all operations and close channels
-	debouncer.Stop()
+	if err := debouncer.Stop(); err != nil {
+		t.Errorf("First Stop() failed: %v", err)
+	}
 
 	// Stop() now blocks until cleanup is complete via shutdownWG.Wait() - no sleep needed
 
 	// Multiple subsequent stops should not panic
 	for i := 0; i < 10; i++ {
-		debouncer.Stop()
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Subsequent Stop() error: %v", err)
+		}
 	}
 
 	// The debouncer should be in a consistent state
@@ -564,7 +610,11 @@ func TestAdvancedDebouncer_ConcurrentStopWithOperations(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	t.Cleanup(func() { debouncer.Stop() })
+	t.Cleanup(func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
+	})
 
 	var operationCount int64
 	var wg sync.WaitGroup
@@ -595,7 +645,9 @@ func TestAdvancedDebouncer_ConcurrentStopWithOperations(t *testing.T) {
 		stopWg.Add(1)
 		go func() {
 			defer stopWg.Done()
-			debouncer.Stop()
+			if err := debouncer.Stop(); err != nil {
+				t.Logf("Concurrent Stop() error in operations test: %v", err)
+			}
 		}()
 	}
 

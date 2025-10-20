@@ -82,7 +82,9 @@ func TestSyncService_AdvancedDebouncer_Integration(t *testing.T) {
 	}
 
 	// Stop the debouncer
-	advancedDebouncer.Stop()
+	if err := advancedDebouncer.Stop(); err != nil {
+		t.Errorf("Failed to stop advanced debouncer: %v", err)
+	}
 }
 
 func TestSyncService_BasicDebouncer_BackwardCompatibility(t *testing.T) {

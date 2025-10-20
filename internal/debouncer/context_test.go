@@ -10,7 +10,11 @@ func TestAdvancedDebouncer_TriggerManualSyncWithContext(t *testing.T) {
 	config := DefaultAdvancedConfig()
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	defer func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Deferred Stop() error: %v", err)
+		}
+	}()
 
 	t.Run("Context success", func(t *testing.T) {
 		var called bool
@@ -84,7 +88,11 @@ func TestAdvancedDebouncer_TriggerManualSyncWithContext(t *testing.T) {
 
 		debouncer := NewAdvanced(config)
 		debouncer.Start()
-		defer debouncer.Stop()
+		defer func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Deferred Stop() error: %v", err)
+		}
+	}()
 
 		var called bool
 		err := debouncer.TriggerManualSyncWithContext(context.Background(), "timeout-manual", func() {

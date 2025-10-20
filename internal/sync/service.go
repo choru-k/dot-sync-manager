@@ -184,9 +184,17 @@ func (s *SyncService) Start() error {
 
 // Stop stops the file watching service and returns any error encountered during shutdown
 func (s *SyncService) Stop() error {
+	// Check if service is currently running before using sync.Once
+	// This prevents premature Stop() calls from burning the once and
+	// disabling cleanup when the service is actually running later
+	if atomic.LoadInt32(&s.running) == 0 {
+		// Service is not running, nothing to do
+		return nil
+	}
+
 	var shutdownErrors []error
 
-	// Use sync.Once to ensure cleanup happens only once, even if called concurrently
+	// Use sync.Once to ensure cleanup happens only once when service is actually running
 	s.stopOnce.Do(func() {
 		// State management explanation:
 		// - running (atomic int32): Fast atomic check for service state, used in IsRunning()
@@ -212,7 +220,9 @@ func (s *SyncService) Stop() error {
 
 		// Stop advanced debouncer if used
 		if s.advancedDebouncer != nil {
-			s.advancedDebouncer.Stop()
+			if err := s.advancedDebouncer.Stop(); err != nil {
+				shutdownErrors = append(shutdownErrors, fmt.Errorf("failed to stop advanced debouncer: %w", err))
+			}
 		}
 
 		// Close watcher
@@ -224,31 +234,6 @@ func (s *SyncService) Stop() error {
 
 		log.Println("sync: shutdown initiated")
 	})
-
-	// Wait for the eventLoop goroutine to finish processing
-	// This is done outside the sync.Once, but we need to handle the case where
-	// Stop() is called from within the event loop goroutine to prevent deadlock
-	if atomic.LoadInt32(&s.inEventLoop) == 0 {
-		// We're not in the eventLoop goroutine, so it's safe to wait
-		s.shutdownWG.Wait()
-		// Set watcher to nil after eventLoop has exited so it can be recreated in Start()
-		s.watcher = nil
-	}
-	// If we're in the eventLoop goroutine, the Wait() would cause deadlock,
-	// so we skip it. The eventLoop will exit naturally due to context cancellation.
-	// In this case, we don't set watcher to nil as it could cause nil pointer dereference
-
-	log.Println("sync: stopped")
-
-	// Combine any shutdown errors into a single error
-	if len(shutdownErrors) > 0 {
-		if len(shutdownErrors) == 1 {
-			return shutdownErrors[0]
-		}
-		return fmt.Errorf("multiple errors during shutdown: %v", shutdownErrors)
-	}
-
-	return nil
 }
 
 // watchRecursive adds all subdirectories to the watcher
@@ -382,7 +367,7 @@ func (s *SyncService) performManualSync() {
 	}
 
 	if err != nil {
-		errMsg := fmt.Sprintf("manual sync failed on repository %s: %v", s.config.RepoPath, err)
+		errMsg := fmt.Sprintf("manual sync failed on repository %s: %w", s.config.RepoPath, err)
 		log.Printf("sync: %s", errMsg)
 		if s.onError != nil {
 			s.onError(fmt.Errorf("sync: %s", errMsg))

@@ -11,7 +11,11 @@ func TestAdvancedDebouncer_ManualSyncTimeout(t *testing.T) {
 	config := DefaultAdvancedConfig()
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	defer func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Deferred Stop() error: %v", err)
+		}
+	}()
 
 	// Set a very short timeout for testing
 	debouncer.SetManualSyncTimeout(50 * time.Millisecond)
@@ -71,7 +75,11 @@ func TestAdvancedDebouncer_ManualSyncQueueOverflow(t *testing.T) {
 	// Create debouncer with small queue size for testing
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	defer func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Deferred Stop() error: %v", err)
+		}
+	}()
 
 	var callCount int
 	var mu sync.Mutex
@@ -108,7 +116,11 @@ func TestAdvancedDebouncer_ActivityHistoryBounds(t *testing.T) {
 	config := DefaultAdvancedConfig()
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	defer func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Deferred Stop() error: %v", err)
+		}
+	}()
 
 	// Set a small max history for testing
 	debouncer.SetMaxActivityHistory(10)
@@ -144,7 +156,11 @@ func TestAdvancedDebouncer_PanicRecovery(t *testing.T) {
 	config := DefaultAdvancedConfig()
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	defer func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Deferred Stop() error: %v", err)
+		}
+	}()
 
 	// Function that panics
 	panicFn := func() {
@@ -188,7 +204,11 @@ func TestAdvancedDebouncer_ConfigurableTimeout(t *testing.T) {
 	config := DefaultAdvancedConfig()
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	defer func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Deferred Stop() error: %v", err)
+		}
+	}()
 
 	// Test default timeout
 	if debouncer.GetManualSyncTimeout() != 10*time.Second {

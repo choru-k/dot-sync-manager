@@ -157,7 +157,7 @@ func runForegroundDaemon(cfg *config.SyncConfig) error {
 	defer func() {
 		if err := syncSvc.Stop(); err != nil {
 			// Log error but don't fail shutdown
-			fmt.Printf("Warning: error stopping sync service: %v\n", err)
+			log.Printf("sync: warning - failed to stop service: %v", err)
 		}
 	}()
 

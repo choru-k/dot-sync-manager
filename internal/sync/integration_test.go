@@ -101,7 +101,7 @@ cache/
 	}
 	defer func() {
 		if err := service.Stop(); err != nil {
-			t.Fatalf("Failed to stop service: %v", err)
+			t.Errorf("Failed to stop service: %v", err)
 		}
 	}()
 

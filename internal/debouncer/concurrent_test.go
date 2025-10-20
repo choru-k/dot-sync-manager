@@ -21,7 +21,11 @@ func TestAdvancedDebouncer_ConcurrentManualSync(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	defer func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Deferred Stop() error: %v", err)
+		}
+	}()
 
 	var wg sync.WaitGroup
 	numGoroutines := 10
@@ -77,7 +81,11 @@ func TestAdvancedDebouncer_ConcurrentMixedOperations(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	defer func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Deferred Stop() error: %v", err)
+		}
+	}()
 
 	var wg sync.WaitGroup
 	var debouncedCount int64
@@ -161,7 +169,11 @@ func TestAdvancedDebouncer_ConcurrentQueueOverflow(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	defer func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Deferred Stop() error: %v", err)
+		}
+	}()
 
 	var wg sync.WaitGroup
 	numGoroutines := 150 // More than the queue capacity of 100
@@ -235,7 +247,9 @@ func TestAdvancedDebouncer_ConcurrentStop(t *testing.T) {
 
 	// Stop the debouncer while operations are in progress
 	start := time.Now()
-	debouncer.Stop()
+	if err := debouncer.Stop(); err != nil {
+		t.Errorf("Failed to stop debouncer during operations test: %v", err)
+	}
 	stopDuration := time.Since(start)
 
 	// Stop should complete quickly even with operations in progress
@@ -252,7 +266,11 @@ func TestAdvancedDebouncer_ConcurrentStatsAccess(t *testing.T) {
 	config := DefaultAdvancedConfig()
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	defer func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Deferred Stop() error: %v", err)
+		}
+	}()
 
 	var wg sync.WaitGroup
 	numGoroutines := 10
