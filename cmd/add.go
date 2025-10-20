@@ -547,11 +547,10 @@ func commitAddedFile(cmd *cobra.Command, cfg *config.SyncConfig, targetPath, fil
 
 	// Log which files were committed for transparency
 	if len(changedFiles) > 0 {
-		relTargetPath, err := filepath.Rel(cfg.Git.RepoPath, targetPath)
-		if err != nil {
-			relTargetPath = targetPath
+		fmt.Printf("📝 Committed files:\n")
+		for _, file := range changedFiles {
+			fmt.Printf("   - %s\n", file)
 		}
-		fmt.Printf("📝 Committed: %s\n", relTargetPath)
 	}
 
 	return nil

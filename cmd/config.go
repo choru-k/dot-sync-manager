@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -109,7 +110,16 @@ func runConfig(cmd *cobra.Command, args []string) error {
 	fmt.Printf("📝 Opening configuration file: %s\n", configPath)
 	fmt.Printf("Using editor: %s\n", editor)
 
-	execCmd := exec.Command(editor, configPath)
+	// Parse editor command and arguments
+	editorParts := strings.Fields(editor)
+	if len(editorParts) == 0 {
+		return fmt.Errorf("empty editor command")
+	}
+
+	cmdName := editorParts[0]
+	cmdArgs := append(editorParts[1:], configPath)
+
+	execCmd := exec.Command(cmdName, cmdArgs...)
 	if output, err := execCmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("failed to open editor: %w\nOutput: %s", err, string(output))
 	}
@@ -123,8 +133,18 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
+	// Convert struct to map for nested value lookup
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config for inspection: %w", err)
+	}
+	var obj map[string]interface{}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return fmt.Errorf("failed to unmarshal config for inspection: %w", err)
+	}
+
 	key := args[0]
-	value := getNestedValue(cfg, key)
+	value := getNestedValue(obj, key)
 
 	if value == nil {
 		return fmt.Errorf("configuration key not found: %s", key)
@@ -140,14 +160,33 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
+	// Convert struct to map for nested value modification
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config for modification: %w", err)
+	}
+	var obj map[string]interface{}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return fmt.Errorf("failed to unmarshal config for modification: %w", err)
+	}
+
 	key := args[0]
 	value := args[1]
 
 	// Try to parse value as appropriate type
 	parsedValue := parseConfigValue(value)
 
-	if !setNestedValue(cfg, key, parsedValue) {
+	if !setNestedValue(obj, key, parsedValue) {
 		return fmt.Errorf("failed to set configuration key: %s", key)
+	}
+
+	// Convert back to struct
+	updatedData, err := json.Marshal(obj)
+	if err != nil {
+		return fmt.Errorf("failed to marshal updated config: %w", err)
+	}
+	if err := json.Unmarshal(updatedData, cfg); err != nil {
+		return fmt.Errorf("failed to unmarshal updated config: %w", err)
 	}
 
 	// Save updated configuration

@@ -3,11 +3,14 @@ package cmd
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
+	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
 	"github.com/choru-k/dot-sync-manager/internal/util"
 	"github.com/spf13/cobra"
 )
@@ -28,14 +31,16 @@ Examples:
 }
 
 var (
-	keepRepoFile bool
-	deleteAll    bool
+	keepRepoFile   bool
+	deleteAll     bool
+	removeNoCommit bool
 )
 
 func init() {
 	rootCmd.AddCommand(removeCmd)
 	removeCmd.Flags().BoolVar(&keepRepoFile, "keep-repo", true, "Keep file in dotfiles repository (default)")
 	removeCmd.Flags().BoolVar(&deleteAll, "delete-all", false, "Delete file from both home and repository")
+	removeCmd.Flags().BoolVar(&removeNoCommit, "no-commit", false, "Skip automatic git commit of removed files")
 }
 
 func runRemove(cmd *cobra.Command, args []string) error {
@@ -82,11 +87,24 @@ func runRemove(cmd *cobra.Command, args []string) error {
 	fmt.Printf("✅ Removed file from dotfiles tracking\n")
 	fmt.Printf("🔗 Symlink removed: %s\n", filePath)
 	if !deleteAll {
-		fmt.Printf("📄 File preserved in repository: %s\n", trackedFile)
+		fmt.Printf("📄 File restored to original location: %s\n", filePath)
+	} else {
+		fmt.Printf("📄 File deleted from repository: %s\n", trackedFile)
 	}
 	fmt.Printf("📂 Repository: %s\n", cfg.Git.RepoPath)
 
-	fmt.Printf("\n📝 Note: Changes staged for git commit. Run 'dsm sync' or wait for auto-sync.\n")
+	// Perform git operations unless --no-commit flag is specified
+	if !removeNoCommit {
+		if err := commitRemovedFile(cmd, cfg, trackedFile, filePath); err != nil {
+			// Git operation failed, but file operations succeeded
+			fmt.Printf("\n⚠️  Warning: Git commit failed: %v\n", err)
+			fmt.Printf("📝 Note: Changes were made but not committed. Run 'dsm sync' or wait for auto-sync to commit.\n")
+		} else {
+			fmt.Printf("✅ Committed changes to git repository\n")
+		}
+	} else {
+		fmt.Printf("\n📝 Note: --no-commit specified. Run 'dsm sync' or wait for auto-sync to commit changes.\n")
+	}
 
 	return nil
 }
@@ -196,8 +214,19 @@ func executeRemoval(cfg *config.SyncConfig, symlinkPath, trackedFile, mappingKey
 		return fmt.Errorf("failed to remove symlink: %w", err)
 	}
 
-	// Optionally delete the tracked file
-	if deleteAll {
+	// If not deleting all, copy the file back to original location
+	if !deleteAll {
+		// Ensure the original directory exists
+		if err := os.MkdirAll(filepath.Dir(symlinkPath), 0755); err != nil {
+			return fmt.Errorf("failed to create directory for file restoration: %w", err)
+		}
+
+		// Copy file from repository back to original location
+		if err := copyFileForRemove(trackedFile, symlinkPath); err != nil {
+			return fmt.Errorf("failed to restore file to original location: %w", err)
+		}
+	} else {
+		// Delete the tracked file from repository
 		if err := os.Remove(trackedFile); err != nil && !os.IsNotExist(err) {
 			return fmt.Errorf("failed to remove tracked file: %w", err)
 		}
@@ -216,6 +245,70 @@ func updateConfigAfterRemoval(cfg *config.SyncConfig, mappingKey string) error {
 	configPath := cfg.GetConfigPath()
 	if err := cfg.SaveToFile(configPath); err != nil {
 		return fmt.Errorf("failed to save updated configuration: %w", err)
+	}
+
+	return nil
+}
+
+// copyFileForRemove copies the file from src to dst while preserving the original permissions.
+func copyFileForRemove(src, dst string) (err error) {
+	sourceFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer util.CloseAndCaptureErr(sourceFile, &err)
+
+	// Get source file info to preserve permissions
+	sourceInfo, err := sourceFile.Stat()
+	if err != nil {
+		return err
+	}
+
+	// Create destination file with source file's permissions
+	destFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, sourceInfo.Mode())
+	if err != nil {
+		return err
+	}
+	defer util.CloseAndCaptureErr(destFile, &err)
+
+	if _, err = io.Copy(destFile, sourceFile); err != nil {
+		return err
+	}
+
+	return destFile.Sync()
+}
+
+// commitRemovedFile stages and commits the removal changes to git using GitManager
+func commitRemovedFile(cmd *cobra.Command, cfg *config.SyncConfig, trackedFile, filePath string) error {
+	// Create GitManager instance
+	gmCfg := cfg.ToGitManagerConfig()
+
+	gm, err := gitmanager.NewGitManager(cmd.Context(), gmCfg)
+	if err != nil {
+		return fmt.Errorf("failed to create git manager: %w", err)
+	}
+
+	// Stage and commit the changes
+	changedFiles, err := gm.StageAndCommit(cmd.Context(), time.Now())
+	if err != nil {
+		return fmt.Errorf("failed to stage and commit changes: %w", err)
+	}
+
+	// Only push if there's a remote configured
+	if cfg.Git.RemoteURL != "" {
+		if err := gm.Push(cmd.Context()); err != nil {
+			// Commit succeeded but push failed - still consider operation successful
+			fmt.Printf("⚠️  Warning: Git push failed: %v\n", err)
+			fmt.Printf("📝 Note: Changes were committed locally but not pushed. Run 'dsm sync' or wait for auto-sync to push.\n")
+		}
+	}
+
+	// Log which files were committed for transparency
+	if len(changedFiles) > 0 {
+		fmt.Printf("📝 Committed changes:\n")
+		for _, file := range changedFiles {
+			fmt.Printf("   - %s\n", file)
+		}
 	}
 
 	return nil
