@@ -16,7 +16,7 @@ func writeTestConfig(t *testing.T, homeDir string) (configPath, repoPath string)
 	t.Helper()
 
 	repoPath = filepath.Join(homeDir, "dotfiles")
-	if err := os.MkdirAll(repoPath, dirPerms); err != nil {
+	if err := os.MkdirAll(repoPath, testDirPerms); err != nil {
 		t.Fatalf("failed to create repo directory: %v", err)
 	}
 
@@ -44,7 +44,7 @@ func TestRunAddHappyPath(t *testing.T) {
 	requireSymlinkSupport(t)
 
 	home := filepath.Join(t.TempDir(), "home")
-	if err := os.MkdirAll(home, dirPerms); err != nil {
+	if err := os.MkdirAll(home, testDirPerms); err != nil {
 		t.Fatalf("failed to create home directory: %v", err)
 	}
 	t.Setenv("HOME", home)
@@ -104,7 +104,7 @@ func TestRunAddSensitiveFileWithConfirmation(t *testing.T) {
 	requireSymlinkSupport(t)
 
 	home := filepath.Join(t.TempDir(), "home")
-	if err := os.MkdirAll(home, dirPerms); err != nil {
+	if err := os.MkdirAll(home, testDirPerms); err != nil {
 		t.Fatalf("failed to create home directory: %v", err)
 	}
 	t.Setenv("HOME", home)
@@ -114,7 +114,7 @@ func TestRunAddSensitiveFileWithConfirmation(t *testing.T) {
 	t.Cleanup(func() { configFile = "" })
 
 	sensitiveDir := filepath.Join(home, ".ssh")
-	if err := os.MkdirAll(sensitiveDir, dirPerms); err != nil {
+	if err := os.MkdirAll(sensitiveDir, testDirPerms); err != nil {
 		t.Fatalf("failed to create sensitive directory: %v", err)
 	}
 
@@ -164,7 +164,7 @@ func TestRunAddSensitiveFileWithConfirmation(t *testing.T) {
 
 func TestRunAddSensitiveFileCancellation(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
-	if err := os.MkdirAll(home, dirPerms); err != nil {
+	if err := os.MkdirAll(home, testDirPerms); err != nil {
 		t.Fatalf("failed to create home directory: %v", err)
 	}
 	t.Setenv("HOME", home)
@@ -174,7 +174,7 @@ func TestRunAddSensitiveFileCancellation(t *testing.T) {
 	t.Cleanup(func() { configFile = "" })
 
 	sensitiveDir := filepath.Join(home, ".ssh")
-	if err := os.MkdirAll(sensitiveDir, dirPerms); err != nil {
+	if err := os.MkdirAll(sensitiveDir, testDirPerms); err != nil {
 		t.Fatalf("failed to create sensitive directory: %v", err)
 	}
 
@@ -223,7 +223,7 @@ func TestRunAddSensitiveFileCancellation(t *testing.T) {
 
 func TestRunAddCopyFailureRetainsBackup(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
-	if err := os.MkdirAll(home, dirPerms); err != nil {
+	if err := os.MkdirAll(home, testDirPerms); err != nil {
 		t.Fatalf("failed to create home directory: %v", err)
 	}
 	t.Setenv("HOME", home)
@@ -280,7 +280,7 @@ func TestRunAddCopyFailureRetainsBackup(t *testing.T) {
 
 func TestRunAddRemoveOriginalFailureRollsBack(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
-	if err := os.MkdirAll(home, dirPerms); err != nil {
+	if err := os.MkdirAll(home, testDirPerms); err != nil {
 		t.Fatalf("failed to create home directory: %v", err)
 	}
 	t.Setenv("HOME", home)
@@ -335,7 +335,7 @@ func TestRunAddRemoveOriginalFailureRollsBack(t *testing.T) {
 
 func TestRunAddSymlinkFailureRestoresFile(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home")
-	if err := os.MkdirAll(home, dirPerms); err != nil {
+	if err := os.MkdirAll(home, testDirPerms); err != nil {
 		t.Fatalf("failed to create home directory: %v", err)
 	}
 	t.Setenv("HOME", home)
@@ -389,7 +389,7 @@ func TestRunAddConfigSaveFailureRollsBack(t *testing.T) {
 	requireSymlinkSupport(t)
 
 	home := filepath.Join(t.TempDir(), "home")
-	if err := os.MkdirAll(home, dirPerms); err != nil {
+	if err := os.MkdirAll(home, testDirPerms); err != nil {
 		t.Fatalf("failed to create home directory: %v", err)
 	}
 	t.Setenv("HOME", home)

@@ -124,6 +124,13 @@ func runConfig(cmd *cobra.Command, args []string) error {
 }
 
 func runConfigGet(cmd *cobra.Command, args []string) error {
+	key := args[0]
+
+	// Validate configuration key for security and format
+	if err := validateConfigKey(key); err != nil {
+		return fmt.Errorf("invalid configuration key: %w", err)
+	}
+
 	cfg, err := getConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
@@ -135,7 +142,6 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to convert configuration: %w", err)
 	}
 
-	key := args[0]
 	value := getNestedValue(cfgMap, key)
 
 	if value == nil {
@@ -147,6 +153,13 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 }
 
 func runConfigSet(cmd *cobra.Command, args []string) error {
+	key := args[0]
+
+	// Validate configuration key for security and format
+	if err := validateConfigKey(key); err != nil {
+		return fmt.Errorf("invalid configuration key: %w", err)
+	}
+
 	cfg, err := getConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
@@ -158,7 +171,6 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to convert configuration: %w", err)
 	}
 
-	key := args[0]
 	value := args[1]
 
 	// Try to parse value as appropriate type
@@ -247,7 +259,7 @@ func parseConfigValue(value string) interface{} {
 	// Try to parse as JSON for complex values
 	if strings.HasPrefix(value, "{") || strings.HasPrefix(value, "[") {
 		var parsed interface{}
-		if _, err := fmt.Sscanf(value, "%v", &parsed); err == nil {
+		if err := json.Unmarshal([]byte(value), &parsed); err == nil {
 			return parsed
 		}
 	}

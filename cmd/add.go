@@ -98,7 +98,7 @@ var (
 func runAdd(cmd *cobra.Command, args []string) error {
 	filePath, err := validateSourceFile(cmd, args[0])
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to validate source file: %w", err)
 	}
 
 	cfg, err := getConfig()
@@ -108,16 +108,16 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	targetPath, err := prepareTargetPath(cfg, filePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to prepare target path: %w", err)
 	}
 
 	backupPath, backupCreated, err := executeAddTransaction(cfg, filePath, targetPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to execute add transaction: %w", err)
 	}
 
 	if err := updateAndSaveConfig(cfg, targetPath, filePath, backupPath, backupCreated); err != nil {
-		return err
+		return fmt.Errorf("failed to update configuration: %w", err)
 	}
 
 	if backupCreated && backupPath != "" {

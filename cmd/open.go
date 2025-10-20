@@ -53,19 +53,8 @@ func runOpen(cmd *cobra.Command, args []string) error {
 
 	switch {
 	case openEditor:
-		// Try to use default editor
-		editor := os.Getenv("EDITOR")
-		if editor == "" {
-			// Fallback editors by platform
-			switch runtime.GOOS {
-			case "windows":
-				editor = editorNotepad
-			case "darwin":
-				editor = editorTextEdit
-			default: // Linux and others
-				editor = editorNano
-			}
-		}
+		// Use centralized editor selection logic
+		editor := getDefaultEditor()
 		openCmd, openArgs = parseCommand(editor)
 
 	default:
