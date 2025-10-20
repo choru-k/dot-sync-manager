@@ -189,13 +189,6 @@ func (s *SyncService) Start() error {
 func (s *SyncService) Stop() error {
 	var shutdownErrors []error
 
-	// First, atomically check and claim the shutdown responsibility
-	// This prevents multiple goroutines from attempting shutdown simultaneously
-	if !atomic.CompareAndSwapInt32(&s.running, 1, 0) {
-		// Service was not running (running was already 0), nothing to do
-		return nil
-	}
-
 	// Use sync.Once to ensure cleanup happens only once, even if called concurrently
 	s.stopOnce.Do(func() {
 		// State management explanation:
@@ -204,8 +197,16 @@ func (s *SyncService) Stop() error {
 		// This provides both performance (atomic reads) and thread safety
 		// with minimal complexity and no race conditions
 
+		// Check if service was running atomically and transition to stopped
+		wasRunning := atomic.SwapInt32(&s.running, 0) == 1
+
 		// Mark service as stopped before cleanup to prevent reuse
 		atomic.StoreInt32(&s.stopped, 1)
+
+		if !wasRunning {
+			// Service wasn't running, nothing to clean up
+			return
+		}
 
 		s.cancel()
 

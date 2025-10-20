@@ -537,3 +537,70 @@ func TestSyncService_StopIdempotency(t *testing.T) {
 
 	t.Log("Stop idempotency test completed successfully")
 }
+
+func TestSyncService_PrematureStopDoesNotDisableCleanup(t *testing.T) {
+	// Test for P1 issue: Stop() called before Start() should not prevent cleanup
+	// when the service is actually started and stopped later
+	tmpDir := t.TempDir()
+
+	gitConfig := gitmanager.Config{
+		RepoPath:    tmpDir,
+		RemoteURL:   "https://github.com/test/test.git",
+		RemoteName:  "origin",
+		AuthorName:  "Test User",
+		AuthorEmail: "test@example.com",
+		AuthType:    gitmanager.AuthStrategyNone,
+	}
+
+	gitMgr, err := gitmanager.NewGitManager(context.Background(), gitConfig)
+	if err != nil {
+		t.Fatalf("Failed to create git manager: %v", err)
+	}
+
+	syncConfig := &Config{
+		RepoPath:        tmpDir,
+		AutoSyncEnabled: false,
+	}
+
+	service, err := New(gitMgr, syncConfig)
+	if err != nil {
+		t.Fatalf("Failed to create sync service: %v", err)
+	}
+
+	// Verify service is not running initially
+	if service.IsRunning() {
+		t.Error("Service should not be running without Start()")
+	}
+
+	// Step 1: Call Stop() before Start() - this should not burn the sync.Once
+	service.Stop()
+
+	// Step 2: Start the service normally
+	if err := service.Start(); err != nil {
+		t.Fatalf("Failed to start service: %v", err)
+	}
+
+	// Verify service is running
+	if !service.IsRunning() {
+		t.Error("Service should be running after Start()")
+	}
+
+	// Step 3: Call Stop() after the service is actually running
+	// This should perform proper cleanup and not be blocked by the premature Stop() call
+	service.Stop()
+
+	// Wait a moment for cleanup to complete
+	time.Sleep(50 * time.Millisecond)
+
+	// Verify service is stopped
+	if service.IsRunning() {
+		t.Error("Service should be stopped after Stop()")
+	}
+
+	// Additional verification: Multiple Stop() calls after actual start/stop should still work
+	for i := 0; i < 3; i++ {
+		service.Stop() // Should not panic or cause issues
+	}
+
+	t.Log("Premature Stop() test completed successfully - cleanup was not disabled")
+}
