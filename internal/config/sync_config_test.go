@@ -598,10 +598,7 @@ func TestConfigValidationEnhanced(t *testing.T) {
 		{
 			name: "empty UI theme",
 			config: func() *SyncConfig {
-				c, err := DefaultConfig()
-				if err != nil {
-					t.Fatal(err)
-				}
+				c := mustDefaultConfig(t)
 				c.UI.Theme = ""
 				return c
 			}(),
@@ -945,4 +942,263 @@ func TestExpandPath(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSyncConfigMarshalPRDFormat(t *testing.T) {
+	// Create a full config with all fields populated
+	config := mustDefaultConfig(t)
+	
+	// Set additional fields to ensure comprehensive testing
+	config.Git.RemoteURL = "https://github.com/example/dotfiles.git"
+	config.Git.Username = "testuser"
+	config.Mappings = map[string]string{
+		".bashrc": "/home/user/.bashrc",
+		".vimrc":  "/home/user/.vimrc",
+	}
+	config.Sync.AutoCommit = false
+	config.Notifications.ShowSuccess = true
+	config.ConflictResolution.Strategy = "auto_keep_local"
+	config.UI.MinimizeToTray = false
+	config.Advanced.DebugLogging = true
+
+	// Marshal to JSON
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		t.Fatalf("Failed to marshal config: %v", err)
+	}
+
+	// Parse the JSON to verify structure
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("Failed to unmarshal marshaled JSON: %v", err)
+	}
+
+	// Verify machine is serialized as a string (PRD format)
+	if machine, ok := parsed["machine"].(string); !ok {
+		t.Errorf("Expected 'machine' to be a string in JSON, got %T", parsed["machine"])
+	} else if machine != config.Machine.Name {
+		t.Errorf("Expected machine name %q, got %q", config.Machine.Name, machine)
+	}
+
+	// Verify git section uses PRD field names
+	if gitSection, ok := parsed["git"].(map[string]interface{}); !ok {
+		t.Fatal("Expected 'git' to be an object in JSON")
+	} else {
+		// Check for PRD fields
+		if _, hasRemote := gitSection["remote"]; !hasRemote && config.Git.RemoteName != "" {
+			t.Error("Expected 'remote' field in git section for PRD format")
+		}
+		if _, hasUserName := gitSection["user_name"]; !hasUserName && config.Git.AuthorName != "" {
+			t.Error("Expected 'user_name' field in git section for PRD format")
+		}
+		if _, hasUserEmail := gitSection["user_email"]; !hasUserEmail && config.Git.AuthorEmail != "" {
+			t.Error("Expected 'user_email' field in git section for PRD format")
+		}
+
+		// Verify legacy fields are NOT present
+		if _, hasRemoteName := gitSection["remote_name"]; hasRemoteName {
+			t.Error("Legacy field 'remote_name' should not be present in PRD format output")
+		}
+		if _, hasAuthorName := gitSection["author_name"]; hasAuthorName {
+			t.Error("Legacy field 'author_name' should not be present in PRD format output")
+		}
+		if _, hasAuthorEmail := gitSection["author_email"]; hasAuthorEmail {
+			t.Error("Legacy field 'author_email' should not be present in PRD format output")
+		}
+	}
+
+	// Verify required PRD fields are present
+	requiredFields := []string{"version", "machine", "git", "sync", "notifications", "conflict_resolution", "ui", "advanced"}
+	for _, field := range requiredFields {
+		if _, exists := parsed[field]; !exists {
+			t.Errorf("Required field %q missing from marshaled JSON", field)
+		}
+	}
+}
+
+func TestStartAtBootMigration(t *testing.T) {
+	// Test 1: New config files (no explicit start_at_boot) should use new default (true)
+	t.Run("new_config_uses_new_default", func(t *testing.T) {
+		jsonData := `{
+			"version": "1.0",
+			"machine": "test-machine",
+			"git": {
+				"repo_path": "/tmp/dotfiles",
+				"remote_url": "https://github.com/example/dotfiles.git",
+				"remote": "origin",
+				"branch": "main",
+				"user_name": "Test User",
+				"user_email": "test@example.com",
+				"auth_type": "ssh"
+			},
+			"sync": {
+				"auto_sync_enabled": true,
+				"pull_interval_seconds": 300,
+				"debounce_seconds": 30,
+				"auto_commit": true,
+				"auto_push": true,
+				"auto_pull": true
+			},
+			"notifications": {
+				"enabled": true,
+				"show_success": false,
+				"show_pulls": true,
+				"play_sound_on_conflict": false
+			},
+			"conflict_resolution": {
+				"strategy": "manual",
+				"backup_dir": "/tmp/dotfiles/.backup",
+				"keep_backups_days": 7
+			},
+			"ui": {
+				"theme": "auto"
+			},
+			"advanced": {
+				"debug_logging": false,
+				"log_file": "/tmp/.dotfile-sync.log",
+				"max_log_size_mb": 10
+			}
+		}`
+
+		// Create temporary config file
+		tmpFile := t.TempDir() + "/config.json"
+		if err := os.WriteFile(tmpFile, []byte(jsonData), 0644); err != nil {
+			t.Fatalf("Failed to write test config: %v", err)
+		}
+
+		// Load the config
+		config, err := LoadFromFile(tmpFile)
+		if err != nil {
+			t.Fatalf("Failed to load config: %v", err)
+		}
+
+		// Should use new default (true) since no explicit start_at_boot was provided
+		if !config.UI.StartAtBoot {
+			t.Error("Expected StartAtBoot to be true (new default) for configs without explicit setting")
+		}
+	})
+
+	// Test 2: Existing config files with explicit start_at_boot=false should preserve false
+	t.Run("existing_config_preserves_false", func(t *testing.T) {
+		jsonData := `{
+			"version": "1.0",
+			"machine": "test-machine",
+			"git": {
+				"repo_path": "/tmp/dotfiles",
+				"remote_url": "https://github.com/example/dotfiles.git",
+				"remote": "origin",
+				"branch": "main",
+				"user_name": "Test User",
+				"user_email": "test@example.com",
+				"auth_type": "ssh"
+			},
+			"sync": {
+				"auto_sync_enabled": true,
+				"pull_interval_seconds": 300,
+				"debounce_seconds": 30,
+				"auto_commit": true,
+				"auto_push": true,
+				"auto_pull": true
+			},
+			"notifications": {
+				"enabled": true,
+				"show_success": false,
+				"show_pulls": true,
+				"play_sound_on_conflict": false
+			},
+			"conflict_resolution": {
+				"strategy": "manual",
+				"backup_dir": "/tmp/dotfiles/.backup",
+				"keep_backups_days": 7
+			},
+			"ui": {
+				"start_at_boot": false,
+				"theme": "auto"
+			},
+			"advanced": {
+				"debug_logging": false,
+				"log_file": "/tmp/.dotfile-sync.log",
+				"max_log_size_mb": 10
+			}
+		}`
+
+		// Create temporary config file
+		tmpFile := t.TempDir() + "/config.json"
+		if err := os.WriteFile(tmpFile, []byte(jsonData), 0644); err != nil {
+			t.Fatalf("Failed to write test config: %v", err)
+		}
+
+		// Load the config
+		config, err := LoadFromFile(tmpFile)
+		if err != nil {
+			t.Fatalf("Failed to load config: %v", err)
+		}
+
+		// Should preserve explicit false value
+		if config.UI.StartAtBoot {
+			t.Error("Expected StartAtBoot to be preserved as false from existing config")
+		}
+	})
+
+	// Test 3: Existing config files with explicit start_at_boot=true should preserve true
+	t.Run("existing_config_preserves_true", func(t *testing.T) {
+		jsonData := `{
+			"version": "1.0",
+			"machine": "test-machine",
+			"git": {
+				"repo_path": "/tmp/dotfiles",
+				"remote_url": "https://github.com/example/dotfiles.git",
+				"remote": "origin",
+				"branch": "main",
+				"user_name": "Test User",
+				"user_email": "test@example.com",
+				"auth_type": "ssh"
+			},
+			"sync": {
+				"auto_sync_enabled": true,
+				"pull_interval_seconds": 300,
+				"debounce_seconds": 30,
+				"auto_commit": true,
+				"auto_push": true,
+				"auto_pull": true
+			},
+			"notifications": {
+				"enabled": true,
+				"show_success": false,
+				"show_pulls": true,
+				"play_sound_on_conflict": false
+			},
+			"conflict_resolution": {
+				"strategy": "manual",
+				"backup_dir": "/tmp/dotfiles/.backup",
+				"keep_backups_days": 7
+			},
+			"ui": {
+				"start_at_boot": true,
+				"theme": "auto"
+			},
+			"advanced": {
+				"debug_logging": false,
+				"log_file": "/tmp/.dotfile-sync.log",
+				"max_log_size_mb": 10
+			}
+		}`
+
+		// Create temporary config file
+		tmpFile := t.TempDir() + "/config.json"
+		if err := os.WriteFile(tmpFile, []byte(jsonData), 0644); err != nil {
+			t.Fatalf("Failed to write test config: %v", err)
+		}
+
+		// Load the config
+		config, err := LoadFromFile(tmpFile)
+		if err != nil {
+			t.Fatalf("Failed to load config: %v", err)
+		}
+
+		// Should preserve explicit true value
+		if !config.UI.StartAtBoot {
+			t.Error("Expected StartAtBoot to be preserved as true from existing config")
+		}
+	})
 }

@@ -89,6 +89,9 @@ func (m MachineConfig) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON implements custom JSON unmarshaling for MachineConfig.
 // It provides backward compatibility by accepting both the new PRD format (a plain string)
 // and the legacy format (an object with a "name" field).
+//
+// Note: Empty machine names are accepted during unmarshaling for backward compatibility.
+// Validation of the machine name (ensuring it's not empty) occurs later in the Validate() method.
 func (m *MachineConfig) UnmarshalJSON(data []byte) error {
 	// Try to unmarshal as string first (new PRD format)
 	var nameStr string
@@ -478,7 +481,24 @@ func LoadFromFile(filename string) (*SyncConfig, error) {
 		return nil, fmt.Errorf("config: failed to read config file: %w", err)
 	}
 
-	// Parse JSON
+	// Parse JSON into a temporary config to preserve existing StartAtBoot value
+	// This handles the migration from StartAtBoot=false (old default) to StartAtBoot=true (new default)
+	var tempConfig struct {
+		UI struct {
+			StartAtBoot *bool `json:"start_at_boot"`
+		} `json:"ui"`
+	}
+	
+	// Try to parse the existing StartAtBoot value before full unmarshaling
+	if parseErr := json.Unmarshal(data, &tempConfig); parseErr == nil {
+		// If start_at_boot was explicitly set in the existing config, preserve it
+		if tempConfig.UI.StartAtBoot != nil {
+			config.UI.StartAtBoot = *tempConfig.UI.StartAtBoot
+		}
+		// If start_at_boot was not explicitly set (nil), keep the new default (true)
+	}
+
+	// Parse JSON into the full config
 	if err := json.Unmarshal(data, config); err != nil {
 		return nil, fmt.Errorf("config: failed to parse config file: %w", err)
 	}
