@@ -11,6 +11,7 @@ linters:
     - misspell       # Finds commonly misspelled English words
     - ineffassign    # Detects ineffectual assignments
     - unused         # Finds unused code
+    - unparam        # Finds unused function parameters
   # Disabled in pre-commit to allow faster commits, run in CI instead
   disable:
     - errcheck       # Too strict for pre-commit
@@ -35,9 +36,8 @@ issues:
   
   # Exclude some linters from running on tests files
   exclude-rules:
-    - path: _test\.go
+    - path: '.*_test\.go$'
       linters:
-        - errcheck
         - unparam
 
 output:
