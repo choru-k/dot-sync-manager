@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -122,7 +123,7 @@ func TestFormatVersionOutput(t *testing.T) {
 			output := formatVersionOutput(tt.versionInfo)
 
 			for _, expectedField := range tt.expectedFields {
-				if !contains(output, expectedField) {
+				if !strings.Contains(output, expectedField) {
 					t.Errorf("expected output to contain %q, got: %s", expectedField, output)
 				}
 			}
@@ -220,13 +221,13 @@ func TestVersionOutputFormatting(t *testing.T) {
 			output := formatVersionOutput(info)
 
 			// Verify all fields are present in output
-			if !contains(output, tc.version) {
+			if !strings.Contains(output, tc.version) {
 				t.Errorf("expected output to contain version %s", tc.version)
 			}
-			if !contains(output, tc.commit) {
+			if !strings.Contains(output, tc.commit) {
 				t.Errorf("expected output to contain commit %s", tc.commit)
 			}
-			if !contains(output, tc.date) {
+			if !strings.Contains(output, tc.date) {
 				t.Errorf("expected output to contain date %s", tc.date)
 			}
 		})

@@ -142,7 +142,9 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	}
 
 	if err := process.WritePIDExclusive(os.Getpid()); err != nil {
-		service.Stop()
+		if stopErr := service.Stop(); stopErr != nil {
+			return fmt.Errorf("failed to write PID file: %w; also failed to stop service: %w", err, stopErr)
+		}
 		return fmt.Errorf("failed to write PID file: %w", err)
 	}
 
@@ -155,7 +157,9 @@ func runRoot(cmd *cobra.Command, args []string) error {
 
 	defer func() {
 		signal.Stop(signalCh)
-		service.Stop()
+		if err := service.Stop(); err != nil {
+			log.Printf("sync: warning - failed to stop service gracefully: %v", err)
+		}
 		if err := process.RemovePID(); err != nil {
 			log.Printf("process: warning - failed to remove PID file: %v", err)
 		}

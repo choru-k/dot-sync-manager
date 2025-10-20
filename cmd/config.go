@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
-	"strconv"
 	"strings"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
@@ -76,7 +75,7 @@ This opens the configuration file for manual editing.
 
 Examples:
   dsm config edit`,
-		RunE: runConfigEdit,
+		RunE: runConfig,
 	}
 	configCmd.AddCommand(configEditCmd)
 }
@@ -95,15 +94,15 @@ func runConfig(cmd *cobra.Command, args []string) error {
 		// Fallback editors by platform
 		switch {
 		case strings.Contains(configPath, ".json"):
-			editor = "code" // Try VS Code for JSON files
+			editor = editorVSCode // Try VS Code for JSON files
 		default:
 			switch runtime.GOOS {
 			case "windows":
-				editor = "notepad"
+				editor = editorNotepad
 			case "darwin":
-				editor = "open -a TextEdit"
+				editor = editorTextEdit
 			default: // Linux
-				editor = "nano"
+				editor = editorNano
 			}
 		}
 	}
@@ -197,9 +196,6 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runConfigEdit(cmd *cobra.Command, args []string) error {
-	return runConfig(cmd, []string{})
-}
 
 // Helper functions for nested configuration access
 func getNestedValue(obj interface{}, key string) interface{} {
@@ -256,33 +252,8 @@ func setNestedValueRecursive(obj interface{}, parts []string, value interface{})
 }
 
 func parseConfigValue(value string) interface{} {
-	// Try to parse as JSON for complex values
-	if strings.HasPrefix(value, "{") || strings.HasPrefix(value, "[") {
-		var parsed interface{}
-		if err := json.Unmarshal([]byte(value), &parsed); err == nil {
-			return parsed
-		}
-	}
-
-	// Try to parse as integer
-	if intVal, err := strconv.Atoi(value); err == nil {
-		return intVal
-	}
-
-	// Try to parse as float
-	if floatVal, err := strconv.ParseFloat(value, 64); err == nil {
-		return floatVal
-	}
-
-	// Try to parse as boolean
-	if strings.ToLower(value) == "true" {
-		return true
-	}
-	if strings.ToLower(value) == "false" {
-		return false
-	}
-
-	// Return as string
+	// Treat all values as strings to avoid incorrect type inference.
+	// For complex edits or type changes, users should use 'dsm config edit'.
 	return value
 }
 

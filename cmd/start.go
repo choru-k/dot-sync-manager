@@ -115,11 +115,11 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 // waitForDaemonStartup polls for the daemon to fully initialize by checking for PID file
 func waitForDaemonStartup(timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
+	deadline := timeNow().Add(timeout)
 	ticker := time.NewTicker(daemonStartupPollInterval)
 	defer ticker.Stop()
 
-	for time.Now().Before(deadline) {
+	for timeNow().Before(deadline) {
 		// Check if daemon is running by checking PID file and process existence
 		if isDaemonRunning() {
 			return nil

@@ -91,7 +91,7 @@ func TestGetConfig(t *testing.T) {
 
 		// Create dotfiles directory with config
 		dotfilesDir := filepath.Join(mockHome, "dotfiles")
-		if err := os.MkdirAll(dotfilesDir, 0755); err != nil {
+		if err := os.MkdirAll(dotfilesDir, dirPerms); err != nil {
 			t.Fatalf("Failed to create dotfiles dir: %v", err)
 		}
 		defaultConfigPath := filepath.Join(dotfilesDir, ".sync-config.json")

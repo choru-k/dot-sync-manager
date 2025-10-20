@@ -1,5 +1,7 @@
 package cmd
 
+import "time"
+
 // File permission constants for CLI operations
 const (
 	// defaultFilePerms allows owner write, group/others read (standard files)
@@ -11,12 +13,18 @@ const (
 	// daemonSleepTime is the time to wait between daemon operations
 	daemonSleepTime = 1 // TODO: Use time.Duration when needed
 
+	// dirPerms grants owner-level write access while keeping directories traversable by other users, matching standard 0755 expectations.
+	dirPerms = 0755 // rwxr-xr-x so users can traverse synced directories
+
 	// Editor fallbacks by platform
 	editorNotepad  = "notepad"
 	editorTextEdit = "open -a TextEdit"
 	editorNano     = "nano"
 	editorVSCode   = "code"
 )
+
+// Time function variable for testability
+var timeNow = time.Now
 
 // Configuration file name constants
 const (

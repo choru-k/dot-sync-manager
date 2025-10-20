@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -129,7 +130,7 @@ func TestGetPlatformOpenCommand(t *testing.T) {
 
 			// Check command starts with expected platform-specific command
 			// Note: This test may need adjustment based on actual implementation
-			if runtime.GOOS == "darwin" && !contains(cmd, "open") {
+			if runtime.GOOS == "darwin" && !strings.Contains(cmd, "open") {
 				t.Errorf("expected darwin command to contain 'open', got: %s", cmd)
 			}
 		})
@@ -254,17 +255,17 @@ func TestGetEditorCommand(t *testing.T) {
 		{
 			name:     "text file",
 			filePath: "/tmp/test.txt",
-			expected: "code", // Default to VS Code
+			expected: editorVSCode, // Default to VS Code
 		},
 		{
 			name:     "markdown file",
 			filePath: "/tmp/test.md",
-			expected: "code", // Default to VS Code
+			expected: editorVSCode, // Default to VS Code
 		},
 		{
 			name:     "json file",
 			filePath: "/tmp/config.json",
-			expected: "code", // Default to VS Code
+			expected: editorVSCode, // Default to VS Code
 		},
 	}
 

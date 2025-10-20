@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sort"
-	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
 	git "github.com/go-git/go-git/v5"
@@ -97,7 +96,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	// Stage and commit changes
-	changed, err := gitMgr.StageAndCommit(ctx, time.Now())
+	changed, err := gitMgr.StageAndCommit(ctx, timeNow())
 	if err != nil {
 		return fmt.Errorf("failed to stage or commit changes: %w", err)
 	}

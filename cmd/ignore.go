@@ -75,15 +75,15 @@ func runIgnore(cmd *cobra.Command, args []string) error {
 		// Fallback editors by platform
 		switch {
 		case strings.Contains(ignoreFile, ".txt"):
-			editor = "code" // Try VS Code
+			editor = editorVSCode // Try VS Code
 		default:
 			switch runtime.GOOS {
 			case "windows":
-				editor = "notepad"
+				editor = editorNotepad
 			case "darwin":
-				editor = "open -a TextEdit"
+				editor = editorTextEdit
 			default: // Linux
-				editor = "nano"
+				editor = editorNano
 			}
 		}
 	}

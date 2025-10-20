@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
 	"github.com/choru-k/dot-sync-manager/internal/util"
@@ -34,8 +33,6 @@ func init() {
 }
 
 const (
-	// dirPerms grants owner-level write access while keeping directories traversable by other users, matching standard 0755 expectations.
-	dirPerms = 0755 // rwxr-xr-x so users can traverse synced directories
 	// filePerms allows owner read/write access while providing read access to group and others, appropriate for most dotfiles.
 	filePerms = 0644 // rw-r--r-- standard readable file permissions for dotfiles
 	// sensitiveFilePerms restricts access to owner only, suitable for files containing secrets or private keys.
@@ -53,7 +50,6 @@ var (
 	removeFunc   = os.Remove
 	symlinkFunc  = os.Symlink
 	renameFunc   = os.Rename
-	timeNow      = time.Now
 
 	copyFileFunc = copyFile
 	saveConfigFn = func(cfg *config.SyncConfig, path string) error {
