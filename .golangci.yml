@@ -12,12 +12,8 @@ linters:
     - ineffassign    # Detects ineffectual assignments
     - unused         # Finds unused code
     - unparam        # Finds unused function parameters
-  # Disabled in pre-commit to allow faster commits, run in CI instead
-  disable:
-    - errcheck       # Too strict for pre-commit
-    - revive         # Stylistic, better in CI
-    - staticcheck    # Some issues require manual review
-    - whitespace     # Handled by gofmt
+    # Note: errcheck, revive, staticcheck, whitespace disabled for minimal pre-commit set
+    # Additional linters can be run in CI for comprehensive analysis
 
 linters-settings:
   gofmt:

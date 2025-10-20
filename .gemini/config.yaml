@@ -76,8 +76,9 @@ ignore_patterns:
   # Git internals
   - ".git/**"
   
-  # Documentation files (optional - remove if you want docs reviewed)
-  - "*.md"
+  # Documentation files - excluding important project docs from review
+  - "README.md"
+  - "CHANGELOG.md"
   
   # CI/CD workflows (optional - remove if you want workflow reviews)
   - ".github/**"

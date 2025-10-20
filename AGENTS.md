@@ -66,7 +66,7 @@ bin/review_report.sh https://github.com/choru-k/dot-sync-manager/pull/<n>
 ### Pre-Commit Checklist
 - [ ] All user-provided paths expanded via `expandPaths()` method
 - [ ] Path expansion functions return errors (never silently fail)
-- [ ] Tilde expansion uses `path[2:]` for `~/` prefix
+- [ ] Tilde expansion uses `strings.TrimLeft(path[1:], "/\\")` for `~/` prefix
 - [ ] Validation methods only check state (never mutate)
 - [ ] Error messages use "must" not "should"
 - [ ] Magic numbers extracted to named constants

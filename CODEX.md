@@ -69,7 +69,7 @@ Comprehensive coding standards are defined in CODING_RULES.md and .gemini/styleg
 ### Path Handling
 - **Expand all user paths early** via dedicated `expandPaths()` method
 - **Path expansion must return errors** - never silent fallback
-- **Use `path[2:]` for `~/` prefix** (not `path[1:]`)
+- **Use `strings.TrimLeft(path[1:], "/\\")` for `~/` prefix** (not `path[2:]`)
 - **Propagate path resolution errors** immediately (fail fast)
 
 ### Validation Patterns
@@ -111,7 +111,7 @@ golangci-lint run
 ### Pre-Commit Verification
 - [ ] All paths expanded via `expandPaths()` method
 - [ ] Path expansion returns errors properly
-- [ ] `~/path` uses `path[2:]` not `path[1:]`
+- [ ] `~/path` uses `strings.TrimLeft(path[1:], "/\\")` not `path[2:]`
 - [ ] Validation only checks, doesn't modify
 - [ ] Error messages use "must" language
 - [ ] Magic numbers extracted to constants

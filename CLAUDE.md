@@ -242,7 +242,7 @@ See `AGENTS.md` for complete workflow rules and details.
 
 ### Code Quality Guidelines
 - Review `CODING_RULES.md` and `.gemini/styleguide.md` before making changes; treat them as the authoritative ruleset.
-- Expand every user-provided path via `expandPaths()` and handle `~/` using `path[2:]` so absolute paths are guaranteed.
+- Expand every user-provided path via `expandPaths()` and handle `~/` using `strings.TrimLeft(path[1:], "/\\")` so absolute paths are guaranteed.
 - Ensure path expansion returns errors and wrap them with context (no silent fallbacks).
 - Keep validation functions pure: use `cfg.GetConfigPath()` to respect flags and never mutate state inside `Validate()`.
 - Resolve symlinks relative to their directory, preserve source file permissions, and avoid hardcoded binary names—use `os.Executable()`.
