@@ -152,9 +152,20 @@ func (s *SyncService) Start() error {
 		return fmt.Errorf("sync: service already running")
 	}
 
-	// Check if service has been stopped before - prevent reuse
-	if atomic.LoadInt32(&s.stopped) == 1 {
-		return fmt.Errorf("sync: service cannot be restarted after Stop() - create a new service instance")
+// Check if this is a restart (service was stopped before)
+	if s.watcher == nil {
+		// Recreate context for restart
+		s.ctx, s.cancel = context.WithCancel(context.Background())
+		// Reset stopOnce to allow shutdown again
+		s.stopOnce = sync.Once{}
+		// Reset shutdownWG
+		s.shutdownWG = sync.WaitGroup{}
+
+		var err error
+		s.watcher, err = fsnotify.NewWatcher()
+		if err != nil {
+			return fmt.Errorf("sync: failed to create new watcher: %w", err)
+		}
 	}
 
 	// Add the repository path to the watcher
@@ -239,6 +250,9 @@ func (s *SyncService) Stop() error {
 	// This is done outside the sync.Once to prevent deadlock when Stop()
 	// is called from within the event loop (e.g., from callbacks)
 	s.shutdownWG.Wait()
+
+	// Set watcher to nil after eventLoop has exited so it can be recreated in Start()
+	s.watcher = nil
 
 	log.Println("sync: stopped")
 

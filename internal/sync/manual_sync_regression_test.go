@@ -136,7 +136,7 @@ func TestSyncService_ManualSyncAfterStop(t *testing.T) {
 	}
 
 	if err != nil && !strings.Contains(err.Error(), "sync service is stopped") {
-		t.Errorf("Expected error containing 'sync service is stopped', got: %v", err)
+		t.Errorf("Expected error to contain 'sync service is stopped', got: %v", err)
 	}
 }
 
@@ -187,6 +187,6 @@ func TestSyncService_ManualSyncAfterStop_BasicDebouncer(t *testing.T) {
 	}
 
 	if err != nil && !strings.Contains(err.Error(), "sync service is stopped") {
-		t.Errorf("Expected error containing 'sync service is stopped', got: %v", err)
+		t.Errorf("Expected error to contain 'sync service is stopped', got: %v", err)
 	}
 }
