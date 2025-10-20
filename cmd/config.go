@@ -262,7 +262,7 @@ func parseConfigValue(value string) interface{} {
 	// Try to parse as JSON for complex values
 	if strings.HasPrefix(value, "{") || strings.HasPrefix(value, "[") {
 		var parsed interface{}
-		if _, err := fmt.Sscanf(value, "%v", &parsed); err == nil {
+		if err := json.Unmarshal([]byte(value), &parsed); err == nil {
 			return parsed
 		}
 	}

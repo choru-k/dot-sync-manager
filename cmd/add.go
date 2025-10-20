@@ -3,7 +3,6 @@ package cmd
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -456,33 +455,6 @@ func getTargetPath(repoPath, sourcePath string) (string, error) {
 	return filepath.Join(repoPath, filepath.Clean(relativePath)), nil
 }
 
-// copyFile copies the file from src to dst while preserving the original permissions.
-func copyFile(src, dst string) (err error) {
-	sourceFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer util.CloseAndCaptureErr(sourceFile, &err)
-
-	// Get source file info to preserve permissions
-	sourceInfo, err := sourceFile.Stat()
-	if err != nil {
-		return err
-	}
-
-	// Create destination file with source file's permissions
-	destFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, sourceInfo.Mode())
-	if err != nil {
-		return err
-	}
-	defer util.CloseAndCaptureErr(destFile, &err)
-
-	if _, err = io.Copy(destFile, sourceFile); err != nil {
-		return err
-	}
-
-	return destFile.Sync()
-}
 
 // isSensitiveFile checks if a file path matches patterns for sensitive files.
 func isSensitiveFile(path string) bool {
@@ -521,7 +493,7 @@ func isSensitiveFile(path string) bool {
 }
 
 // commitAddedFile stages and commits the added file to git using GitManager
-func commitAddedFile(cmd *cobra.Command, cfg *config.SyncConfig, targetPath, filePath string) error {
+func commitAddedFile(cmd *cobra.Command, cfg *config.SyncConfig, targetPath, _ string) error {
 	// Create GitManager instance
 	gmCfg := cfg.ToGitManagerConfig()
 
@@ -530,8 +502,14 @@ func commitAddedFile(cmd *cobra.Command, cfg *config.SyncConfig, targetPath, fil
 		return fmt.Errorf("failed to create git manager: %w", err)
 	}
 
-	// Stage and commit the added file
-	changedFiles, err := gm.StageAndCommit(cmd.Context(), timeNow())
+	// Convert targetPath to relative path from repository root
+	relPath, err := filepath.Rel(cfg.Git.RepoPath, targetPath)
+	if err != nil {
+		return fmt.Errorf("failed to compute relative path: %w", err)
+	}
+
+	// Stage and commit only the specific file
+	changedFiles, err := gm.StageAndCommitFiles(cmd.Context(), timeNow(), []string{relPath})
 	if err != nil {
 		return fmt.Errorf("failed to stage and commit changes: %w", err)
 	}

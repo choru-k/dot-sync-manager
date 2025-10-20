@@ -3,7 +3,6 @@ package cmd
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -208,7 +207,7 @@ func confirmRemoval(symlinkPath, trackedFile, mappingKey string) bool {
 	return response == "y" || response == "yes"
 }
 
-func executeRemoval(cfg *config.SyncConfig, symlinkPath, trackedFile, mappingKey string) error {
+func executeRemoval(_ *config.SyncConfig, symlinkPath, trackedFile, _ string) error {
 	// Remove symlink
 	if err := os.Remove(symlinkPath); err != nil {
 		return fmt.Errorf("failed to remove symlink: %w", err)
@@ -222,7 +221,7 @@ func executeRemoval(cfg *config.SyncConfig, symlinkPath, trackedFile, mappingKey
 		}
 
 		// Copy file from repository back to original location
-		if err := copyFileForRemove(trackedFile, symlinkPath); err != nil {
+		if err := copyFile(trackedFile, symlinkPath); err != nil {
 			return fmt.Errorf("failed to restore file to original location: %w", err)
 		}
 	} else {
@@ -250,36 +249,9 @@ func updateConfigAfterRemoval(cfg *config.SyncConfig, mappingKey string) error {
 	return nil
 }
 
-// copyFileForRemove copies the file from src to dst while preserving the original permissions.
-func copyFileForRemove(src, dst string) (err error) {
-	sourceFile, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer util.CloseAndCaptureErr(sourceFile, &err)
-
-	// Get source file info to preserve permissions
-	sourceInfo, err := sourceFile.Stat()
-	if err != nil {
-		return err
-	}
-
-	// Create destination file with source file's permissions
-	destFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, sourceInfo.Mode())
-	if err != nil {
-		return err
-	}
-	defer util.CloseAndCaptureErr(destFile, &err)
-
-	if _, err = io.Copy(destFile, sourceFile); err != nil {
-		return err
-	}
-
-	return destFile.Sync()
-}
 
 // commitRemovedFile stages and commits the removal changes to git using GitManager
-func commitRemovedFile(cmd *cobra.Command, cfg *config.SyncConfig, trackedFile, filePath string) error {
+func commitRemovedFile(cmd *cobra.Command, cfg *config.SyncConfig, trackedFile, _ string) error {
 	// Create GitManager instance
 	gmCfg := cfg.ToGitManagerConfig()
 
@@ -288,10 +260,27 @@ func commitRemovedFile(cmd *cobra.Command, cfg *config.SyncConfig, trackedFile, 
 		return fmt.Errorf("failed to create git manager: %w", err)
 	}
 
-	// Stage and commit the changes
-	changedFiles, err := gm.StageAndCommit(cmd.Context(), time.Now())
+	// Convert trackedFile to relative path from repository root
+	relPath, err := filepath.Rel(cfg.Git.RepoPath, trackedFile)
 	if err != nil {
-		return fmt.Errorf("failed to stage and commit changes: %w", err)
+		return fmt.Errorf("failed to compute relative path: %w", err)
+	}
+
+	// Also remove the mapping from config file
+	configRelPath := "sync-config.json"
+	var changedFiles []string
+	if _, err := os.Stat(filepath.Join(cfg.Git.RepoPath, configRelPath)); err == nil {
+		// Config file exists and should be committed too
+		changedFiles, err = gm.StageAndCommitFiles(cmd.Context(), time.Now(), []string{relPath, configRelPath})
+		if err != nil {
+			return fmt.Errorf("failed to stage and commit changes: %w", err)
+		}
+	} else {
+		// Only commit the tracked file removal
+		changedFiles, err = gm.StageAndCommitFiles(cmd.Context(), time.Now(), []string{relPath})
+		if err != nil {
+			return fmt.Errorf("failed to stage and commit changes: %w", err)
+		}
 	}
 
 	// Only push if there's a remote configured

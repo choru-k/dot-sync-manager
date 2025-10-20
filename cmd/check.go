@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -57,9 +56,8 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check git repository status
-	ctx := context.Background()
 	gmCfg := cfg.ToGitManagerConfig()
-	gitMgr, err := gitmanager.NewGitManager(ctx, gmCfg)
+	gitMgr, err := gitmanager.NewGitManager(cmd.Context(), gmCfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize git manager: %w", err)
 	}

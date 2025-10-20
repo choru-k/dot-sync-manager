@@ -211,6 +211,44 @@ func (gm *GitManager) StageAndCommit(ctx context.Context, when time.Time) ([]str
 	return changedFiles, nil
 }
 
+// StageAndCommitFiles stages specific files and creates a commit without pushing.
+// It returns the list of file paths that were included in the commit.
+// This function is safer than StageAndCommit as it only stages the specified files.
+func (gm *GitManager) StageAndCommitFiles(ctx context.Context, when time.Time, files []string) ([]string, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	worktree, err := gm.repo.Worktree()
+	if err != nil {
+		return nil, fmt.Errorf("gitmanager: worktree: %w", err)
+	}
+
+	// Stage only the specified files
+	for _, file := range files {
+		if _, err := worktree.Add(file); err != nil {
+			return nil, fmt.Errorf("gitmanager: add %s: %w", file, err)
+		}
+	}
+
+	message := buildAutoCommitMessage(when, files)
+
+	_, err = worktree.Commit(message, &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  gm.cfg.AuthorName,
+			Email: gm.cfg.AuthorEmail,
+			When:  when,
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("gitmanager: commit: %w", err)
+	}
+
+	return files, nil
+}
+
 // Push pushes the current HEAD to the configured remote.
 func (gm *GitManager) Push(ctx context.Context) error {
 	select {
