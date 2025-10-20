@@ -54,7 +54,10 @@ func runOpen(cmd *cobra.Command, args []string) error {
 	switch {
 	case openEditor:
 		// Use centralized editor selection logic
-		editor := getDefaultEditor()
+		editor, err := getDefaultEditor()
+		if err != nil {
+			return fmt.Errorf("invalid editor: %w", err)
+		}
 		openCmd, openArgs = parseCommand(editor)
 
 	default:

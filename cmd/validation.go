@@ -31,15 +31,39 @@ func validateConfigKey(key string) error {
 		return fmt.Errorf("invalid configuration key format: %s (must start with letter and contain only letters, numbers, underscores, and dots)", key)
 	}
 
+	// Validate that the section is valid (whitelist approach)
+	parts := strings.Split(key, ".")
+	if len(parts) < 2 {
+		return fmt.Errorf("configuration key must have at least one section and field (e.g., 'machine.name')")
+	}
+
+	section := parts[0]
+	validSections := map[string]bool{
+		"machine":            true,
+		"git":                true,
+		"sync":               true,
+		"notifications":      true,
+		"conflict_resolution": true,
+		"ui":                 true,
+		"advanced":           true,
+	}
+
+	if !validSections[section] {
+		return fmt.Errorf("invalid configuration section: %s (valid sections: machine, git, sync, notifications, conflict_resolution, ui, advanced)", section)
+	}
+
 	// Prevent configuration keys that could be dangerous
-	dangerousKeys := []string{
-		"password", "passwd", "secret", "key", "token", "auth",
-		"private_key", "ssh_key", "credential", "cert",
+	// Use specific patterns to avoid false positives (e.g., "author" should not match "auth")
+	dangerousPatterns := []string{
+		`(^|\.|_)password($|\.|_)`, `(^|\.|_)passwd($|\.|_)`, `(^|\.|_)secret($|\.|_)`, `(^|\.|_)private_key($|\.|_)`, `(^|\.|_)ssh_key($|\.|_)`,
+		`(^|\.|_)credential($|\.|_)`, `(^|\.|_)cert($|\.|_)`, `(^|\.|_)token($|\.|_)`, `(^|\.|_)api_key($|\.|_)`, `(^|\.|_)auth_key($|\.|_)`,
+		`^auth$`, // Only match standalone "auth" as the entire key
 	}
 
 	keyLower := strings.ToLower(key)
-	for _, dangerous := range dangerousKeys {
-		if strings.Contains(keyLower, dangerous) {
+	for _, pattern := range dangerousPatterns {
+		matched, err := regexp.MatchString(pattern, keyLower)
+		if err == nil && matched {
 			return fmt.Errorf("configuration key contains potentially dangerous term: %s", key)
 		}
 	}

@@ -343,7 +343,10 @@ func getOpenCommand(target string) (string, error) {
 		return "", err
 	}
 
-	editor := getDefaultEditorForFile(target)
+	editor, err := getDefaultEditorForFile(target)
+	if err != nil {
+		return "", fmt.Errorf("failed to get editor: %w", err)
+	}
 	if editor == "" {
 		return "", fmt.Errorf("no editor available")
 	}
@@ -379,7 +382,7 @@ func validateOpenTarget(target string) error {
 	return nil
 }
 
-func getEditorCommand(filePath string) string {
+func getEditorCommand(filePath string) (string, error) {
 	return getDefaultEditorForFile(filePath)
 }
 

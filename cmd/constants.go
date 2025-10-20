@@ -26,6 +26,26 @@ const (
 // Time function variable for testability
 var timeNow = time.Now
 
+// Safe editors allowlist for command injection protection
+var safeEditors = map[string]bool{
+	"atom":         true,
+	"code":         true,
+	"emacs":        true,
+	"gedit":        true,
+	"gvim":         true,
+	"kate":         true,
+	"nano":         true,
+	"notepad":      true,
+	"notepad++":    true,
+	"subl":         true,
+	"sublime":      true,
+	"vim":          true,
+	"vi":           true,
+	"vscode":       true,
+	"open -a TextEdit": true,  // macOS TextEdit
+	"open -a Sublime Text": true,  // macOS Sublime Text
+}
+
 // Configuration file name constants
 const (
 	// ConfigFileName is the PRD-standardized config filename

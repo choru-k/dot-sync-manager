@@ -20,6 +20,7 @@ import (
 var (
 	configFile string
 	verbose    bool
+	noEmoji    bool
 )
 
 
@@ -44,6 +45,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&configFile, "config", "", "Path to configuration file")
 	// TODO(future): Implement verbose logging throughout commands when verbose flag is set
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
+	rootCmd.PersistentFlags().BoolVar(&noEmoji, "no-emoji", false, "Disable emoji output")
 }
 
 // getConfig loads configuration using proper discovery logic.

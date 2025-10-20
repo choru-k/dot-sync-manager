@@ -19,6 +19,9 @@ const (
 
 	// DefaultShutdownTimeout is the default timeout for graceful shutdown
 	DefaultShutdownTimeout = 100 * time.Millisecond
+
+	// DebouncerTimeout is the maximum time to wait for debouncer operations
+	DebouncerTimeout = 10 * time.Minute
 )
 
 // AdvancedDebouncer provides configurable debounce with exponential backoff
@@ -67,6 +70,7 @@ type AdvancedDebouncer struct {
 	// Start/stop state management
 	started int32 // atomic.Bool replacement: 1 = started, 0 = not started
 	startMu sync.Mutex
+	stopOnce sync.Once // Ensures Stop() is only called once
 }
 
 type manualSyncRequest struct {
@@ -153,15 +157,19 @@ func NewAdvanced(config AdvancedDebouncerConfig) *AdvancedDebouncer {
 		started:            0, // Initialize as not started
 	}
 
-	// Initialize context for cancellation
-	debouncer.ctx, debouncer.cancel = context.WithCancel(context.Background())
+	// Initialize context for cancellation with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), DebouncerTimeout)
+	debouncer.ctx, debouncer.cancel = ctx, cancel
 
 	return debouncer
 }
 
 // Add adds a function to be debounced with advanced backoff logic
 func (d *AdvancedDebouncer) Add(key string, fn func()) {
-	d.AddWithContext(context.Background(), key, fn)
+	// Create a timeout context for this specific debounced operation
+	ctx, cancel := context.WithTimeout(context.Background(), DebouncerTimeout)
+	defer cancel()
+	d.AddWithContext(ctx, key, fn)
 }
 
 // AddWithContext adds a function to be debounced with advanced backoff logic and context support
@@ -595,25 +603,24 @@ func (d *AdvancedDebouncer) GetStats() map[string]interface{} {
 
 // Stop stops the debouncer and cleans up resources with graceful shutdown
 func (d *AdvancedDebouncer) Stop() {
-	d.CancelAll()
+	d.stopOnce.Do(func() {
+		d.CancelAll()
 
-	// Cancel the context to stop any pending callbacks
-	d.cancel()
+		// Cancel the context to stop any pending callbacks
+		d.cancel()
 
-	// Reset started flag to allow restart if needed
-	atomic.StoreInt32(&d.started, 0)
+		// Reset started flag to allow restart if needed
+		atomic.StoreInt32(&d.started, 0)
 
-	// Signal shutdown to queue processor
-	close(d.done)
+		// Signal shutdown to queue processor
+		close(d.done)
 
-	// Close the queue to unblock any remaining operations
-	close(d.manualSyncQueue)
+		// Close the queue to unblock any remaining operations
+		close(d.manualSyncQueue)
 
-	// Give a brief moment for clean shutdown
-	time.Sleep(DefaultShutdownTimeout)
-
-	// The actual goroutine should exit quickly due to the done signal and queue closure
-	// Any remaining operations will naturally complete or timeout
+		// Give a brief moment for clean shutdown
+		time.Sleep(DefaultShutdownTimeout)
+	})
 }
 
 // Start starts the manual sync queue processor.

@@ -36,6 +36,14 @@ func init() {
 }
 
 func runRemove(cmd *cobra.Command, args []string) error {
+	// Validate argument count even though Cobra should enforce this via Args: cobra.ExactArgs(1)
+	if len(args) == 0 {
+		return fmt.Errorf("remove command requires exactly one argument: <filepath>")
+	}
+	if len(args) > 1 {
+		return fmt.Errorf("remove command accepts only one argument, got %d", len(args))
+	}
+
 	// No conflicting flags to validate since --keep-repo was removed
 
 	filePath, err := validateRemoveTarget(args[0])

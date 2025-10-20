@@ -6,9 +6,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
 	"github.com/spf13/cobra"
+)
+
+const (
+	// checkTimeout is the maximum time to wait for check operations
+	checkTimeout = 30 * time.Second
 )
 
 // checkCmd represents the check command
@@ -37,16 +43,21 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	fmt.Println("🔍 Checking dotfiles repository...")
-	fmt.Printf("📁 Repository: %s\n", cfg.Git.RepoPath)
-	fmt.Printf("🖥️  Machine: %s\n", cfg.Machine.Name)
+	printStatus("🔍", "CHECKING", "Checking dotfiles repository...")
+	if noEmoji {
+		fmt.Printf("Repository: %s\n", cfg.Git.RepoPath)
+		fmt.Printf("Machine: %s\n", cfg.Machine.Name)
+	} else {
+		fmt.Printf("📁 Repository: %s\n", cfg.Git.RepoPath)
+		fmt.Printf("🖥️  Machine: %s\n", cfg.Machine.Name)
+	}
 
 	issues := []string{}
 	warnings := []string{}
 
 	// Check daemon status
 	if isDaemonRunning() {
-		fmt.Println("✅ Daemon is running")
+		printSuccess("Daemon is running")
 		if checkVerbose {
 			if pid, err := getDaemonPID(); err == nil {
 				fmt.Printf("   PID: %d\n", pid)
@@ -57,7 +68,8 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check git repository status
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), checkTimeout)
+	defer cancel()
 	gmCfg := cfg.ToGitManagerConfig()
 	gitMgr, err := gitmanager.NewGitManager(ctx, gmCfg)
 	if err != nil {
@@ -69,7 +81,7 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	if repo == nil {
 		issues = append(issues, "Git repository is not accessible")
 	} else {
-		fmt.Println("✅ Git repository is accessible")
+		printSuccess("Git repository is accessible")
 
 		// Check working tree status
 		worktree, err := repo.Worktree()
@@ -81,7 +93,7 @@ func runCheck(cmd *cobra.Command, args []string) error {
 				issues = append(issues, fmt.Sprintf("Failed to get repository status: %v", err))
 			} else {
 				if status.IsClean() {
-					fmt.Println("✅ Working tree is clean")
+					printSuccess("Working tree is clean")
 				} else {
 					warnings = append(warnings, fmt.Sprintf("Working tree has %d uncommitted changes", len(status)))
 					if checkVerbose {
@@ -97,7 +109,7 @@ func runCheck(cmd *cobra.Command, args []string) error {
 
 	// Check remote configuration
 	if cfg.Git.RemoteURL != "" {
-		fmt.Println("🌐 Remote URL configured")
+		printStatus("🌐", "REMOTE", "Remote URL configured")
 		if checkVerbose {
 			fmt.Printf("   Remote URL: %s\n", cfg.Git.RemoteURL)
 		}
@@ -106,9 +118,9 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check configuration
-	fmt.Println("⚙️  Checking configuration...")
+	printStatus("⚙️", "CONFIG", "Checking configuration...")
 	if cfg.Sync.AutoSyncEnabled {
-		fmt.Println("✅ Auto-sync is enabled")
+		printSuccess("Auto-sync is enabled")
 		if checkVerbose {
 			fmt.Printf("   Pull interval: %d seconds\n", cfg.Sync.PullIntervalSeconds)
 			fmt.Printf("   Debounce: %d seconds\n", cfg.Sync.DebounceSeconds)
@@ -119,7 +131,7 @@ func runCheck(cmd *cobra.Command, args []string) error {
 
 	// Check file mappings
 	if len(cfg.Mappings) > 0 {
-		fmt.Printf("✅ %d file mappings configured\n", len(cfg.Mappings))
+		printSuccess("%d file mappings configured", len(cfg.Mappings))
 		if checkVerbose {
 			for source, target := range cfg.Mappings {
 				fmt.Printf("   %s -> %s\n", source, target)
@@ -135,36 +147,36 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		entries, err := os.ReadDir(conflictDir)
 		if err == nil && len(entries) > 0 {
 			issues = append(issues, fmt.Sprintf("Found conflict artifacts in %s", conflictDir))
-			fmt.Printf("❌ Conflict artifacts found: %s\n", conflictDir)
-			fmt.Println("💡 Run 'dsm conflicts' for more details")
-			fmt.Println("💡 Run 'dsm resolve' after manually resolving conflicts")
+			printError("Conflict artifacts found: %s", conflictDir)
+			printInfo("Run 'dsm conflicts' for more details")
+			printInfo("Run 'dsm resolve' after manually resolving conflicts")
 		} else {
-			fmt.Println("✅ No conflict artifacts found")
+			printSuccess("No conflict artifacts found")
 		}
 	} else {
-		fmt.Println("✅ No conflict artifacts found")
+		printSuccess("No conflict artifacts found")
 	}
 
 	// Summary
 	fmt.Println("\n" + strings.Repeat("=", 50))
 	if len(issues) > 0 {
-		fmt.Printf("❌ Found %d issue(s):\n", len(issues))
+		printError("Found %d issue(s):", len(issues))
 		for _, issue := range issues {
 			fmt.Printf("   • %s\n", issue)
 		}
 	}
 
 	if len(warnings) > 0 {
-		fmt.Printf("⚠️  Found %d warning(s):\n", len(warnings))
+		printWarning("Found %d warning(s):", len(warnings))
 		for _, warning := range warnings {
 			fmt.Printf("   • %s\n", warning)
 		}
 	}
 
 	if len(issues) == 0 && len(warnings) == 0 {
-		fmt.Println("✅ Everything looks good!")
+		printSuccess("Everything looks good!")
 	} else if len(issues) == 0 {
-		fmt.Println("✅ No critical issues found (some warnings present)")
+		printSuccess("No critical issues found (some warnings present)")
 	}
 
 	// Return appropriate exit code

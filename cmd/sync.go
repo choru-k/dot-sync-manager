@@ -4,10 +4,16 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
 	git "github.com/go-git/go-git/v5"
 	"github.com/spf13/cobra"
+)
+
+const (
+	// syncTimeout is the maximum time to wait for sync operations
+	syncTimeout = 5 * time.Minute
 )
 
 // syncCmd represents the sync command
@@ -45,7 +51,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	gmCfg := cfg.ToGitManagerConfig()
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), syncTimeout)
+	defer cancel()
 
 	gitMgr, err := gitmanager.NewGitManager(ctx, gmCfg)
 	if err != nil {

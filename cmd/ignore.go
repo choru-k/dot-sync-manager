@@ -70,9 +70,16 @@ func runIgnore(cmd *cobra.Command, args []string) error {
 	}
 
 	// Open .syncignore file in default editor
-	editor := os.Getenv("EDITOR")
-	if editor == "" {
-		// Fallback editors by platform
+	var editor string
+
+	if envEditor := os.Getenv("EDITOR"); envEditor != "" {
+		var validateErr error
+		editor, validateErr = validateEditorCommand(envEditor)
+		if validateErr != nil {
+			return fmt.Errorf("invalid editor from EDITOR environment variable: %w", validateErr)
+		}
+	} else {
+		// Fallback editors by platform (pre-validated constants)
 		switch {
 		case strings.Contains(ignoreFile, ".txt"):
 			editor = editorVSCode // Try VS Code

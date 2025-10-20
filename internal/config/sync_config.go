@@ -80,10 +80,10 @@ type machineConfigJSON struct {
 }
 
 // MarshalJSON implements custom JSON marshaling for MachineConfig.
-// It serializes the config as a plain string containing the machine name,
-// which aligns with the format specified in PRD §5.
+// It serializes the config as an object with a "name" field to support
+// nested key access (e.g., "machine.name") while maintaining compatibility.
 func (m MachineConfig) MarshalJSON() ([]byte, error) {
-	return json.Marshal(m.Name)
+	return json.Marshal(machineConfigJSON(m))
 }
 
 // UnmarshalJSON implements custom JSON unmarshaling for MachineConfig.
@@ -488,7 +488,7 @@ func LoadFromFile(filename string) (*SyncConfig, error) {
 			StartAtBoot *bool `json:"start_at_boot"`
 		} `json:"ui"`
 	}
-	
+
 	// Try to parse the existing StartAtBoot value before full unmarshaling
 	if parseErr := json.Unmarshal(data, &tempConfig); parseErr == nil {
 		// If start_at_boot was explicitly set in the existing config, preserve it

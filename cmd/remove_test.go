@@ -21,9 +21,9 @@ func TestRemoveCmd_Sanity(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name:        "valid single file",
+			name:        "regular file (should error - remove only works with symlinks)",
 			args:        []string{"/tmp/test.txt"},
-			expectError: false,
+			expectError: true,
 		},
 		{
 			name:        "too many arguments",
@@ -97,7 +97,7 @@ func TestValidateRemoveTarget(t *testing.T) {
 
 func TestRemoveCmd_Integration(t *testing.T) {
 	testConfig := setupTestEnvironment(t)
-	defer cleanupTestEnvironment(testConfig)
+	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
 
 	// Create test files
 	homeFile := filepath.Join(testConfig.HomeDir, ".bashrc")
@@ -132,7 +132,7 @@ func TestRemoveCmd_Integration(t *testing.T) {
 
 func TestRemoveCmd_KeepRepoFlag(t *testing.T) {
 	testConfig := setupTestEnvironment(t)
-	defer cleanupTestEnvironment(testConfig)
+	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
 
 	// Create test files
 	homeFile := filepath.Join(testConfig.HomeDir, ".bashrc")
@@ -164,7 +164,7 @@ func TestRemoveCmd_KeepRepoFlag(t *testing.T) {
 
 func TestRemoveCmd_DeleteAllFlag(t *testing.T) {
 	testConfig := setupTestEnvironment(t)
-	defer cleanupTestEnvironment(testConfig)
+	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
 
 	// Create test files
 	homeFile := filepath.Join(testConfig.HomeDir, ".bashrc")
@@ -197,7 +197,7 @@ func TestRemoveCmd_DeleteAllFlag(t *testing.T) {
 
 func TestRemoveCmd_ConflictingFlags(t *testing.T) {
 	testConfig := setupTestEnvironment(t)
-	defer cleanupTestEnvironment(testConfig)
+	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
 
 	homeFile := filepath.Join(testConfig.HomeDir, ".bashrc")
 	createTestFile(t, homeFile, "# Bash config")
@@ -219,7 +219,7 @@ func TestRemoveCmd_ConflictingFlags(t *testing.T) {
 
 func TestRemoveFromConfig(t *testing.T) {
 	testConfig := setupTestEnvironment(t)
-	defer cleanupTestEnvironment(testConfig)
+	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
 
 	// Setup config with mappings
 	testConfig.Config.Mappings[".bashrc"] = "bashrc"
@@ -244,7 +244,7 @@ func TestRemoveSymlink(t *testing.T) {
 	requireSymlinkSupport(t)
 
 	testConfig := setupTestEnvironment(t)
-	defer cleanupTestEnvironment(testConfig)
+	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
 
 	// Create test symlink
 	target := filepath.Join(testConfig.RepoPath, "bashrc")

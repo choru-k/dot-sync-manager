@@ -218,7 +218,7 @@ Options:
 
 	// Only create .syncignore if it doesn't exist
 	if !ignoreExists {
-		if err := os.WriteFile(ignorePath, []byte(defaultSyncIgnoreContent), defaultFilePerms); err != nil {
+		if err := util.CreateFileSecurely(ignorePath, []byte(defaultSyncIgnoreContent), defaultFilePerms); err != nil {
 			return fmt.Errorf("failed to create .syncignore file: %w", err)
 		}
 		fmt.Printf("✅ Ignore file created: %s\n", ignorePath)

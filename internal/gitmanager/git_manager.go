@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/choru-k/dot-sync-manager/internal/util"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing/object"
@@ -58,8 +58,8 @@ func (gm *GitManager) bootstrapRepo(ctx context.Context) error {
 	}
 
 	if _, err := os.Stat(gm.cfg.RepoPath); errors.Is(err, os.ErrNotExist) {
-		if err := os.MkdirAll(filepath.Dir(gm.cfg.RepoPath), 0o755); err != nil {
-			return fmt.Errorf("gitmanager: create parent dir: %w", err)
+		if err := util.CreateDirectorySecurely(gm.cfg.RepoPath, 0o755); err != nil {
+			return fmt.Errorf("gitmanager: create repo directory: %w", err)
 		}
 
 		// Clone from remote if URL provided, otherwise init empty repo

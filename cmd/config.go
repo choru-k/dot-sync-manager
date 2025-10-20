@@ -107,11 +107,17 @@ func runConfig(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Validate editor command for security
+	validEditor, err := validateEditorCommand(editor)
+	if err != nil {
+		return fmt.Errorf("invalid editor command: %w", err)
+	}
+
 	fmt.Printf("📝 Opening configuration file: %s\n", configPath)
-	fmt.Printf("Using editor: %s\n", editor)
+	fmt.Printf("Using editor: %s\n", validEditor)
 
 	// Parse editor command to handle spaces properly
-	editorCmd, editorArgs := parseCommand(editor)
+	editorCmd, editorArgs := parseCommand(validEditor)
 	editorArgs = append(editorArgs, configPath)
 
 	execCmd := exec.Command(editorCmd, editorArgs...)
@@ -187,6 +193,8 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 
 	// Save updated configuration
 	configPath := cfg.GetConfigPath()
+	// Ensure the config path is preserved in the updated config
+	updatedCfg.ConfigPath = configPath
 	if err := updatedCfg.SaveToFile(configPath); err != nil {
 		return fmt.Errorf("failed to save configuration: %w", err)
 	}
@@ -200,6 +208,21 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 // Helper functions for nested configuration access
 func getNestedValue(obj interface{}, key string) interface{} {
 	parts := strings.Split(key, ".")
+
+	// If obj is not a map, try to convert it to a map using JSON marshaling/unmarshaling
+	if _, isMap := obj.(map[string]interface{}); !isMap {
+		// Convert struct to map
+		jsonBytes, err := json.Marshal(obj)
+		if err != nil {
+			return nil
+		}
+		var mapObj map[string]interface{}
+		if err := json.Unmarshal(jsonBytes, &mapObj); err != nil {
+			return nil
+		}
+		obj = mapObj
+	}
+
 	current := obj
 
 	for _, part := range parts {

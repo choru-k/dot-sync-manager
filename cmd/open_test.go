@@ -288,7 +288,10 @@ func TestGetEditorCommand(t *testing.T) {
 				t.Logf("warning: failed to unset EDITOR: %v", err)
 			}
 
-			cmd := getEditorCommand(tt.filePath)
+			cmd, err := getEditorCommand(tt.filePath)
+			if err != nil {
+				t.Errorf("getEditorCommand() error = %v", err)
+			}
 			if cmd != tt.expected {
 				t.Errorf("getEditorCommand() = %q, expected %q", cmd, tt.expected)
 			}

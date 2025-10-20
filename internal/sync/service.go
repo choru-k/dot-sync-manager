@@ -25,6 +25,11 @@ type DebouncerInterface interface {
 	Pending() int
 }
 
+const (
+	// syncServiceTimeout is the maximum time to wait for sync service operations
+	syncServiceTimeout = 30 * time.Minute
+)
+
 // SyncService handles file watching and automatic syncing
 //
 // Thread Safety:
@@ -120,7 +125,7 @@ func New(gitManager *gitmanager.GitManager, config *Config) (*SyncService, error
 	// Create ignore parser
 	ignoreParser := ignore.New(config.RepoPath)
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), syncServiceTimeout)
 
 	service := &SyncService{
 		gitManager:        gitManager,
