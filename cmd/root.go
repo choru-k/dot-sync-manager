@@ -44,6 +44,8 @@ func Execute() error {
 func init() {
 	rootCmd.PersistentFlags().StringVar(&configFile, "config", "", "Path to configuration file")
 	// TODO(future): Implement verbose logging throughout commands when verbose flag is set
+	// This would involve adding detailed logging statements in all command functions
+	// and using a proper logging framework (like logrus or zap) with configurable levels
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
 	rootCmd.PersistentFlags().BoolVar(&noEmoji, "no-emoji", false, "Disable emoji output")
 }

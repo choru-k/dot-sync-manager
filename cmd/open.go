@@ -52,6 +52,12 @@ func runOpen(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("📂 Opening dotfiles repository: %s\n", repoPath)
 
+	// Check if we're in a test environment and should avoid launching real file managers
+	if os.Getenv("DSM_TEST_MODE") != "" || os.Getenv("CI") != "" {
+		fmt.Printf("🧪 Test mode: Skipping actual directory opening\n")
+		return nil
+	}
+
 	// Choose the appropriate open command based on platform and flag
 	var openCmd string
 	var openArgs []string

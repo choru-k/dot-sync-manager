@@ -5,7 +5,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -77,6 +76,7 @@ func runIgnore(cmd *cobra.Command, args []string) error {
 	// Open .syncignore file in default editor
 	var editor string
 
+	// Check environment variable first
 	if envEditor := os.Getenv("EDITOR"); envEditor != "" {
 		var validateErr error
 		editor, validateErr = validateEditorCommand(envEditor)
@@ -84,19 +84,11 @@ func runIgnore(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("invalid editor from EDITOR environment variable: %w", validateErr)
 		}
 	} else {
-		// Fallback editors by platform (pre-validated constants)
-		switch {
-		case strings.Contains(ignoreFile, ".txt"):
-			editor = editorVSCode // Try VS Code
-		default:
-			switch runtime.GOOS {
-			case "windows":
-				editor = editorNotepad
-			case "darwin":
-				editor = editorTextEdit
-			default: // Linux
-				editor = editorNano
-			}
+		// Use centralized editor selection logic
+		var selectErr error
+		editor, selectErr = getDefaultEditorForFile(ignoreFile)
+		if selectErr != nil {
+			return fmt.Errorf("failed to get default editor: %w", selectErr)
 		}
 	}
 

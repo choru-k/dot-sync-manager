@@ -10,6 +10,14 @@ import (
 )
 
 func TestConfigCmd_Sanity(t *testing.T) {
+	testConfig := setupTestEnvironment(t)
+	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
+
+	// Set the global configFile variable so getConfig() uses the test config file
+	oldConfigFile := configFile
+	configFile = testConfig.ConfigPath
+	t.Cleanup(func() { configFile = oldConfigFile })
+
 	tests := []struct {
 		name        string
 		args        []string
@@ -289,8 +297,8 @@ func TestSetNestedValue(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:        "set git.author_email",
-			key:         "git.author_email",
+			name:        "set git.user_email",
+			key:         "git.user_email",
 			value:       "new@example.com",
 			expectError: false,
 		},

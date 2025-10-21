@@ -53,6 +53,9 @@ func setupTestEnvironment(t *testing.T) *TestConfig {
 	// Set HOME environment variable for the test
 	t.Setenv("HOME", homeDir)
 
+	// Set test mode to prevent GUI editor launches during tests
+	t.Setenv("DSM_TEST_MODE", "1")
+
 	// Create repository directory
 	repoPath := filepath.Join(homeDir, testRepoName)
 	if err := os.MkdirAll(repoPath, testDirPerms); err != nil {

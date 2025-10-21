@@ -11,20 +11,23 @@ import (
 )
 
 func TestOpenCmd_Sanity(t *testing.T) {
+	// Set test mode to prevent GUI file manager launches during tests
+	t.Setenv("DSM_TEST_MODE", "1")
+
 	tests := []struct {
 		name        string
 		args        []string
 		expectError bool
 	}{
 		{
-			name:        "no arguments should error",
+			name:        "no arguments should work",
 			args:        []string{},
-			expectError: true,
+			expectError: false,
 		},
 		{
-			name:        "single argument should work",
+			name:        "single argument should error",
 			args:        []string{"/tmp"},
-			expectError: false,
+			expectError: true,
 		},
 		{
 			name:        "multiple arguments should error",

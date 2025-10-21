@@ -275,13 +275,12 @@ func TestVersionCommandFlags(t *testing.T) {
 
 			// Set test flags
 			for flagName, value := range tt.flags {
-				if err := cmd.Flags().Set(flagName, ""); err != nil {
-					t.Fatalf("failed to set flag %s: %v", flagName, err)
-				}
+				flagValue := "false"
 				if value {
-					if err := cmd.Flags().Set(flagName, "true"); err != nil {
-						t.Fatalf("failed to set flag %s: %v", flagName, err)
-					}
+					flagValue = "true"
+				}
+				if err := cmd.Flags().Set(flagName, flagValue); err != nil {
+					t.Fatalf("failed to set flag %s: %v", flagName, err)
 				}
 			}
 

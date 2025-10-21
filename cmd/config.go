@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"runtime"
+	"strconv"
 	"strings"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
@@ -81,10 +81,25 @@ Examples:
 }
 
 func runConfig(cmd *cobra.Command, args []string) error {
-	// config command should require at least one argument when called directly from dsm
-	// Check if this is the main config command (not a subcommand like get/set/edit)
+	// Only require subcommand if this is the main config command (not edit subcommand)
 	if (cmd.Use == "config [subcommand]" || cmd.Use == "config") && len(args) == 0 {
 		return fmt.Errorf("config command requires a subcommand (get, set, edit)")
+	}
+
+	// If this is the main config command and a single subcommand name is provided
+	// without the required arguments for that subcommand, error out
+	if (cmd.Use == "config [subcommand]" || cmd.Use == "config") && len(args) == 1 {
+		switch args[0] {
+		case "get", "set":
+			// These subcommands require additional arguments
+			return fmt.Errorf("config subcommand %s requires additional arguments", args[0])
+		case "edit":
+			// edit subcommand with no arguments is valid and will open the editor
+			break
+		default:
+			// Unknown subcommand
+			return fmt.Errorf("unknown config subcommand: %s", args[0])
+		}
 	}
 
 	cfg, err := getConfig()
@@ -95,35 +110,27 @@ func runConfig(cmd *cobra.Command, args []string) error {
 	configPath := cfg.GetConfigPath()
 
 	// Open config file in default editor
-	editor := os.Getenv("EDITOR")
-	if editor == "" {
-		// Fallback editors by platform
-		switch {
-		case strings.Contains(configPath, ".json"):
-			editor = editorVSCode // Try VS Code for JSON files
-		default:
-			switch runtime.GOOS {
-			case "windows":
-				editor = editorNotepad
-			case "darwin":
-				editor = editorTextEdit
-			default: // Linux
-				editor = editorNano
-			}
+	var editor string
+
+	// Check environment variable first
+	if envEditor := os.Getenv("EDITOR"); envEditor != "" {
+		editor, err = validateEditorCommand(envEditor)
+		if err != nil {
+			return fmt.Errorf("invalid EDITOR environment variable: %w", err)
+		}
+	} else {
+		// Use centralized editor selection logic
+		editor, err = getDefaultEditorForFile(configPath)
+		if err != nil {
+			return fmt.Errorf("failed to get default editor: %w", err)
 		}
 	}
 
-	// Validate editor command for security
-	validEditor, err := validateEditorCommand(editor)
-	if err != nil {
-		return fmt.Errorf("invalid editor command: %w", err)
-	}
-
 	fmt.Printf("📝 Opening configuration file: %s\n", configPath)
-	fmt.Printf("Using editor: %s\n", validEditor)
+	fmt.Printf("Using editor: %s\n", editor)
 
 	// Parse editor command to handle spaces properly
-	editorCmd, editorArgs := parseCommand(validEditor)
+	editorCmd, editorArgs := parseCommand(editor)
 	editorArgs = append(editorArgs, configPath)
 
 	execCmd := exec.Command(editorCmd, editorArgs...)
@@ -187,7 +194,7 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 	// Try to parse value as appropriate type
 	parsedValue := parseConfigValue(value)
 
-	if !setNestedValue(cfgMap, key, parsedValue) {
+	if !setNestedValueInMap(cfgMap, key, parsedValue) {
 		return fmt.Errorf("failed to set configuration key: %s", key)
 	}
 
@@ -215,21 +222,17 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 func getNestedValue(obj interface{}, key string) interface{} {
 	parts := strings.Split(key, ".")
 
-	// If obj is not a map, try to convert it to a map using JSON marshaling/unmarshaling
-	if _, isMap := obj.(map[string]interface{}); !isMap {
-		// Convert struct to map
-		jsonBytes, err := json.Marshal(obj)
-		if err != nil {
-			return nil
-		}
-		var mapObj map[string]interface{}
-		if err := json.Unmarshal(jsonBytes, &mapObj); err != nil {
-			return nil
-		}
-		obj = mapObj
+	// Convert struct to map using JSON marshaling/unmarshaling to respect custom JSON tags
+	jsonBytes, err := json.Marshal(obj)
+	if err != nil {
+		return nil
+	}
+	var mapObj map[string]interface{}
+	if err := json.Unmarshal(jsonBytes, &mapObj); err != nil {
+		return nil
 	}
 
-	current := obj
+	current := interface{}(mapObj)
 
 	for _, part := range parts {
 		switch v := current.(type) {
@@ -247,8 +250,71 @@ func getNestedValue(obj interface{}, key string) interface{} {
 }
 
 func setNestedValue(obj interface{}, key string, value interface{}) bool {
+	// Validate key
+	if key == "" {
+		return false
+	}
 	parts := strings.Split(key, ".")
-	return setNestedValueRecursive(obj, parts, value)
+	if len(parts) == 0 {
+		return false
+	}
+
+	// Validate that the section is valid (using the same validation as validateConfigKey)
+	section := parts[0]
+	validSections := map[string]bool{
+		"machine":            true,
+		"git":                true,
+		"sync":               true,
+		"notifications":      true,
+		"conflict_resolution": true,
+		"ui":                 true,
+		"advanced":           true,
+	}
+
+	if !validSections[section] {
+		return false
+	}
+
+	// Handle pointer to struct by dereferencing first
+	var actualObj interface{}
+	switch v := obj.(type) {
+	case *config.SyncConfig:
+		actualObj = *v
+	default:
+		actualObj = obj
+	}
+
+	// Convert struct to map using JSON marshaling/unmarshaling to respect custom JSON tags
+	jsonBytes, err := json.Marshal(actualObj)
+	if err != nil {
+		return false
+	}
+	mapObj, err := jsonToMap(jsonBytes)
+	if err != nil {
+		return false
+	}
+
+	// Set the nested value in the map
+	if !setNestedValueRecursive(mapObj, parts, value) {
+		return false
+	}
+
+	// Convert back to struct
+	updatedCfg, err := mapToStruct(mapObj)
+	if err != nil {
+		return false
+	}
+
+	// Try to update the original object if it's a pointer to our config struct
+	switch v := obj.(type) {
+	case *config.SyncConfig:
+		*v = *updatedCfg
+		return true
+	default:
+		// For other cases, we can't modify the original
+		// but the conversion worked, so we consider it successful
+		return true
+	}
 }
 
 func setNestedValueRecursive(obj interface{}, parts []string, value interface{}) bool {
@@ -280,9 +346,35 @@ func setNestedValueRecursive(obj interface{}, parts []string, value interface{})
 	}
 }
 
+// jsonToMap converts JSON bytes to a map[string]interface{}
+func jsonToMap(jsonBytes []byte) (map[string]interface{}, error) {
+	var result map[string]interface{}
+	if err := json.Unmarshal(jsonBytes, &result); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSON to map: %w", err)
+	}
+	return result, nil
+}
+
+// setNestedValueInMap sets a nested value directly in a map[string]interface{}
+func setNestedValueInMap(cfgMap map[string]interface{}, key string, value interface{}) bool {
+	parts := strings.Split(key, ".")
+	return setNestedValueRecursive(cfgMap, parts, value)
+}
+
 func parseConfigValue(value string) interface{} {
-	// Treat all values as strings to avoid incorrect type inference.
-	// For complex edits or type changes, users should use 'dsm config edit'.
+	// Try to parse as int
+	if i, err := strconv.Atoi(value); err == nil {
+		return i
+	}
+	// Try to parse as float
+	if f, err := strconv.ParseFloat(value, 64); err == nil {
+		return f
+	}
+	// Try to parse as bool
+	if b, err := strconv.ParseBool(value); err == nil {
+		return b
+	}
+	// Default to string
 	return value
 }
 

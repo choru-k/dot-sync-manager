@@ -16,7 +16,7 @@ import (
 func getDefaultEditor() (string, error) {
 	// Check if we're in a test environment and should avoid launching real editors
 	if os.Getenv("DSM_TEST_MODE") != "" || os.Getenv("CI") != "" {
-		return "echo", nil // Use echo as a safe test editor
+		return "true", nil // Use true as a safe test editor - silent and no GUI
 	}
 
 	// Check environment variable first
@@ -37,19 +37,36 @@ func getDefaultEditor() (string, error) {
 
 // getDefaultEditorForFile returns an appropriate editor for a specific file type
 func getDefaultEditorForFile(filePath string) (string, error) {
+	// Check if we're in a test environment and should avoid launching real editors
+	if os.Getenv("DSM_TEST_MODE") != "" || os.Getenv("CI") != "" {
+		return "true", nil // Use true as a safe test editor - silent and no GUI
+	}
+
 	// Check environment variable first
 	if editor := os.Getenv("EDITOR"); editor != "" {
 		return validateEditorCommand(editor)
 	}
 
-	// File type-specific editor selection (pre-validated constants)
+	// File type-specific editor selection with fallback checking
 	switch {
 	case strings.HasSuffix(filePath, ".json"), strings.HasSuffix(filePath, ".jsonc"):
-		return editorVSCode, nil // Prefer VS Code for JSON files
+		// Prefer VS Code for JSON files, but fall back if not available
+		if hasCommand("code") {
+			return editorVSCode, nil
+		}
+		return getDefaultEditor()
 	case strings.HasSuffix(filePath, ".md"), strings.HasSuffix(filePath, ".markdown"):
-		return editorVSCode, nil // Prefer VS Code for Markdown
+		// Prefer VS Code for Markdown, but fall back if not available
+		if hasCommand("code") {
+			return editorVSCode, nil
+		}
+		return getDefaultEditor()
 	case strings.HasSuffix(filePath, ".txt"):
-		return editorVSCode, nil // Prefer VS Code for text files
+		// Prefer VS Code for text files, but fall back if not available
+		if hasCommand("code") {
+			return editorVSCode, nil
+		}
+		return getDefaultEditor()
 	default:
 		return getDefaultEditor()
 	}
@@ -81,8 +98,9 @@ func parseCommand(cmdStr string) (string, []string) {
 
 	parts, err := shlex.Split(cmdStr)
 	if err != nil {
-		// Fallback to simple split if shlex fails
-		parts = strings.Fields(cmdStr)
+		// Return empty result on parsing error to prevent command injection
+		// rather than falling back to unsafe string splitting
+		return "", nil
 	}
 
 	if len(parts) == 0 {

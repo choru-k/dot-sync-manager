@@ -10,6 +10,14 @@ import (
 )
 
 func TestIgnoreCmd_Sanity(t *testing.T) {
+	testConfig := setupTestEnvironment(t)
+	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
+
+	// Set the global configFile variable so getConfig() uses the test config file
+	oldConfigFile := configFile
+	configFile = testConfig.ConfigPath
+	t.Cleanup(func() { configFile = oldConfigFile })
+
 	tests := []struct {
 		name        string
 		args        []string

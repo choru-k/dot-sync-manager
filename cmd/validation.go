@@ -53,11 +53,10 @@ func validateConfigKey(key string) error {
 	}
 
 	// Prevent configuration keys that could be dangerous
-	// Use specific patterns to avoid false positives (e.g., "author" should not match "auth")
+	// Use specific patterns to avoid false positives with legitimate fields
 	dangerousPatterns := []string{
 		`(^|\.|_)password($|\.|_)`, `(^|\.|_)passwd($|\.|_)`, `(^|\.|_)secret($|\.|_)`, `(^|\.|_)private_key($|\.|_)`, `(^|\.|_)ssh_key($|\.|_)`,
 		`(^|\.|_)credential($|\.|_)`, `(^|\.|_)cert($|\.|_)`, `(^|\.|_)token($|\.|_)`, `(^|\.|_)api_key($|\.|_)`, `(^|\.|_)auth_key($|\.|_)`,
-		`^auth$`, // Only match standalone "auth" as the entire key
 	}
 
 	keyLower := strings.ToLower(key)
