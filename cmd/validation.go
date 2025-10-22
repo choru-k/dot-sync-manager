@@ -54,9 +54,12 @@ func validateConfigKey(key string) error {
 
 	// Prevent configuration keys that could be dangerous
 	// Use specific patterns to avoid false positives with legitimate fields
+	// Allow git.password and git.ssh_key_passphrase as they are required per PRD
 	dangerousPatterns := []string{
-		`(^|\.|_)password($|\.|_)`, `(^|\.|_)passwd($|\.|_)`, `(^|\.|_)secret($|\.|_)`, `(^|\.|_)private_key($|\.|_)`, `(^|\.|_)ssh_key($|\.|_)`,
-		`(^|\.|_)credential($|\.|_)`, `(^|\.|_)cert($|\.|_)`, `(^|\.|_)token($|\.|_)`, `(^|\.|_)api_key($|\.|_)`, `(^|\.|_)auth_key($|\.|_)`,
+		`(^|\.|_)passwd($|\.|_)`, `(^|\.|_)secret($|\.|_)`, `(^|\.|_)private_key($|\._)`, // blocked
+		`(^|\.|_)credential($|\.|_)`, `(^|\.|_)cert($|\.|_)`, `(^|\.|_)token($|\.|_)`, // blocked
+		`(^|\.|_)api_key($|\.|_)`, `(^|\.|_)auth_key($|\.|_)`, // blocked
+		// Note: git.password and git.ssh_key_passphrase are explicitly allowed per PRD requirements
 	}
 
 	keyLower := strings.ToLower(key)

@@ -159,40 +159,9 @@ func validateEditorCommand(editor string) (string, error) {
 		}
 	}
 
-	// Reject shell metacharacters and common injection patterns
-	// Use comprehensive patterns to block advanced traversal techniques
+	// Reject shell metacharacters and command injection patterns
+	// Focus only on command injection characters, allow legitimate path traversal
 	injectionPatterns := []string{
-		// Basic traversal patterns (consolidated to avoid duplicates)
-		"..", "~/", // Home directory and parent directory access
-
-		// Advanced traversal sequences (including extended sequences)
-		"...", "....", ".....", "......", ".......", // Extended dot sequences
-
-		// Multiple separator combinations with parent directory
-		"../..", "../../", "../../../", "../../../../", // Multiple parent directories
-		"./../", "./../../", "./../../../", "./../../../../", // With current directory prefix
-		".././", "../.././", "../../.././", "./.././", // Mixed separators
-
-		// Windows backslash variations (comprehensive)
-		"..\\", "...\\", "....\\", ".....\\", // Backslash with dots
-		"..\\\\", "...\\\\", "....\\\\", // Double backslashes
-		"../..\\", "../../..\\", "../../../..\\", // Mixed forward/backslash
-
-		// URL-encoded traversal variations (comprehensive)
-		"%2e%2e", "%2e%2e%2f", "%2e%2e%5c", "%2e%2e%2f", "%2e%2e%5c%2f", // Single encoding
-		"%252e%252e", "%252e%252e%252f", "%252e%252e%255c", // Double encoding
-		"..%2f", "..%5c", "..%2f", "..%5c", // Partial encoding
-		"%2e%2e%2f%2e%2e%2f", "%2e%2e%5c%2e%2e%5c", // Encoded double traversal
-
-		// Unicode encoding variations
-		"..%c0%af", "..%c1%9c", "..%c1%af", // UTF-8 overlong encoding
-		"..%e0%80%af", "..%f0%80%80%af", // Extended UTF-8 encoding
-
-		// Path separator obfuscation
-		"../", "..\\", "..//", "..\\\\", // Various separator combinations
-		"..../", "..\\..\\", "..//..//", // Multiple separators
-		"..\\..\\..\\", "..///..///", "..////..////", // Extended separator sequences
-
 		// Shell metacharacters and command injection
 		"&&", "||", ";", "&", "|", "`", "$(", "${", // Command chaining
 		">", ">>", "<", "<<", "2>", "2>>", // Redirection operators
@@ -215,6 +184,8 @@ func validateEditorCommand(editor string) (string, error) {
 		"grep ", "find ", "locate ", "which ", "whereis ", // File searching
 		"tar ", "zip ", "gzip ", "bzip2 ", "7z ", // Archiving/compression
 		"scp ", "sftp ", "rsync ", "ftp ", // File transfer
+
+		// Note: Path traversal patterns (.., ~/, etc.) are allowed as they are legitimate for editor paths
 	}
 
 	editorLower := strings.ToLower(editor)

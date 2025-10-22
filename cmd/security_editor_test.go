@@ -84,12 +84,11 @@ func TestValidateEditorCommand(t *testing.T) {
 			errorMsg:    "dangerous character: '$'",
 		},
 
-		// Dangerous patterns
+		// Note: Path traversal is now allowed for legitimate editor paths per PR review feedback
 		{
-			name:        "path traversal with ..",
+			name:        "path traversal with .. (allowed)",
 			editor:      "nano ../../../etc/passwd",
-			expectError: true,
-			errorMsg:    "dangerous pattern: \"..\"",
+			expectError: false, // Path traversal is allowed for legitimate editor paths
 		},
 		{
 			name:        "file removal command",
