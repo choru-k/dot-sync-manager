@@ -194,6 +194,11 @@ func TestCheckCmd_Integration(t *testing.T) {
 		t.Fatalf("failed to create .git directory: %v", err)
 	}
 
+	// Temporarily set config file for this test
+	originalConfigFile := configFile
+	configFile = testConfig.ConfigPath
+	defer func() { configFile = originalConfigFile }()
+
 	// Test check command
 	cmd := &cobra.Command{Use: "check"}
 	err = runCheck(cmd, []string{})
@@ -255,11 +260,18 @@ func TestCheckCmd_WithConflicts(t *testing.T) {
 	}
 	createTestFile(t, filepath.Join(conflictsDir, "bashrc.conflict"), "conflict content")
 
-	// Test check command
+	// Temporarily set config file for this test
+	originalConfigFile := configFile
+	configFile = testConfig.ConfigPath
+	defer func() { configFile = originalConfigFile }()
+
+	// Test check command - should detect conflicts and return an error
 	cmd := &cobra.Command{Use: "check"}
 	err = runCheck(cmd, []string{})
-	if err != nil {
-		t.Errorf("runCheck() failed: %v", err)
+	if err == nil {
+		t.Errorf("runCheck() should have failed with conflicts, but got no error")
+	} else if !strings.Contains(err.Error(), "found 1 issue(s)") {
+		t.Errorf("runCheck() failed with unexpected error: %v", err)
 	}
 }
 

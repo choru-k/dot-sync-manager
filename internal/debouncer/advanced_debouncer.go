@@ -166,10 +166,8 @@ func NewAdvanced(config AdvancedDebouncerConfig) *AdvancedDebouncer {
 
 // Add adds a function to be debounced with advanced backoff logic
 func (d *AdvancedDebouncer) Add(key string, fn func()) {
-	// Create a timeout context for this specific debounced operation
-	ctx, cancel := context.WithTimeout(context.Background(), DebouncerTimeout)
-	defer cancel()
-	d.AddWithContext(ctx, key, fn)
+	// Use the debouncer's context for operations without creating a new one
+	d.AddWithContext(d.ctx, key, fn)
 }
 
 // AddWithContext adds a function to be debounced with advanced backoff logic and context support
@@ -199,46 +197,45 @@ func (d *AdvancedDebouncer) AddWithContext(ctx context.Context, key string, fn f
 
 	// Create new timer with calculated delay
 	d.timers[key] = time.AfterFunc(delay, func() {
-		// Check if context is cancelled before proceeding
-		select {
-		case <-capturedCtx.Done():
+		// First, check if the operation context is cancelled
+		if capturedCtx.Err() != nil {
 			// Context cancelled, don't execute callback
 			d.mu.Lock()
 			delete(d.timers, key)
 			delete(d.callback, key)
 			d.mu.Unlock()
 			return
-		case <-d.ctx.Done():
+		}
+
+		// Check if debouncer context is cancelled
+		if d.ctx.Err() != nil {
 			// Debouncer context cancelled, don't execute callback
 			d.mu.Lock()
 			delete(d.timers, key)
 			delete(d.callback, key)
 			d.mu.Unlock()
 			return
-		default:
-			// Both contexts are still valid, proceed
 		}
 
 		d.mu.Lock()
 		defer d.mu.Unlock()
 
 		// Double-check context cancellation after acquiring lock
-		select {
-		case <-capturedCtx.Done():
+		if capturedCtx.Err() != nil {
 			// Context cancelled, clean up and return
 			delete(d.timers, key)
 			delete(d.callback, key)
 			return
-		case <-d.ctx.Done():
+		}
+
+		if d.ctx.Err() != nil {
 			// Debouncer context cancelled, clean up and return
 			delete(d.timers, key)
 			delete(d.callback, key)
 			return
-		default:
-			// Both contexts are still valid, proceed
 		}
 
-		// Execute the captured callback with panic recovery and context awareness
+		// Execute the captured callback with panic recovery
 		defer func() {
 			if r := recover(); r != nil {
 				// Log panic if needed, but don't crash
@@ -246,31 +243,8 @@ func (d *AdvancedDebouncer) AddWithContext(ctx context.Context, key string, fn f
 			}
 		}()
 
-		// Execute callback in a separate goroutine to allow context cancellation
-		done := make(chan struct{})
-		go func() {
-			defer close(done)
-			defer func() {
-				if r := recover(); r != nil {
-					log.Printf("Warning: panic in debounced callback goroutine for key %s: %v", key, r)
-				}
-			}()
-			capturedFn()
-		}()
-
-		// Wait for callback completion or context cancellation
-		select {
-		case <-done:
-			// Callback completed successfully
-		case <-capturedCtx.Done():
-			// Context cancelled during execution
-			log.Printf("Callback for key %s cancelled by context", key)
-			// Note: We can't interrupt the running goroutine, but we can clean up
-		case <-d.ctx.Done():
-			// Debouncer context cancelled during execution
-			log.Printf("Callback for key %s cancelled by debouncer context", key)
-			// Note: We can't interrupt the running goroutine, but we can clean up
-		}
+		// Execute callback
+		capturedFn()
 
 		// Clean up
 		delete(d.timers, key)
@@ -508,6 +482,11 @@ func (d *AdvancedDebouncer) GetBackoffCount() int {
 // IsChurnMode returns true if churn is currently detected
 func (d *AdvancedDebouncer) IsChurnMode() bool {
 	return d.isChurnDetected()
+}
+
+// IsBackoffEnabled returns true if exponential backoff is enabled
+func (d *AdvancedDebouncer) IsBackoffEnabled() bool {
+	return d.backoffEnabled
 }
 
 // GetActivityCount returns the number of activities in the current window

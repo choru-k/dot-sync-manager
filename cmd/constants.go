@@ -11,7 +11,7 @@ const (
 	defaultLogLines = 50
 
 	// daemonSleepTime is the time to wait between daemon operations (in seconds)
-	daemonSleepTime = 1 // 1 second - use time.Duration when converting to time.Duration
+	// daemonSleepTime = 1 // 1 second - use time.Duration when converting to time.Duration (unused)
 
 	// dirPerms grants owner-level write access while keeping directories traversable by other users, matching standard 0755 expectations.
 	dirPerms = 0755 // rwxr-xr-x so users can traverse synced directories

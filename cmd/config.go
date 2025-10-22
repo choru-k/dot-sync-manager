@@ -37,6 +37,9 @@ Examples:
 func init() {
 	rootCmd.AddCommand(configCmd)
 
+	// Add flags
+	configCmd.PersistentFlags().String("editor", "", "Editor to use for editing configuration")
+
 	// config get subcommand
 	configGetCmd := &cobra.Command{
 		Use:   "get <key>",
@@ -109,11 +112,17 @@ func runConfig(cmd *cobra.Command, args []string) error {
 
 	configPath := cfg.GetConfigPath()
 
-	// Open config file in default editor
+	// Open config file in editor
 	var editor string
 
-	// Check environment variable first
-	if envEditor := os.Getenv("EDITOR"); envEditor != "" {
+	// Check for editor flag first
+	if flagEditor, err := cmd.Flags().GetString("editor"); err == nil && flagEditor != "" {
+		editor, err = validateEditorCommand(flagEditor)
+		if err != nil {
+			return fmt.Errorf("invalid editor flag: %w", err)
+		}
+	} else if envEditor := os.Getenv("EDITOR"); envEditor != "" {
+		// Check environment variable second
 		editor, err = validateEditorCommand(envEditor)
 		if err != nil {
 			return fmt.Errorf("invalid EDITOR environment variable: %w", err)
@@ -241,6 +250,12 @@ func getNestedValue(obj interface{}, key string) interface{} {
 			if current == nil {
 				return nil
 			}
+		case string:
+			// Special handling for machine.name access when machine is a string (PRD format)
+			if len(parts) == 2 && parts[0] == "machine" && parts[1] == "name" {
+				return v // Return the machine name string directly
+			}
+			return nil
 		default:
 			return nil
 		}
@@ -327,6 +342,17 @@ func setNestedValueRecursive(obj interface{}, parts []string, value interface{})
 
 	switch v := obj.(type) {
 	case map[string]interface{}:
+		// Special handling for machine.name when machine is currently a string (PRD format)
+		if part == "machine" && len(remaining) == 1 && remaining[0] == "name" {
+			if _, isString := v["machine"].(string); isString {
+				// In PRD format, machine is a string, so just set machine directly
+				if valueStr, ok := value.(string); ok {
+					v["machine"] = valueStr
+					return true
+				}
+			}
+		}
+
 		if len(remaining) == 0 {
 			// Set the final value
 			v[part] = value

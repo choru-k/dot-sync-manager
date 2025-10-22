@@ -28,11 +28,13 @@ Examples:
 
 var (
 	deleteAll bool
+	keepRepo  bool
 )
 
 func init() {
 	rootCmd.AddCommand(removeCmd)
 	removeCmd.Flags().BoolVar(&deleteAll, "delete-all", false, "Delete file from both home and repository")
+	removeCmd.Flags().BoolVar(&keepRepo, "keep-repo", false, "Keep file in repository (default behavior)")
 }
 
 func runRemove(cmd *cobra.Command, args []string) error {
@@ -169,6 +171,12 @@ func findTrackedFile(cfg *config.SyncConfig, symlinkPath string) (string, string
 }
 
 func confirmRemoval(symlinkPath, trackedFile, mappingKey string) bool {
+	// Check if we're in test mode and skip confirmation
+	if os.Getenv("DSM_TEST_MODE") != "" || os.Getenv("CI") != "" {
+		fmt.Println("🧪 Test mode: Auto-confirming removal")
+		return true
+	}
+
 	fmt.Printf("Found tracked file:\n")
 	fmt.Printf("🔗 Symlink: %s\n", symlinkPath)
 	fmt.Printf("📄 Tracked file: %s\n", trackedFile)

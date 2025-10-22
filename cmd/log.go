@@ -41,9 +41,9 @@ func init() {
 // It determines the log file location, handles user path expansion,
 // and provides options for showing recent lines or following the log in real-time.
 func runLog(cmd *cobra.Command, args []string) error {
-	// log command should not accept any arguments
-	if len(args) > 0 {
-		return fmt.Errorf("log command accepts no arguments")
+	// log command accepts at most one argument (optional log file path)
+	if len(args) > 1 {
+		return fmt.Errorf("log command accepts at most one argument (log file path)")
 	}
 
 	cfg, err := getConfig()
@@ -52,7 +52,10 @@ func runLog(cmd *cobra.Command, args []string) error {
 	}
 
 	// Determine log file location
-	if logFile == "" {
+	if len(args) == 1 {
+		// Use the provided file path
+		logFile = args[0]
+	} else if logFile == "" {
 		logFile = cfg.Advanced.LogFile
 	}
 	if logFile == "" {

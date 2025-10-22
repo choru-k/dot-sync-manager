@@ -76,12 +76,12 @@ func TestValidateRemoveTarget(t *testing.T) {
 		{
 			name:        "absolute path",
 			path:        "/tmp/test.txt",
-			expectError: false,
+			expectError: true, // File doesn't exist, should error
 		},
 		{
 			name:        "home directory path",
 			path:        "~/test.txt",
-			expectError: false,
+			expectError: true, // File doesn't exist, should error
 		},
 	}
 
@@ -131,6 +131,8 @@ func TestRemoveCmd_Integration(t *testing.T) {
 }
 
 func TestRemoveCmd_KeepRepoFlag(t *testing.T) {
+	requireSymlinkSupport(t)
+
 	testConfig := setupTestEnvironment(t)
 	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
 
@@ -138,8 +140,15 @@ func TestRemoveCmd_KeepRepoFlag(t *testing.T) {
 	homeFile := filepath.Join(testConfig.HomeDir, ".bashrc")
 	repoFile := filepath.Join(testConfig.RepoPath, "bashrc")
 
-	createTestFile(t, homeFile, "# Bash config")
 	createTestFile(t, repoFile, "# Bash config")
+
+	// Create symlink from home to repo (simulate dsm add)
+	createTestSymlink(t, repoFile, homeFile)
+
+	// Set the global configFile variable
+	originalConfigFile := configFile
+	configFile = testConfig.ConfigPath
+	defer func() { configFile = originalConfigFile }()
 
 	// Update config
 	testConfig.Config.Mappings[".bashrc"] = "bashrc"
@@ -147,13 +156,12 @@ func TestRemoveCmd_KeepRepoFlag(t *testing.T) {
 		t.Fatalf("failed to save config: %v", err)
 	}
 
-	// Test remove with keep-repo flag
-	cmd := &cobra.Command{Use: "remove"}
-	if err := cmd.Flags().Set("keep-repo", "true"); err != nil {
-					t.Fatalf("failed to set keep-repo flag: %v", err)
-				}
+	// Test remove with keep-repo flag - use the actual removeCmd with pre-bound flags
+	if err := removeCmd.Flags().Set("keep-repo", "true"); err != nil {
+		t.Fatalf("failed to set keep-repo flag: %v", err)
+	}
 
-	err := runRemove(cmd, []string{homeFile})
+	err := runRemove(removeCmd, []string{homeFile})
 	if err != nil {
 		t.Fatalf("runRemove() failed: %v", err)
 	}
@@ -163,6 +171,8 @@ func TestRemoveCmd_KeepRepoFlag(t *testing.T) {
 }
 
 func TestRemoveCmd_DeleteAllFlag(t *testing.T) {
+	requireSymlinkSupport(t)
+
 	testConfig := setupTestEnvironment(t)
 	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
 
@@ -170,8 +180,15 @@ func TestRemoveCmd_DeleteAllFlag(t *testing.T) {
 	homeFile := filepath.Join(testConfig.HomeDir, ".bashrc")
 	repoFile := filepath.Join(testConfig.RepoPath, "bashrc")
 
-	createTestFile(t, homeFile, "# Bash config")
 	createTestFile(t, repoFile, "# Bash config")
+
+	// Create symlink from home to repo (simulate dsm add)
+	createTestSymlink(t, repoFile, homeFile)
+
+	// Set the global configFile variable
+	originalConfigFile := configFile
+	configFile = testConfig.ConfigPath
+	defer func() { configFile = originalConfigFile }()
 
 	// Update config
 	testConfig.Config.Mappings[".bashrc"] = "bashrc"
@@ -179,13 +196,17 @@ func TestRemoveCmd_DeleteAllFlag(t *testing.T) {
 		t.Fatalf("failed to save config: %v", err)
 	}
 
-	// Test remove with delete-all flag
-	cmd := &cobra.Command{Use: "remove"}
-	if err := cmd.Flags().Set("delete-all", "true"); err != nil {
-					t.Fatalf("failed to set delete-all flag: %v", err)
-				}
+	// Test remove with delete-all flag - use the actual removeCmd with pre-bound flags
+	if err := removeCmd.Flags().Set("delete-all", "true"); err != nil {
+		t.Fatalf("failed to set delete-all flag: %v", err)
+	}
 
-	err := runRemove(cmd, []string{homeFile})
+	// Verify the flag was set
+	if val, _ := removeCmd.Flags().GetBool("delete-all"); !val {
+		t.Fatal("delete-all flag was not set correctly")
+	}
+
+	err := runRemove(removeCmd, []string{homeFile})
 	if err != nil {
 		t.Fatalf("runRemove() failed: %v", err)
 	}
@@ -204,6 +225,8 @@ func TestRemoveCmd_ConflictingFlags(t *testing.T) {
 
 	// Test conflicting flags
 	cmd := &cobra.Command{Use: "remove"}
+	cmd.Flags().Bool("keep-repo", false, "Keep file in repository (default behavior)")
+	cmd.Flags().Bool("delete-all", false, "Delete file from both home and repository")
 	if err := cmd.Flags().Set("keep-repo", "true"); err != nil {
 					t.Fatalf("failed to set keep-repo flag: %v", err)
 				}

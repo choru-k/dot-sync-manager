@@ -218,6 +218,7 @@ func TestRunConfigEdit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cmd := &cobra.Command{Use: "config edit"}
+			cmd.Flags().String("editor", "", "Editor to use for editing configuration")
 			if tt.editor != "" {
 				if err := cmd.Flags().Set("editor", tt.editor); err != nil {
 					t.Fatalf("failed to set editor flag: %v", err)
@@ -484,6 +485,11 @@ func TestConfigCmd_InvalidConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create invalid config: %v", err)
 	}
+
+	// Temporarily set config file to invalid config
+	originalConfigFile := configFile
+	configFile = invalidConfigPath
+	defer func() { configFile = originalConfigFile }()
 
 	// Test get with invalid config
 	cmd := &cobra.Command{Use: "config"}

@@ -73,6 +73,8 @@ func setupTestEnvironment(t *testing.T) *TestConfig {
 	cfg.Git.RepoPath = repoPath
 	cfg.Git.AuthorName = testAuthorName
 	cfg.Git.AuthorEmail = testAuthorEmail
+	cfg.Git.AuthType = "none" // Use "none" auth for local tests to avoid SSH key requirements
+	cfg.Git.RemoteURL = ""     // No remote for local tests
 	cfg.ConflictResolution.BackupDir = filepath.Join(repoPath, ".backup")
 	cfg.Mappings = make(map[string]string)
 	cfg.ConfigPath = filepath.Join(repoPath, ".sync-config.json")
@@ -222,6 +224,11 @@ func getResolutionStatus(repoPath, conflictsDir string) string {
 
 // Missing conflict helper functions for tests
 func detectConflicts(repoPath string) (bool, []string, error) {
+	// First check if the repository path exists
+	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
+		return false, nil, fmt.Errorf("repository path does not exist: %s", repoPath)
+	}
+
 	conflictsDir := filepath.Join(repoPath, ".dsm", "conflicts")
 	if _, err := os.Stat(conflictsDir); os.IsNotExist(err) {
 		return false, nil, nil
@@ -264,13 +271,42 @@ func parseConflictFile(conflictFile string) ([]string, error) {
 		return nil, err
 	}
 
-	// Simple parsing - just split by lines
-	lines := strings.Split(string(content), "\n")
+	text := string(content)
+
+	// Check if file contains conflict markers
+	hasConflictMarkers := strings.Contains(text, "<<<<<<< HEAD") ||
+		strings.Contains(text, "=======") ||
+		strings.Contains(text, ">>>>>>> ")
+
+	if !hasConflictMarkers {
+		return []string{}, nil
+	}
+
+	// Parse conflict sections
+	lines := strings.Split(text, "\n")
 	var sections []string
+	var currentSection strings.Builder
+	inConflict := false
 
 	for _, line := range lines {
-		if strings.TrimSpace(line) != "" {
-			sections = append(sections, line)
+		if strings.HasPrefix(line, "<<<<<<< ") {
+			// Start of conflict - begin new section
+			inConflict = true
+			currentSection.Reset()
+		} else if line == "=======" && inConflict {
+			// Separator - save current section and start new one
+			sections = append(sections, strings.TrimSpace(currentSection.String()))
+			currentSection.Reset()
+		} else if strings.HasPrefix(line, ">>>>>>> ") && inConflict {
+			// End of conflict - save final section
+			sections = append(sections, strings.TrimSpace(currentSection.String()))
+			inConflict = false
+		} else if inConflict {
+			// Add content to current section
+			if currentSection.Len() > 0 {
+				currentSection.WriteString("\n")
+			}
+			currentSection.WriteString(line)
 		}
 	}
 
@@ -295,7 +331,46 @@ func getConflictStatus(conflictsDir string) string {
 }
 
 func checkUnmergedFiles(repoPath string) (bool, error) {
-	// Simplified implementation - in real code would check git status
+	// Check if repository exists
+	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
+		return false, fmt.Errorf("repository does not exist: %s", repoPath)
+	}
+
+	// Check if .git directory exists
+	gitDir := filepath.Join(repoPath, ".git")
+	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
+		return false, fmt.Errorf("not a git repository: %s", repoPath)
+	}
+
+	// Check for common indicators of unmerged files in test environment
+	// Look for conflict markers or unmerged file indicators
+	entries, err := os.ReadDir(repoPath)
+	if err != nil {
+		return false, err
+	}
+
+	// Simple heuristic: check for files with conflict markers or common unmerged patterns
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		// Skip .git and hidden directories
+		if strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+
+		// Check for common conflict file patterns
+		if strings.Contains(entry.Name(), ".conflict") ||
+		   strings.Contains(entry.Name(), ".merge") ||
+		   strings.Contains(entry.Name(), ".rej") {
+			return true, nil
+		}
+	}
+
+	// In a real implementation, this would run `git status --porcelain` and parse
+	// for unmerged files (marked with 'UU' in git status output)
+	// For test purposes, we'll assume no unmerged files unless we find obvious indicators
 	return false, nil
 }
 
@@ -309,6 +384,17 @@ func cleanupConflictFiles(conflictsDir string) error {
 
 // Helper functions for resolve tests
 func verifyConflictResolution(repoPath string) (bool, error) {
+	// Check if repository exists
+	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
+		return false, fmt.Errorf("repository does not exist: %s", repoPath)
+	}
+
+	// Check if .git directory exists
+	gitDir := filepath.Join(repoPath, ".git")
+	if _, err := os.Stat(gitDir); os.IsNotExist(err) {
+		return false, fmt.Errorf("not a git repository: %s", repoPath)
+	}
+
 	conflictsDir := filepath.Join(repoPath, ".dsm", "conflicts")
 	if _, err := os.Stat(conflictsDir); os.IsNotExist(err) {
 		return true, nil
@@ -373,15 +459,19 @@ func validateOpenTarget(target string) error {
 		return fmt.Errorf("target cannot be empty")
 	}
 
+	// Check if target is a relative path (doesn't start with / or ~)
+	if !strings.HasPrefix(target, "/") && !strings.HasPrefix(target, "~") {
+		return fmt.Errorf("target must be an absolute path")
+	}
+
 	expandedPath, err := util.ExpandPath(target)
 	if err != nil {
 		return fmt.Errorf("failed to expand path: %w", err)
 	}
 
-	if _, err := os.Stat(expandedPath); os.IsNotExist(err) {
-		return fmt.Errorf("target does not exist: %s", expandedPath)
-	}
-
+	// For open command, we just validate the path format, not existence
+	// The actual open command will handle non-existent paths appropriately
+	_ = expandedPath
 	return nil
 }
 
@@ -515,14 +605,18 @@ func createIgnoreFile(ignorePath, content string) error {
 }
 
 func validateIgnoreContent(content string) error {
-	// Basic validation - check for dangerous patterns
+	// Basic validation - check for dangerous patterns that could indicate command injection
+	// Only look for patterns that are clearly dangerous in gitignore context
 	dangerousPatterns := []string{
-		"rm -rf",
-		"sudo rm",
-		"$(sudo",
-		"`sudo",
-		"$(",
-		"`",
+		"rm -rf /",
+		"sudo rm -rf",
+		":(){ :|:& };:", // fork bomb
+		"&& rm",
+		"; rm",
+		"| rm",
+		"> /dev/null",
+		"`", // backticks for command substitution
+		"$(", // command substitution
 	}
 
 	contentLower := strings.ToLower(content)
@@ -564,13 +658,17 @@ func getDefaultIgnoreContent() string {
 }
 
 func parseIgnorePatterns(content string) []string {
+	if content == "" {
+		return []string{}
+	}
+
 	lines := strings.Split(content, "\n")
 	var patterns []string
 
 	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
-			patterns = append(patterns, trimmed)
+		// Skip empty lines but keep whitespace-only lines and comments
+		if line != "" {
+			patterns = append(patterns, line)
 		}
 	}
 

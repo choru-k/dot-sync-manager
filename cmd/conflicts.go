@@ -117,27 +117,58 @@ func runConflicts(cmd *cobra.Command, args []string) error {
 }
 
 func showConflictDetails(conflictPath string) error {
-	fmt.Printf("Directory: %s\n", conflictPath)
-
-	// List conflict artifact files
-	entries, err := os.ReadDir(conflictPath)
+	// Check if the path exists and whether it's a file or directory
+	stat, err := os.Stat(conflictPath)
 	if err != nil {
-		return fmt.Errorf("failed to read conflict directory: %w", err)
+		if os.IsNotExist(err) {
+			return fmt.Errorf("conflict path does not exist: %s", conflictPath)
+		}
+		return fmt.Errorf("failed to access conflict path: %w", err)
 	}
 
-	if len(entries) == 0 {
-		fmt.Println("   (empty)")
-		return nil
-	}
+	if stat.IsDir() {
+		// Handle directory case (conflict artifacts directory)
+		fmt.Printf("Conflict directory: %s\n", conflictPath)
 
-	fmt.Println("   Artifact files:")
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			fullPath := filepath.Join(conflictPath, entry.Name())
-			if info, err := os.Stat(fullPath); err == nil {
-				fmt.Printf("   • %s (%d bytes)\n", entry.Name(), info.Size())
-			} else {
-				fmt.Printf("   • %s (error getting size)\n", entry.Name())
+		entries, err := os.ReadDir(conflictPath)
+		if err != nil {
+			return fmt.Errorf("failed to read conflict directory: %w", err)
+		}
+
+		if len(entries) == 0 {
+			fmt.Println("   (empty)")
+			return nil
+		}
+
+		fmt.Println("   Artifact files:")
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				fullPath := filepath.Join(conflictPath, entry.Name())
+				if info, err := os.Stat(fullPath); err == nil {
+					fmt.Printf("   • %s (%d bytes)\n", entry.Name(), info.Size())
+				} else {
+					fmt.Printf("   • %s (error getting size)\n", entry.Name())
+				}
+			}
+		}
+	} else {
+		// Handle file case (individual conflict file)
+		fmt.Printf("Conflict file: %s\n", conflictPath)
+		fmt.Printf("   Size: %d bytes\n", stat.Size())
+
+		// Show first few lines of conflict file content
+		content, err := os.ReadFile(conflictPath)
+		if err != nil {
+			fmt.Printf("   (error reading file content: %v)\n", err)
+		} else {
+			lines := strings.Split(string(content), "\n")
+			fmt.Println("   Content preview:")
+			for i, line := range lines {
+				if i >= 10 { // Show only first 10 lines
+					fmt.Printf("   ... (%d more lines)\n", len(lines)-10)
+					break
+				}
+				fmt.Printf("   %s\n", line)
 			}
 		}
 	}

@@ -80,10 +80,9 @@ type machineConfigJSON struct {
 }
 
 // MarshalJSON implements custom JSON marshaling for MachineConfig.
-// It serializes the config as an object with a "name" field to support
-// nested key access (e.g., "machine.name") while maintaining compatibility.
+// In PRD format, it serializes as a plain string (the machine name).
 func (m MachineConfig) MarshalJSON() ([]byte, error) {
-	return json.Marshal(machineConfigJSON(m))
+	return json.Marshal(m.Name)
 }
 
 // UnmarshalJSON implements custom JSON unmarshaling for MachineConfig.

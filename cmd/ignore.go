@@ -37,6 +37,7 @@ var ignoreShow bool
 func init() {
 	rootCmd.AddCommand(ignoreCmd)
 	ignoreCmd.Flags().BoolVar(&ignoreShow, "show", false, "Show current .syncignore contents instead of editing")
+	ignoreCmd.Flags().String("editor", "", "Editor to use for editing .syncignore file")
 }
 
 // runIgnore executes the ignore command to manage .syncignore files.
@@ -73,11 +74,17 @@ func runIgnore(cmd *cobra.Command, args []string) error {
 		fmt.Printf("💡 Added default exclusion patterns\n")
 	}
 
-	// Open .syncignore file in default editor
+	// Open .syncignore file in editor
 	var editor string
 
-	// Check environment variable first
-	if envEditor := os.Getenv("EDITOR"); envEditor != "" {
+	// Check for editor flag first
+	if flagEditor, err := cmd.Flags().GetString("editor"); err == nil && flagEditor != "" {
+		editor, err = validateEditorCommand(flagEditor)
+		if err != nil {
+			return fmt.Errorf("invalid editor flag: %w", err)
+		}
+	} else if envEditor := os.Getenv("EDITOR"); envEditor != "" {
+		// Check environment variable second
 		var validateErr error
 		editor, validateErr = validateEditorCommand(envEditor)
 		if validateErr != nil {

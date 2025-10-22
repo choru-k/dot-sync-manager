@@ -164,8 +164,9 @@ func TestValidateIgnoreContent(t *testing.T) {
 			content: "# Comment 1\n# Comment 2",
 		},
 		{
-			name:    "content with dangerous patterns",
-			content: "rm -rf /\n$(sudo rm)",
+			name:        "content with dangerous patterns",
+			content:     "rm -rf /\n$(sudo rm)",
+			expectError: true, // These patterns should be detected as dangerous
 		},
 	}
 
@@ -234,6 +235,7 @@ func TestIgnoreCmd_CustomEditor(t *testing.T) {
 
 	// Test ignore command with custom editor
 	cmd := &cobra.Command{Use: "ignore"}
+	cmd.Flags().String("editor", "", "Editor to use for editing .syncignore file")
 	if err := cmd.Flags().Set("editor", "nano"); err != nil {
 		t.Fatalf("failed to set editor flag: %v", err)
 	}

@@ -66,12 +66,12 @@ func TestAdvancedDebouncer_BackoffEnabledFlag(t *testing.T) {
 			// Test that the backoff setting is respected internally
 			if tt.expectBackoff {
 				// With backoff enabled, the field should be true
-				if !debouncer.backoffEnabled {
+				if !debouncer.IsBackoffEnabled() {
 					t.Error("Expected backoff to be enabled but it was disabled")
 				}
 			} else {
 				// With backoff disabled, the field should be false
-				if debouncer.backoffEnabled {
+				if debouncer.IsBackoffEnabled() {
 					t.Error("Expected backoff to be disabled but it was enabled")
 				}
 			}

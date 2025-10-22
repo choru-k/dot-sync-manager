@@ -371,6 +371,11 @@ func TestGetResolutionStatus(t *testing.T) {
 				if err := os.MkdirAll(dir, testDirPerms); err != nil {
 					t.Fatalf("failed to create conflicts directory: %v", err)
 				}
+				// Add a conflict file to ensure the directory is not empty
+				conflictFile := filepath.Join(dir, "test.conflict")
+				if err := os.WriteFile(conflictFile, []byte("conflict content"), testFilePerms); err != nil {
+					t.Fatalf("failed to create conflict file: %v", err)
+				}
 				return dir
 			}(),
 			expectedStatus: "Conflicts still exist",
