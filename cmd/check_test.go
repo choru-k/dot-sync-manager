@@ -13,6 +13,20 @@ import (
 )
 
 func TestCheckCmd_Sanity(t *testing.T) {
+	testConfig := setupTestEnvironment(t)
+	defer cleanupTestEnvironment(testConfig)
+
+	// Initialize git repo structure to prevent git-related errors
+	err := os.MkdirAll(filepath.Join(testConfig.RepoPath, ".git"), testDirPerms)
+	if err != nil {
+		t.Fatalf("failed to create .git directory: %v", err)
+	}
+
+	// Temporarily set config file for this test
+	originalConfigFile := configFile
+	configFile = testConfig.ConfigPath
+	defer func() { configFile = originalConfigFile }()
+
 	tests := []struct {
 		name        string
 		args        []string

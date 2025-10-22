@@ -226,8 +226,9 @@ func TestRunConfigEdit(t *testing.T) {
 			}
 
 			err := runConfig(cmd, []string{})
-			// In test environment, this might fail to launch editor
-			// So we expect it might return an error
+			// In test environment, this should use "true" as safe editor
+			// But if a real editor is specified via flag, it might still try to launch it
+			// So we just log the result and don't assert on it
 			t.Logf("runConfig() result: %v", err)
 		})
 	}

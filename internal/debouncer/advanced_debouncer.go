@@ -157,8 +157,8 @@ func NewAdvanced(config AdvancedDebouncerConfig) *AdvancedDebouncer {
 		started:            0, // Initialize as not started
 	}
 
-	// Initialize context for cancellation with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), DebouncerTimeout)
+	// Initialize context for cancellation without timeout
+	ctx, cancel := context.WithCancel(context.Background())
 	debouncer.ctx, debouncer.cancel = ctx, cancel
 
 	return debouncer
