@@ -116,6 +116,15 @@ func hasCommand(cmd string) bool {
 	return err == nil
 }
 
+// getSafeEditorResult returns the appropriate editor result based on the test environment
+func getSafeEditorResult(editor string) string {
+	// Check if we're in a test environment and should avoid launching real editors
+	if os.Getenv("DSM_TEST_MODE") != "" || os.Getenv("CI") != "" {
+		return "true" // Use true as a safe test editor - silent and no GUI
+	}
+	return editor
+}
+
 // validateEditorCommand validates that an editor command is safe against command injection
 func validateEditorCommand(editor string) (string, error) {
 	// Strip whitespace and check for empty
@@ -124,14 +133,9 @@ func validateEditorCommand(editor string) (string, error) {
 		return "", fmt.Errorf("editor command cannot be empty")
 	}
 
-	// Check if we're in a test environment and should avoid launching real editors
-	if os.Getenv("DSM_TEST_MODE") != "" || os.Getenv("CI") != "" {
-		return "true", nil // Use true as a safe test editor - silent and no GUI
-	}
-
 	// Check against allowlist of safe editors
 	if safeEditors[editor] {
-		return editor, nil
+		return getSafeEditorResult(editor), nil
 	}
 
 	// For multi-word commands, check the base command
@@ -142,7 +146,7 @@ func validateEditorCommand(editor string) (string, error) {
 			// Validate macOS 'open -a AppName' format
 			appName := strings.TrimPrefix(editor, "open -a ")
 			if len(appName) > 0 && appName[0] != '"' && !strings.ContainsAny(appName, "&|;`$(){}[]<>*?") {
-				return editor, nil
+				return getSafeEditorResult(editor), nil
 			}
 		}
 	}
@@ -223,7 +227,7 @@ func validateEditorCommand(editor string) (string, error) {
 	// If we get here, the editor passed basic safety checks but isn't in our allowlist
 	// Log a warning but allow it for flexibility in development environments
 	printWarning("Editor %q is not in the allowlist of known safe editors", editor)
-	return editor, nil
+	return getSafeEditorResult(editor), nil
 }
 
 // Emoji helper functions for conditional emoji output
