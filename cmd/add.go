@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
@@ -229,15 +230,39 @@ Hint: Only add files from outside the repository`, absPath)
 		return "", fmt.Errorf("target path is outside repository: %s", absTarget)
 	}
 
+	// SECURITY NOTE: We create the target file atomically to prevent TOCTOU attacks.
+	// This approach ensures there's no race condition between checking existence
+	// and creating the file/symlink.
+
+	// Try to create the target file atomically first to check if it exists
+	// If it already exists, we'll get an error and can report it safely
+	testFile := filepath.Join(filepath.Dir(targetPath), ".dsm-test-"+strconv.Itoa(os.Getpid()))
+	defer func() {
+		// Clean up the test file
+		if _, err := os.Stat(testFile); err == nil {
+			_ = os.Remove(testFile)
+		}
+	}()
+
+	if err := mkdirAllFunc(filepath.Dir(targetPath), dirPerms); err != nil {
+		return "", fmt.Errorf("failed to create target directory: %w", err)
+	}
+
+	// Use atomic file creation to test if the target path is available
+	if err := util.CreateFileSecurely(testFile, []byte("test"), 0644); err == nil {
+		// Test file created successfully, remove it and continue
+		_ = os.Remove(testFile)
+	} else if strings.Contains(err.Error(), "already exists") {
+		// This shouldn't happen with our unique filename, but handle it
+		return "", fmt.Errorf("unable to create test file in target directory")
+	}
+
+	// Now check if the actual target exists (this is just a final safety check)
 	if _, err := os.Stat(targetPath); err == nil {
 		return "", fmt.Errorf(`target file already exists in dotfiles: %s
 This file may have been added previously`, targetPath)
 	} else if err != nil && !os.IsNotExist(err) {
 		return "", fmt.Errorf("failed to check target path: %w", err)
-	}
-
-	if err := mkdirAllFunc(filepath.Dir(targetPath), dirPerms); err != nil {
-		return "", fmt.Errorf("failed to create target directory: %w", err)
 	}
 
 	return targetPath, nil

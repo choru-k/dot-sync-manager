@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
+	"github.com/choru-k/dot-sync-manager/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -187,41 +188,57 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid configuration key: %w", err)
 	}
 
+	// Get config path before entering lock to ensure we have the correct path
 	cfg, err := getConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
-
-	// Convert struct to map for nested access
-	cfgMap, err := structToMap(cfg)
-	if err != nil {
-		return fmt.Errorf("failed to convert configuration: %w", err)
-	}
-
-	value := args[1]
-
-	// Try to parse value as appropriate type
-	parsedValue := parseConfigValue(value)
-
-	if !setNestedValueInMap(cfgMap, key, parsedValue) {
-		return fmt.Errorf("failed to set configuration key: %s", key)
-	}
-
-	// Convert back to struct and save
-	updatedCfg, err := mapToStruct(cfgMap)
-	if err != nil {
-		return fmt.Errorf("failed to convert back to configuration: %w", err)
-	}
-
-	// Save updated configuration
 	configPath := cfg.GetConfigPath()
-	// Ensure the config path is preserved in the updated config
-	updatedCfg.ConfigPath = configPath
-	if err := updatedCfg.SaveToFile(configPath); err != nil {
-		return fmt.Errorf("failed to save configuration: %w", err)
+
+	// Use file locking to prevent race conditions during config modification
+	err = util.WithLock(configPath+".lock", func() error {
+		// Reload config inside lock to get latest version
+		cfg, err := getConfig()
+		if err != nil {
+			return fmt.Errorf("failed to load configuration: %w", err)
+		}
+
+		// Convert struct to map for nested access
+		cfgMap, err := structToMap(cfg)
+		if err != nil {
+			return fmt.Errorf("failed to convert configuration: %w", err)
+		}
+
+		value := args[1]
+
+		// Try to parse value as appropriate type
+		parsedValue := parseConfigValue(value)
+
+		if !setNestedValueInMap(cfgMap, key, parsedValue) {
+			return fmt.Errorf("failed to set configuration key: %s", key)
+		}
+
+		// Convert back to struct and save
+		updatedCfg, err := mapToStruct(cfgMap)
+		if err != nil {
+			return fmt.Errorf("failed to convert back to configuration: %w", err)
+		}
+
+		// Save updated configuration
+		// Ensure the config path is preserved in the updated config
+		updatedCfg.ConfigPath = configPath
+		if err := updatedCfg.SaveToFile(configPath); err != nil {
+			return fmt.Errorf("failed to save configuration: %w", err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return err
 	}
 
-	fmt.Printf("✅ Set %s = %v\n", key, parsedValue)
+	fmt.Printf("✅ Set %s = %v\n", key, parseConfigValue(args[1]))
 	fmt.Printf("💡 Configuration saved to: %s\n", configPath)
 	return nil
 }

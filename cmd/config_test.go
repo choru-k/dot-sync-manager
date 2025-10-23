@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -181,7 +182,7 @@ func TestRunConfigSet(t *testing.T) {
 				t.Logf("Debug: getNestedValue(%s) returned: %v (type: %T)", tt.key, actualValue, actualValue)
 				t.Logf("Debug: expected value: %s (type: %T)", tt.value, tt.value)
 
-				if actualValue != tt.value {
+				if fmt.Sprintf("%v", actualValue) != tt.value {
 					t.Errorf("config value not updated: expected %s, got %v", tt.value, actualValue)
 				}
 			}
@@ -619,5 +620,94 @@ func TestFormatConfigValue(t *testing.T) {
 				t.Errorf("formatConfigValue() = %q, expected %q", result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestConfigSet_ConcurrentAccess(t *testing.T) {
+	testConfig := setupTestEnvironment(t)
+	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
+
+	// Set the global configFile variable so getConfig() uses the test config file
+	oldConfigFile := configFile
+	configFile = testConfig.ConfigPath
+	t.Cleanup(func() { configFile = oldConfigFile })
+
+	// Test concurrent config modifications
+	numGoroutines := 10
+	results := make(chan error, numGoroutines)
+
+	// Launch multiple goroutines trying to modify config simultaneously
+	for i := 0; i < numGoroutines; i++ {
+		go func(id int) {
+			cmd := &cobra.Command{Use: "config set"}
+			args := []string{"machine.name", fmt.Sprintf("test-machine-%d", id)}
+			err := runConfigSet(cmd, args)
+			results <- err
+		}(i)
+	}
+
+	// Collect results
+	successCount := 0
+	errorCount := 0
+	for i := 0; i < numGoroutines; i++ {
+		err := <-results
+		if err != nil {
+			errorCount++
+			t.Logf("Goroutine failed: %v", err)
+		} else {
+			successCount++
+		}
+	}
+
+	// Verify that at least some operations succeeded
+	if successCount == 0 {
+		t.Error("No concurrent config operations succeeded")
+	}
+
+	// Verify final config state is consistent
+	finalConfig, err := config.LoadFromFile(testConfig.ConfigPath)
+	if err != nil {
+		t.Fatalf("failed to load final config: %v", err)
+	}
+
+	// The machine name should be one of the set values
+	expectedNames := make(map[string]bool)
+	for i := 0; i < numGoroutines; i++ {
+		expectedNames[fmt.Sprintf("test-machine-%d", i)] = true
+	}
+
+	if !expectedNames[finalConfig.Machine.Name] {
+		t.Errorf("final machine name %q is not one of the expected values", finalConfig.Machine.Name)
+	}
+
+	t.Logf("Concurrent access test: %d succeeded, %d failed", successCount, errorCount)
+}
+
+func TestConfigSet_FileLockingIntegration(t *testing.T) {
+	testConfig := setupTestEnvironment(t)
+	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
+
+	// Set the global configFile variable so getConfig() uses the test config file
+	oldConfigFile := configFile
+	configFile = testConfig.ConfigPath
+	t.Cleanup(func() { configFile = oldConfigFile })
+
+	// Test basic config set with file locking
+	cmd := &cobra.Command{Use: "config set"}
+	args := []string{"machine.name", "locking-test-machine"}
+
+	err := runConfigSet(cmd, args)
+	if err != nil {
+		t.Errorf("runConfigSet() with file locking failed: %v", err)
+	}
+
+	// Verify the change was applied
+	updatedConfig, err := config.LoadFromFile(testConfig.ConfigPath)
+	if err != nil {
+		t.Fatalf("failed to load updated config: %v", err)
+	}
+
+	if updatedConfig.Machine.Name != "locking-test-machine" {
+		t.Errorf("machine.name not updated correctly: expected 'locking-test-machine', got '%s'", updatedConfig.Machine.Name)
 	}
 }

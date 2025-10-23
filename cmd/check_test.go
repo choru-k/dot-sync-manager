@@ -172,7 +172,8 @@ func TestCheckConflicts(t *testing.T) {
 		{
 			name: "conflicts directory with files",
 			setup: func(t *testing.T) string {
-				conflictsDir := filepath.Join(t.TempDir(), ".dsm", "conflicts")
+				repoDir := t.TempDir()
+				conflictsDir := filepath.Join(repoDir, ".dsm", "conflicts")
 				if err := os.MkdirAll(conflictsDir, testDirPerms); err != nil {
 					t.Fatalf("failed to create conflicts directory: %v", err)
 				}
@@ -186,12 +187,15 @@ func TestCheckConflicts(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			conflictsDir := tt.setup(t)
-			hasConflicts, err := checkConflicts(conflictsDir)
-			if err != nil {
-				t.Errorf("checkConflicts() returned error: %v", err)
+			// Create a test config to use with the production checkConflicts function
+			// The conflictsDir should be <repoDir>/.dsm/conflicts, so repoPath is the parent of .dsm
+			repoPath := filepath.Dir(filepath.Dir(conflictsDir))
+			testCfg := &config.SyncConfig{
+				Git: config.GitConfig{RepoPath: repoPath},
 			}
+			issues, _ := checkConflicts(testCfg)
 			// If conflicts directory has files, should report conflicts exist
-			if tt.name == "conflicts directory with files" && !hasConflicts {
+			if tt.name == "conflicts directory with files" && len(issues) == 0 {
 				t.Error("expected hasConflicts to be true when conflict files exist")
 			}
 		})
@@ -355,21 +359,6 @@ func checkRepository(repoPath string) error {
 	return nil
 }
 
-func checkConflicts(conflictsDir string) (bool, error) {
-	if conflictsDir == "" {
-		return false, nil
-	}
-
-	files, err := os.ReadDir(conflictsDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, nil
-		}
-		return false, err
-	}
-
-	return len(files) > 0, nil
-}
 
 func validateSystemRequirements() error {
 	// Check if we're running on a supported platform
@@ -391,4 +380,217 @@ func checkConnectivity(remoteURL string) error {
 		return fmt.Errorf("invalid remote URL format: %s", remoteURL)
 	}
 	return nil
+}
+
+// Tests for the production helper functions extracted from runCheck
+func TestCheckArguments(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		wantErr  bool
+	}{
+		{
+			name:    "no arguments should work",
+			args:    []string{},
+			wantErr: false,
+		},
+		{
+			name:    "any arguments should error",
+			args:    []string{"extra"},
+			wantErr: true,
+		},
+		{
+			name:    "multiple arguments should error",
+			args:    []string{"arg1", "arg2"},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkArguments(tt.args)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("checkArguments() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestCheckRemoteConfiguration(t *testing.T) {
+	tests := []struct {
+		name           string
+		cfg            *config.SyncConfig
+		expectedIssues int
+		expectedWarns  int
+	}{
+		{
+			name: "valid config with remote",
+			cfg: &config.SyncConfig{
+				Git: config.GitConfig{RemoteURL: "https://github.com/user/repo.git"},
+			},
+			expectedIssues: 0,
+			expectedWarns:  0,
+		},
+		{
+			name: "config without remote",
+			cfg: &config.SyncConfig{
+				Git: config.GitConfig{RemoteURL: ""},
+			},
+			expectedIssues: 0,
+			expectedWarns: 1,
+		},
+		{
+			name: "nil config",
+			cfg: nil,
+			expectedIssues: 0,
+			expectedWarns: 0, // Should handle nil gracefully
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			issues, warnings := checkRemoteConfiguration(tt.cfg)
+			if len(issues) != tt.expectedIssues {
+				t.Errorf("checkRemoteConfiguration() issues = %v, want %v", len(issues), tt.expectedIssues)
+			}
+			if len(warnings) != tt.expectedWarns {
+				t.Errorf("checkRemoteConfiguration() warnings = %v, want %v", len(warnings), tt.expectedWarns)
+			}
+		})
+	}
+}
+
+func TestCheckSyncConfiguration(t *testing.T) {
+	tests := []struct {
+		name           string
+		cfg            *config.SyncConfig
+		expectedIssues int
+		expectedWarns  int
+	}{
+		{
+			name: "config with auto-sync enabled",
+			cfg: &config.SyncConfig{
+				Sync: config.SyncSettings{AutoSyncEnabled: true},
+			},
+			expectedIssues: 0,
+			expectedWarns: 0,
+		},
+		{
+			name: "config with auto-sync disabled",
+			cfg: &config.SyncConfig{
+				Sync: config.SyncSettings{AutoSyncEnabled: false},
+			},
+			expectedIssues: 0,
+			expectedWarns: 1,
+		},
+		{
+			name: "nil config",
+			cfg: nil,
+			expectedIssues: 0,
+			expectedWarns: 0, // Should handle nil gracefully
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			issues, warnings := checkSyncConfiguration(tt.cfg)
+			if len(issues) != tt.expectedIssues {
+				t.Errorf("checkSyncConfiguration() issues = %v, want %v", len(issues), tt.expectedIssues)
+			}
+			if len(warnings) != tt.expectedWarns {
+				t.Errorf("checkSyncConfiguration() warnings = %v, want %v", len(warnings), tt.expectedWarns)
+			}
+		})
+	}
+}
+
+func TestCheckFileMappings(t *testing.T) {
+	tests := []struct {
+		name           string
+		cfg            *config.SyncConfig
+		expectedIssues int
+		expectedWarns  int
+	}{
+		{
+			name: "config with mappings",
+			cfg: &config.SyncConfig{
+				Mappings: map[string]string{
+					"source1": "target1",
+					"source2": "target2",
+				},
+			},
+			expectedIssues: 0,
+			expectedWarns: 0,
+		},
+		{
+			name: "config without mappings",
+			cfg: &config.SyncConfig{
+				Mappings: map[string]string{},
+			},
+			expectedIssues: 0,
+			expectedWarns: 1,
+		},
+		{
+			name: "config with nil mappings",
+			cfg: &config.SyncConfig{
+				Mappings: nil,
+			},
+			expectedIssues: 0,
+			expectedWarns: 1,
+		},
+		{
+			name: "nil config",
+			cfg: nil,
+			expectedIssues: 0,
+			expectedWarns: 0, // Should handle nil gracefully
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			issues, warnings := checkFileMappings(tt.cfg)
+			if len(issues) != tt.expectedIssues {
+				t.Errorf("checkFileMappings() issues = %v, want %v", len(issues), tt.expectedIssues)
+			}
+			if len(warnings) != tt.expectedWarns {
+				t.Errorf("checkFileMappings() warnings = %v, want %v", len(warnings), tt.expectedWarns)
+			}
+		})
+	}
+}
+
+func TestCheckSummary(t *testing.T) {
+	tests := []struct {
+		name     string
+		issues   []string
+		warnings []string
+	}{
+		{
+			name:     "no issues or warnings",
+			issues:   []string{},
+			warnings: []string{},
+		},
+		{
+			name:     "issues only",
+			issues:   []string{"critical issue 1", "critical issue 2"},
+			warnings: []string{},
+		},
+		{
+			name:     "warnings only",
+			issues:   []string{},
+			warnings: []string{"warning 1", "warning 2"},
+		},
+		{
+			name:     "both issues and warnings",
+			issues:   []string{"critical issue"},
+			warnings: []string{"warning"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Just test that it doesn't panic and returns correctly
+			printCheckSummary(tt.issues, tt.warnings)
+		})
+	}
 }

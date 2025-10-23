@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/choru-k/dot-sync-manager/internal/config"
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
 	"github.com/spf13/cobra"
 )
@@ -37,30 +38,19 @@ func init() {
 	checkCmd.Flags().BoolVar(&checkVerbose, "verbose", false, "Show detailed information")
 }
 
-func runCheck(cmd *cobra.Command, args []string) error {
-	// check command should not accept any arguments
+// checkArguments validates that no arguments are provided to check command
+func checkArguments(args []string) error {
 	if len(args) > 0 {
 		return fmt.Errorf("check command accepts no arguments")
 	}
+	return nil
+}
 
-	cfg, err := getConfig()
-	if err != nil {
-		return fmt.Errorf("failed to load configuration: %w", err)
-	}
-
-	printStatus("🔍", "CHECKING", "Checking dotfiles repository...")
-	if noEmoji {
-		fmt.Printf("Repository: %s\n", cfg.Git.RepoPath)
-		fmt.Printf("Machine: %s\n", cfg.Machine.Name)
-	} else {
-		fmt.Printf("📁 Repository: %s\n", cfg.Git.RepoPath)
-		fmt.Printf("🖥️  Machine: %s\n", cfg.Machine.Name)
-	}
-
+// checkDaemonStatus checks if the DSM daemon is running
+func checkDaemonStatus() ([]string, []string) {
 	issues := []string{}
 	warnings := []string{}
 
-	// Check daemon status
 	if isDaemonRunning() {
 		printSuccess("Daemon is running")
 		if checkVerbose {
@@ -72,13 +62,21 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		warnings = append(warnings, "Daemon is not running")
 	}
 
-	// Check git repository status
+	return issues, warnings
+}
+
+// checkGitRepository checks the git repository status and accessibility
+func checkGitRepository(cfg *config.SyncConfig) ([]string, []string) {
+	issues := []string{}
+	warnings := []string{}
+
 	ctx, cancel := context.WithTimeout(context.Background(), checkTimeout)
 	defer cancel()
 	gmCfg := cfg.ToGitManagerConfig()
 	gitMgr, err := gitmanager.NewGitManager(ctx, gmCfg)
 	if err != nil {
-		return fmt.Errorf("failed to initialize git manager: %w", err)
+		issues = append(issues, fmt.Sprintf("Failed to initialize git manager: %v", err))
+		return issues, warnings
 	}
 
 	// Check if repository exists and is accessible
@@ -112,7 +110,18 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Check remote configuration
+	return issues, warnings
+}
+
+// checkRemoteConfiguration checks the git remote configuration
+func checkRemoteConfiguration(cfg *config.SyncConfig) ([]string, []string) {
+	issues := []string{}
+	warnings := []string{}
+
+	if cfg == nil {
+		return issues, warnings // Should handle nil gracefully
+	}
+
 	if cfg.Git.RemoteURL != "" {
 		printStatus("🌐", "REMOTE", "Remote URL configured")
 		if checkVerbose {
@@ -122,7 +131,18 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		warnings = append(warnings, "No remote URL configured")
 	}
 
-	// Check configuration
+	return issues, warnings
+}
+
+// checkSyncConfiguration checks the sync-related configuration
+func checkSyncConfiguration(cfg *config.SyncConfig) ([]string, []string) {
+	issues := []string{}
+	warnings := []string{}
+
+	if cfg == nil {
+		return issues, warnings // Should handle nil gracefully
+	}
+
 	printStatus("⚙️", "CONFIG", "Checking configuration...")
 	if cfg.Sync.AutoSyncEnabled {
 		printSuccess("Auto-sync is enabled")
@@ -134,7 +154,18 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		warnings = append(warnings, "Auto-sync is disabled")
 	}
 
-	// Check file mappings
+	return issues, warnings
+}
+
+// checkFileMappings checks the file mappings configuration
+func checkFileMappings(cfg *config.SyncConfig) ([]string, []string) {
+	issues := []string{}
+	warnings := []string{}
+
+	if cfg == nil {
+		return issues, warnings // Should handle nil gracefully
+	}
+
 	if len(cfg.Mappings) > 0 {
 		printSuccess("%d file mappings configured", len(cfg.Mappings))
 		if checkVerbose {
@@ -146,7 +177,18 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		warnings = append(warnings, "No file mappings configured")
 	}
 
-	// Check for conflicts in .dsm/conflicts directory
+	return issues, warnings
+}
+
+// checkConflicts checks for conflict artifacts in the .dsm/conflicts directory
+func checkConflicts(cfg *config.SyncConfig) ([]string, []string) {
+	issues := []string{}
+	warnings := []string{}
+
+	if cfg == nil {
+		return issues, warnings // Should handle nil gracefully
+	}
+
 	conflictDir := filepath.Join(cfg.Git.RepoPath, ".dsm", "conflicts")
 	if stat, err := os.Stat(conflictDir); err == nil && stat.IsDir() {
 		entries, err := os.ReadDir(conflictDir)
@@ -162,7 +204,11 @@ func runCheck(cmd *cobra.Command, args []string) error {
 		printSuccess("No conflict artifacts found")
 	}
 
-	// Summary
+	return issues, warnings
+}
+
+// printCheckSummary prints the final summary of issues and warnings
+func printCheckSummary(issues, warnings []string) {
 	fmt.Println("\n" + strings.Repeat("=", 50))
 	if len(issues) > 0 {
 		printError("Found %d issue(s):", len(issues))
@@ -183,10 +229,65 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	} else if len(issues) == 0 {
 		printSuccess("No critical issues found (some warnings present)")
 	}
+}
+
+func runCheck(cmd *cobra.Command, args []string) error {
+	// Validate arguments
+	if err := checkArguments(args); err != nil {
+		return err
+	}
+
+	// Load configuration
+	cfg, err := getConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load configuration: %w", err)
+	}
+
+	// Print header
+	printStatus("🔍", "CHECKING", "Checking dotfiles repository...")
+	if noEmoji {
+		fmt.Printf("Repository: %s\n", cfg.Git.RepoPath)
+		fmt.Printf("Machine: %s\n", cfg.Machine.Name)
+	} else {
+		fmt.Printf("📁 Repository: %s\n", cfg.Git.RepoPath)
+		fmt.Printf("🖥️  Machine: %s\n", cfg.Machine.Name)
+	}
+
+	// Collect all issues and warnings
+	allIssues := []string{}
+	allWarnings := []string{}
+
+	// Run all checks
+	issues, warnings := checkDaemonStatus()
+	allIssues = append(allIssues, issues...)
+	allWarnings = append(allWarnings, warnings...)
+
+	issues, warnings = checkGitRepository(cfg)
+	allIssues = append(allIssues, issues...)
+	allWarnings = append(allWarnings, warnings...)
+
+	issues, warnings = checkRemoteConfiguration(cfg)
+	allIssues = append(allIssues, issues...)
+	allWarnings = append(allWarnings, warnings...)
+
+	issues, warnings = checkSyncConfiguration(cfg)
+	allIssues = append(allIssues, issues...)
+	allWarnings = append(allWarnings, warnings...)
+
+	issues, warnings = checkFileMappings(cfg)
+	allIssues = append(allIssues, issues...)
+	allWarnings = append(allWarnings, warnings...)
+
+	issues, warnings = checkConflicts(cfg)
+	allIssues = append(allIssues, issues...)
+	allWarnings = append(allWarnings, warnings...)
+
+	// Print summary
+	printCheckSummary(allIssues, allWarnings)
 
 	// Return appropriate exit code
-	if len(issues) > 0 {
-		return fmt.Errorf("found %d issue(s) that need attention", len(issues))
+	if len(allIssues) > 0 {
+		return fmt.Errorf("found %d issue(s) that need attention", len(allIssues))
 	}
 
 	return nil

@@ -7,13 +7,21 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/choru-k/dot-sync-manager/internal/process"
 	"github.com/google/shlex"
 )
 
 // isTestMode returns true if running in test or CI environment
 func isTestMode() bool {
 	return os.Getenv("DSM_TEST_MODE") != "" || os.Getenv("CI") != ""
+}
+
+// getAllowedEditors returns a sorted list of all allowed editor commands
+func getAllowedEditors() []string {
+	editors := make([]string, 0, len(safeEditors))
+	for editor := range safeEditors {
+		editors = append(editors, editor)
+	}
+	return editors
 }
 
 // getDefaultEditor returns the appropriate text editor for the current platform
@@ -78,20 +86,6 @@ func getDefaultEditorForFile(filePath string) (string, error) {
 }
 
 
-// checkDaemonStatus checks if the daemon is running and provides status information
-// Uses the process package with proper fallbacks for cross-platform compatibility
-func checkDaemonStatus() (bool, string) {
-	// Use the process package's IsDaemonRunning function which has proper fallbacks
-	if process.IsDaemonRunning() {
-		// Get the PID for more detailed status
-		if pid, err := process.GetDaemonPID(); err == nil {
-			return true, fmt.Sprintf("Daemon is running (PID: %d)", pid)
-		}
-		return true, "Daemon is running"
-	}
-
-	return false, "Daemon is not running"
-}
 
 
 // parseCommand splits a command string into command and arguments using shlex
@@ -206,9 +200,9 @@ func validateEditorCommand(editor string) (string, error) {
 	}
 
 	// If we get here, the editor passed basic safety checks but isn't in our allowlist
-	// Log a warning but allow it for flexibility in development environments
-	printWarning("Editor %q is not in the allowlist of known safe editors", editor)
-	return getSafeEditorResult(editor), nil
+	// For security, we require editors to be in the allowlist
+	return "", fmt.Errorf("editor %q is not in the allowlist of known safe editors. Allowed editors: %s",
+		editor, strings.Join(getAllowedEditors(), ", "))
 }
 
 // Emoji helper functions for conditional emoji output

@@ -19,7 +19,7 @@ const (
 	testFilePerms = 0644 // -rw-r--r--
 
 	// testDirPerms grants owner full access with group/others read/execute
-	testDirPerms = 0755 // -rwxr-xr-x
+	testDirPerms = 0755 // rwxr-xr-x, standard permissions for directories allowing owner full access and others to traverse.
 
 	// testRepoName is used for test repositories
 	testRepoName = "test-dotfiles"

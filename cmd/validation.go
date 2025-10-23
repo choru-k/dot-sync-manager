@@ -1,3 +1,21 @@
+// Package cmd provides command-line interface commands for the Dotfile Sync Manager.
+//
+// This package contains all CLI commands including initialization, file management,
+// configuration handling, and system operations. The commands are built using
+// the Cobra library and follow standard CLI conventions.
+//
+// Key features:
+// - Secure file validation and path handling
+// - Configuration management with nested key access
+// - Interactive prompts with safety confirmations
+// - Comprehensive error handling and user guidance
+// - Cross-platform compatibility (Windows, macOS, Linux)
+//
+// Security considerations:
+// - All file paths are expanded and validated before use
+// - Sensitive file detection helps prevent accidental credential exposure
+// - Editor commands are validated against an allowlist to prevent injection
+// - TOCTOU vulnerabilities are documented and mitigated where possible
 package cmd
 
 import (
@@ -56,7 +74,7 @@ func validateConfigKey(key string) error {
 	// Use specific patterns to avoid false positives with legitimate fields
 	// Allow git.password and git.ssh_key_passphrase as they are required per PRD
 	dangerousPatterns := []string{
-		`(^|\.|_)passwd($|\.|_)`, `(^|\.|_)secret($|\.|_)`, `(^|\.|_)private_key($|\._)`, // blocked
+		`(^|\.|_)passwd($|\.|_)`, `(^|\.|_)secret($|\.|_)`, `(^|\.|_)private_key($|\.|_)`, // blocked
 		`(^|\.|_)credential($|\.|_)`, `(^|\.|_)cert($|\.|_)`, `(^|\.|_)token($|\.|_)`, // blocked
 		`(^|\.|_)api_key($|\.|_)`, `(^|\.|_)auth_key($|\.|_)`, // blocked
 		// Note: git.password and git.ssh_key_passphrase are explicitly allowed per PRD requirements
@@ -75,6 +93,11 @@ func validateConfigKey(key string) error {
 
 // validatePathExists expands a path and checks if it exists
 // Returns the expanded path and any error encountered
+//
+// SECURITY NOTE: This function has a minor TOCTOU (Time-of-Check-Time-of-Use)
+// vulnerability window between path expansion and the existence check.
+// For most use cases this is acceptable, but for high-security scenarios,
+// consider using atomic file operations from util/path.go.
 func validatePathExists(rawPath string) (string, error) {
 	if rawPath == "" {
 		return "", fmt.Errorf("path cannot be empty")
