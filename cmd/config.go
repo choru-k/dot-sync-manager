@@ -231,6 +231,17 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 func getNestedValue(obj interface{}, key string) interface{} {
 	parts := strings.Split(key, ".")
 
+	// Handle special cases for struct access without JSON marshaling
+	if len(parts) == 2 && parts[0] == "machine" && parts[1] == "name" {
+		// Handle machine.name access directly from struct
+		if cfg, ok := obj.(*config.SyncConfig); ok {
+			return cfg.Machine.Name
+		}
+		if cfg, ok := obj.(config.SyncConfig); ok {
+			return cfg.Machine.Name
+		}
+	}
+
 	// Convert struct to map using JSON marshaling/unmarshaling to respect custom JSON tags
 	jsonBytes, err := json.Marshal(obj)
 	if err != nil {
@@ -288,6 +299,17 @@ func setNestedValue(obj interface{}, key string, value interface{}) bool {
 
 	if !validSections[section] {
 		return false
+	}
+
+	// Handle special cases for struct access without JSON marshaling
+	if len(parts) == 2 && parts[0] == "machine" && parts[1] == "name" {
+		// Handle machine.name access directly from struct
+		if cfg, ok := obj.(*config.SyncConfig); ok {
+			if valueStr, ok := value.(string); ok {
+				cfg.Machine.Name = valueStr
+				return true
+			}
+		}
 	}
 
 	// Handle pointer to struct by dereferencing first
