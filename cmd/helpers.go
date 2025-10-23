@@ -120,8 +120,13 @@ func hasCommand(cmd string) bool {
 func getSafeEditorResult(editor string) string {
 	// Check if we're in a test environment and should avoid launching real editors
 	if os.Getenv("DSM_TEST_MODE") != "" || os.Getenv("CI") != "" {
-		return "true" // Use true as a safe test editor - silent and no GUI
+		// In CI/test mode, return "true" for ALL editors to prevent actual execution
+		// This is because CI environments typically lack GUI editors and to prevent hanging tests
+		return "true"
 	}
+
+	// For local development, always validate and return actual editor names
+	// This ensures proper security validation while allowing real editor use during development
 	return editor
 }
 
