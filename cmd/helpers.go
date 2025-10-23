@@ -11,12 +11,17 @@ import (
 	"github.com/google/shlex"
 )
 
+// isTestMode returns true if running in test or CI environment
+func isTestMode() bool {
+	return os.Getenv("DSM_TEST_MODE") != "" || os.Getenv("CI") != ""
+}
+
 // getDefaultEditor returns the appropriate text editor for the current platform
 // It checks the EDITOR environment variable first, then falls back to platform defaults
 func getDefaultEditor() (string, error) {
 	// Check if we're in a test environment and should avoid launching real editors
-	if os.Getenv("DSM_TEST_MODE") != "" || os.Getenv("CI") != "" {
-		return "true", nil // Use true as a safe test editor - silent and no GUI
+	if isTestMode() {
+		return testModeEditor, nil // Use test mode editor as a safe fallback
 	}
 
 	// Check environment variable first
@@ -38,8 +43,8 @@ func getDefaultEditor() (string, error) {
 // getDefaultEditorForFile returns an appropriate editor for a specific file type
 func getDefaultEditorForFile(filePath string) (string, error) {
 	// Check if we're in a test environment and should avoid launching real editors
-	if os.Getenv("DSM_TEST_MODE") != "" || os.Getenv("CI") != "" {
-		return "true", nil // Use true as a safe test editor - silent and no GUI
+	if isTestMode() {
+		return testModeEditor, nil // Use test mode editor as a safe fallback
 	}
 
 	// Check environment variable first
@@ -119,10 +124,10 @@ func hasCommand(cmd string) bool {
 // getSafeEditorResult returns the appropriate editor result based on the test environment
 func getSafeEditorResult(editor string) string {
 	// Check if we're in a test environment and should avoid launching real editors
-	if os.Getenv("DSM_TEST_MODE") != "" || os.Getenv("CI") != "" {
-		// In CI/test mode, return "true" for ALL editors to prevent actual execution
+	if isTestMode() {
+		// In CI/test mode, return test mode editor for ALL editors to prevent actual execution
 		// This is because CI environments typically lack GUI editors and to prevent hanging tests
-		return "true"
+		return testModeEditor
 	}
 
 	// For local development, always validate and return actual editor names

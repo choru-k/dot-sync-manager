@@ -10,8 +10,9 @@ const (
 	// defaultLogLines is the default number of log lines to show
 	defaultLogLines = 50
 
-	// daemonSleepTime is the time to wait between daemon operations (in seconds)
-	// daemonSleepTime = 1 // 1 second - use time.Duration when converting to time.Duration (unused)
+	// testModeEditor is a safe no-op command used in test/CI environments
+	// 'true' is a Unix command that exits successfully without side effects
+	testModeEditor = "true"
 
 	// dirPerms grants owner-level write access while keeping directories traversable by other users, matching standard 0755 expectations.
 	dirPerms = 0755 // rwxr-xr-x so users can traverse synced directories
