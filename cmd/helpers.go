@@ -90,7 +90,9 @@ func printStatus(emoji, category, message string) {
 
 // Editor and command handling functions
 
-// validateEditorCommand validates that an editor command is safe to execute
+// validateEditorCommand validates that an editor command is safe to execute.
+// It checks for dangerous characters, patterns, and validates against an allowlist
+// of known safe editors. Returns the validated command or an error.
 func validateEditorCommand(editor string) (string, error) {
 	editor = strings.TrimSpace(editor)
 	if editor == "" {
@@ -158,13 +160,20 @@ func validateEditorCommand(editor string) (string, error) {
 	return editor, nil
 }
 
-// getDefaultEditorForFile returns the default editor for a given file type
-// Note: filePath parameter is currently reserved for future file-type-specific editor selection
+// getDefaultEditorForFile returns the default editor for a given file type.
+// Currently uses platform-agnostic logic, but filePath parameter is reserved
+// for future file-type-specific editor selection based on file extension.
 func getDefaultEditorForFile(filePath string) string {
 	// TODO: Implement file-type-specific editor selection based on filePath extension
 	// For now, we use the same logic as getDefaultEditor regardless of file type
 	_ = filePath // Suppress unused parameter warning
 
+	return getDefaultEditorCommon()
+}
+
+// getDefaultEditorCommon contains the common editor selection logic
+// shared between getDefaultEditor and getDefaultEditorForFile.
+func getDefaultEditorCommon() string {
 	// Check environment variables first
 	if editor := os.Getenv("EDITOR"); editor != "" {
 		if validatedEditor, err := validateEditorCommand(editor); err == nil {
@@ -196,40 +205,16 @@ func getDefaultEditorForFile(filePath string) string {
 	}
 }
 
-// getDefaultEditor returns the default editor for the current platform
+// getDefaultEditor returns the default editor for the current platform.
+// It checks environment variables (EDITOR, VISUAL) first, then falls back
+// to platform-specific defaults (open on macOS, notepad on Windows, code/nano/vim/vi on Linux).
 func getDefaultEditor() string {
-	// Check environment variables first
-	if editor := os.Getenv("EDITOR"); editor != "" {
-		if validatedEditor, err := validateEditorCommand(editor); err == nil {
-			return validatedEditor
-		}
-	}
-
-	if editor := os.Getenv("VISUAL"); editor != "" {
-		if validatedEditor, err := validateEditorCommand(editor); err == nil {
-			return validatedEditor
-		}
-	}
-
-	// Fall back to platform-specific defaults
-	switch runtime.GOOS {
-	case "darwin":
-		return "open"
-	case "windows":
-		return "notepad"
-	default: // linux and others
-		// Try common editors in order of preference
-		editors := []string{"code", "nano", "vim", "vi"}
-		for _, editor := range editors {
-			if _, err := exec.LookPath(editor); err == nil {
-				return editor
-			}
-		}
-		return "nano" // Default fallback
-	}
+	return getDefaultEditorCommon()
 }
 
-// parseCommand parses a command string into command and arguments
+// parseCommand parses a command string into command and arguments.
+// It handles simple space-based splitting and returns the base command
+// and a slice of arguments. Empty command returns empty strings.
 func parseCommand(command string) (string, []string) {
 	if command == "" {
 		return "", nil
