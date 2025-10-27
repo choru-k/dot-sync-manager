@@ -23,24 +23,35 @@ func TestDaemonLifecycleIntegration(t *testing.T) {
 	tempHome := t.TempDir()
 	t.Setenv("HOME", tempHome)
 
-	// Build the test binary if it doesn't exist
-	binPath := filepath.Join(t.TempDir(), "test-dsm")
+	// Build the test binary in the project directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	projectRoot := filepath.Join(cwd, "../..")
+	binPath := filepath.Join(projectRoot, "test-dsm-"+t.Name())
 	if runtime.GOOS == "windows" {
 		binPath += ".exe"
 	}
 
 	// Use go build to create a test binary
-	cmd := exec.Command("go", "build", "-o", binPath, "../../cmd/dsm")
+	cmd := exec.Command("go", "build", "-o", binPath, ".")
+	cmd.Dir = projectRoot  // Go to project root from internal/process/
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("failed to build test binary: %v", err)
 	}
 
+	// Make the binary executable
+	if err := os.Chmod(binPath, 0755); err != nil {
+		t.Fatalf("failed to make test binary executable: %v", err)
+	}
+
 	// Clean up the binary after test
-	defer func() {
+	t.Cleanup(func() {
 		if err := os.Remove(binPath); err != nil && !os.IsNotExist(err) {
 			t.Logf("warning: failed to remove test binary: %v", err)
 		}
-	}()
+	})
 
 	// Test 1: Start daemon successfully
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -128,21 +139,32 @@ func TestConcurrentDaemonStart(t *testing.T) {
 	tempHome := t.TempDir()
 	t.Setenv("HOME", tempHome)
 
-	// Build the test binary
-	binPath := filepath.Join(t.TempDir(), "test-dsm")
+	// Build the test binary in the project directory
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("failed to get working directory: %v", err)
+	}
+	projectRoot := filepath.Join(cwd, "../..")
+	binPath := filepath.Join(projectRoot, "test-dsm-"+t.Name())
 	if runtime.GOOS == "windows" {
 		binPath += ".exe"
 	}
 
-	cmd := exec.Command("go", "build", "-o", binPath, "../../cmd/dsm")
+	cmd := exec.Command("go", "build", "-o", binPath, ".")
+	cmd.Dir = projectRoot  // Go to project root from internal/process/
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("failed to build test binary: %v", err)
 	}
-	defer func() {
+
+	// Make the binary executable
+	if err := os.Chmod(binPath, 0755); err != nil {
+		t.Fatalf("failed to make test binary executable: %v", err)
+	}
+	t.Cleanup(func() {
 		if err := os.Remove(binPath); err != nil && !os.IsNotExist(err) {
 			t.Logf("warning: failed to remove test binary: %v", err)
 		}
-	}()
+	})
 
 	const numGoroutines = 5
 	results := make(chan error, numGoroutines)

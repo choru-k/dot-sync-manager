@@ -42,7 +42,7 @@ func WritePIDExclusive(pid int) (err error) {
 	}
 
 	// Get the current executable name for reliable daemon detection
-	exeName := defaultProcessName()
+	exeName := DefaultProcessName()
 
 	path, err := pidFilePath()
 	if err != nil {
@@ -186,7 +186,7 @@ func WritePID(pid int) error {
 	}
 	
 	// Get the current executable name for reliable daemon detection
-	exeName := defaultProcessName()
+	exeName := DefaultProcessName()
 	
 	path, err := pidFilePath()
 	if err != nil {
@@ -286,7 +286,7 @@ func IsDaemonRunning() bool {
 		expectedName = pidInfo.exeName
 		if expectedName == "" {
 			// Legacy PID file format - use current executable name
-			expectedName = defaultProcessName()
+			expectedName = DefaultProcessName()
 		}
 
 		switch {
@@ -305,7 +305,7 @@ func IsDaemonRunning() bool {
 
 	// Fallback to process discovery using current executable name if no PID file
 	if expectedName == "" {
-		expectedName = defaultProcessName()
+		expectedName = DefaultProcessName()
 	}
 
 	pid, err := findProcessByName(expectedName)
@@ -334,7 +334,7 @@ func GetDaemonPID() (int, error) {
 		expectedName := pidInfo.exeName
 		if expectedName == "" {
 			// Legacy PID file format - use current executable name
-			expectedName = defaultProcessName()
+			expectedName = DefaultProcessName()
 		}
 
 		if pidInfo.pid == os.Getpid() {
@@ -349,7 +349,7 @@ func GetDaemonPID() (int, error) {
 	}
 
 	// Fallback to process discovery using current executable name
-	expectedName := defaultProcessName()
+	expectedName := DefaultProcessName()
 
 	pid, err := findProcessByName(expectedName)
 	if err != nil {
@@ -372,14 +372,6 @@ func GetDaemonPID() (int, error) {
 // to "dot-sync-manager" if that fails. This ensures we can find the daemon
 // even if the binary was renamed or executed from a different path.
 func DefaultProcessName() string {
-	return defaultProcessName()
-}
-
-// defaultProcessName returns the expected binary name for daemon detection.
-// Uses os.Executable() to get the actual running binary name, falling back
-// to "dot-sync-manager" if that fails. This ensures we can find the daemon
-// even if the binary was renamed or executed from a different path.
-func defaultProcessName() string {
 	if exe, err := os.Executable(); err == nil {
 		if name := normalizeProcessName(exe); name != "" {
 			return name
@@ -403,7 +395,7 @@ func TerminateProcess(proc *os.Process) error {
 
 // StopAllDaemons terminates all daemon processes and clears the pidfile.
 func StopAllDaemons() error {
-	if err := stopAllDaemons(defaultProcessName()); err != nil {
+	if err := stopAllDaemons(DefaultProcessName()); err != nil {
 		return err
 	}
 	return RemovePID()

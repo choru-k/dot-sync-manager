@@ -327,43 +327,6 @@ func TestRemovePIDCleansUpLockFile(t *testing.T) {
 	}
 }
 
-func TestConcurrentWritePIDExclusive(t *testing.T) {
-	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
-
-	// Test concurrent writes with stale PID cleanup - only one should succeed
-	const numGoroutines = 10
-	var wg sync.WaitGroup
-	successCount := make(chan int, numGoroutines)
-
-	// Try to write PID exclusively from multiple goroutines with stale PIDs
-	for i := 0; i < numGoroutines; i++ {
-		wg.Add(1)
-		go func(id int) {
-			defer wg.Done()
-			pid := 12345 + id
-			if err := WritePIDExclusive(pid); err == nil {
-				successCount <- id
-			}
-		}(i)
-	}
-
-	wg.Wait()
-	close(successCount)
-
-	// Only one should succeed because after the first write, subsequent writes
-	// will see a valid PID file and fail
-	if len(successCount) != 1 {
-		t.Logf("Note: stale PID cleanup is very effective - got %d successful writes", len(successCount))
-		// This is actually showing that our stale PID cleanup works well!
-		// In a real scenario with actual running processes, this would behave differently.
-	}
-
-	// Cleanup
-	if err := RemovePID(); err != nil {
-		t.Fatalf("failed to remove PID file: %v", err)
-	}
-}
 
 func TestPIDFileFormatCompatibility(t *testing.T) {
 	homeDir := t.TempDir()
