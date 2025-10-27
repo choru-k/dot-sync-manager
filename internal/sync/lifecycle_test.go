@@ -433,10 +433,13 @@ func TestSyncService_RapidLifecycleChanges(t *testing.T) {
 			t.Errorf("Cycle %d: Service should not be running after Stop()", i)
 		}
 
-		// Test that restart fails
+		// Test that restart succeeds (services are now restartable)
 		err = cycleService.Start()
-		if err == nil {
-			t.Errorf("Cycle %d: Expected error when trying to restart service", i)
+		if err != nil {
+			t.Errorf("Cycle %d: Expected service to restart successfully, got error: %v", i, err)
+		} else {
+			// Stop again to clean up
+			cycleService.Stop()
 		}
 	}
 }
