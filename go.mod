@@ -6,7 +6,6 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-git/go-git/v5 v5.16.3
 	github.com/gofrs/flock v0.8.1
-	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
 	github.com/skeema/knownhosts v1.3.1
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/pflag v1.0.9
