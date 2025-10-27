@@ -161,12 +161,14 @@ func runForegroundDaemon(cfg *config.SyncConfig) error {
 		}
 	}()
 
-	if err := process.WritePIDExclusive(os.Getpid()); err != nil {
+	// Acquire PID file lock for the daemon's entire lifetime
+	lockManager, err := process.WritePIDExclusive(os.Getpid())
+	if err != nil {
 		return fmt.Errorf("failed to write PID file: %w", err)
 	}
 	defer func() {
-		if err := process.RemovePID(); err != nil {
-			fmt.Printf("⚠️  Warning: failed to remove PID file: %v\n", err)
+		if err := lockManager.Unlock(); err != nil {
+			fmt.Printf("⚠️  Warning: failed to cleanup PID file and lock: %v\n", err)
 		}
 	}()
 

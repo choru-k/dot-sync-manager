@@ -62,11 +62,18 @@ func TestDaemonLifecycleIntegration(t *testing.T) {
 		t.Fatalf("failed to start daemon: %v", err)
 	}
 
-	// Give the daemon a moment to start
-	time.Sleep(2 * time.Second)
+	// Poll for daemon to start (more reliable than fixed sleep)
+	deadline := time.Now().Add(10 * time.Second)
+	var daemonRunning bool
+	for time.Now().Before(deadline) {
+		if process.IsDaemonRunning() {
+			daemonRunning = true
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 
-	// Verify daemon is running
-	if !process.IsDaemonRunning() {
+	if !daemonRunning {
 		t.Fatal("daemon should be running after start command")
 	}
 
@@ -82,11 +89,18 @@ func TestDaemonLifecycleIntegration(t *testing.T) {
 		t.Fatalf("failed to stop daemon: %v", err)
 	}
 
-	// Give the daemon a moment to stop
-	time.Sleep(2 * time.Second)
+	// Poll for daemon to stop
+	deadline = time.Now().Add(10 * time.Second)
+	var daemonStillRunning bool
+	for time.Now().Before(deadline) {
+		if !process.IsDaemonRunning() {
+			break
+		}
+		daemonStillRunning = true
+		time.Sleep(100 * time.Millisecond)
+	}
 
-	// Verify daemon is no longer running
-	if process.IsDaemonRunning() {
+	if daemonStillRunning && process.IsDaemonRunning() {
 		t.Fatal("daemon should not be running after stop command")
 	}
 
@@ -262,8 +276,9 @@ func TestCrossPlatformCompatibility(t *testing.T) {
 	// Test basic PID file operations
 	const testPID = 12345
 
-	// Write PID exclusively
-	if err := process.WritePIDExclusive(testPID); err != nil {
+	// Write PID exclusively and get lock manager
+	lockManager, err := process.WritePIDExclusive(testPID)
+	if err != nil {
 		t.Fatalf("failed to write PID exclusively: %v", err)
 	}
 
@@ -273,17 +288,32 @@ func TestCrossPlatformCompatibility(t *testing.T) {
 		t.Fatalf("PID file should exist: %v", err)
 	}
 
-	// Note: lock file might be cleaned up immediately after writing, so we don't assert its existence
+	// Note: lock file should be held while lockManager exists
+	lockPath := pidPath + ".lock"
+	if _, err := os.Stat(lockPath); err != nil {
+		t.Fatalf("Lock file should exist while lock manager is held: %v", err)
+	}
+
+	// Release the lock to simulate daemon shutdown
+	if err := lockManager.Unlock(); err != nil {
+		t.Fatalf("failed to unlock PID file: %v", err)
+	}
+
+	// Verify lock file is cleaned up after unlock
+	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
+		t.Fatal("Lock file should be removed after unlock")
+	}
 
 	// Try to write PID exclusively again with a stale PID (should succeed after cleanup)
-	if err := process.WritePIDExclusive(testPID + 1); err != nil {
+	lockManager2, err := process.WritePIDExclusive(testPID + 1)
+	if err != nil {
 		t.Fatalf("expected success when writing after stale PID cleanup, got error: %v", err)
 	}
-
-	// Remove PID
-	if err := process.RemovePID(); err != nil {
-		t.Fatalf("failed to remove PID: %v", err)
-	}
+	defer func() {
+		if err := lockManager2.Unlock(); err != nil {
+			t.Fatalf("failed to cleanup second lock manager: %v", err)
+		}
+	}()
 
 	// Verify cleanup
 	if _, err := os.Stat(pidPath); !os.IsNotExist(err) {

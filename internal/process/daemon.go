@@ -33,12 +33,20 @@ func pidFilePath() (string, error) {
 	return filepath.Join(home, pidFileName), nil
 }
 
+// LockManager manages the lifecycle of a PID file lock for daemon exclusivity.
+type LockManager struct {
+	lock    *flock.Flock
+	pidPath string
+	lockPath string
+}
+
 // WritePIDExclusive atomically creates the PID file with exclusive file locking.
 // This prevents TOCTOU race conditions between checking if daemon is running
 // and writing the PID file. Uses flock for cross-platform file locking.
-func WritePIDExclusive(pid int) (err error) {
+// Returns a LockManager that must be held for the daemon's entire lifetime.
+func WritePIDExclusive(pid int) (*LockManager, error) {
 	if pid <= 0 {
-		return fmt.Errorf("process: write pid exclusive: invalid pid %d", pid)
+		return nil, fmt.Errorf("process: write pid exclusive: invalid pid %d", pid)
 	}
 
 	// Get the current executable name for reliable daemon detection
@@ -46,7 +54,7 @@ func WritePIDExclusive(pid int) (err error) {
 
 	path, err := pidFilePath()
 	if err != nil {
-		return fmt.Errorf("process: write pid exclusive: failed to get path: %w", err)
+		return nil, fmt.Errorf("process: write pid exclusive: failed to get path: %w", err)
 	}
 
 	// Create lock file path - use .lock extension for the lock file
@@ -59,24 +67,22 @@ func WritePIDExclusive(pid int) (err error) {
 
 	locked, err := fileLock.TryLockContext(ctx, lockRetryInterval)
 	if err != nil {
-		return fmt.Errorf("process: write pid exclusive: failed to acquire lock: %w", err)
+		return nil, fmt.Errorf("process: write pid exclusive: failed to acquire lock: %w", err)
 	}
 	if !locked {
-		return fmt.Errorf("process: daemon already running (cannot acquire lock)")
+		return nil, fmt.Errorf("process: daemon already running (cannot acquire lock)")
 	}
-	defer func() {
-		if unlockErr := fileLock.Unlock(); unlockErr != nil {
-			log.Printf("process: warning - failed to unlock PID file: %v", unlockErr)
-		}
-		// Clean up lock file
-		if removeErr := os.Remove(lockPath); removeErr != nil && !os.IsNotExist(removeErr) {
-			log.Printf("process: warning - failed to remove lock file: %v", removeErr)
-		}
-	}()
 
 	// Check for stale PID file and clean up if necessary
 	if err := cleanupStalePIDFile(path, exeName); err != nil {
-		return fmt.Errorf("process: write pid exclusive: failed to cleanup stale PID: %w", err)
+		// Release lock on cleanup failure
+		if unlockErr := fileLock.Unlock(); unlockErr != nil {
+			log.Printf("process: warning - failed to unlock PID file during cleanup: %v", unlockErr)
+		}
+		if removeErr := os.Remove(lockPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			log.Printf("process: warning - failed to remove lock file during cleanup: %v", removeErr)
+		}
+		return nil, fmt.Errorf("process: write pid exclusive: failed to cleanup stale PID: %w", err)
 	}
 
 	// Store both PID and executable name in format: "PID:exe_name"
@@ -84,9 +90,54 @@ func WritePIDExclusive(pid int) (err error) {
 
 	// Write PID file atomically
 	if err := os.WriteFile(path, []byte(content), pidFilePerms); err != nil {
-		return fmt.Errorf("process: write pid exclusive: %w", err)
+		// Release lock on write failure
+		if unlockErr := fileLock.Unlock(); unlockErr != nil {
+			log.Printf("process: warning - failed to unlock PID file during write failure: %v", unlockErr)
+		}
+		if removeErr := os.Remove(lockPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			log.Printf("process: warning - failed to remove lock file during write failure: %v", removeErr)
+		}
+		return nil, fmt.Errorf("process: write pid exclusive: %w", err)
 	}
 
+	// Create and return LockManager
+	lockManager := &LockManager{
+		lock:    fileLock,
+		pidPath: path,
+		lockPath: lockPath,
+	}
+
+	return lockManager, nil
+}
+
+// Unlock releases the file lock and cleans up the lock file.
+// This should be called when the daemon is shutting down.
+func (lm *LockManager) Unlock() error {
+	var errs []error
+
+	// Release the file lock
+	if lm.lock != nil {
+		if err := lm.lock.Unlock(); err != nil {
+			log.Printf("process: warning - failed to unlock PID file: %v", err)
+			errs = append(errs, fmt.Errorf("unlock failed: %w", err))
+		}
+	}
+
+	// Clean up lock file
+	if err := os.Remove(lm.lockPath); err != nil && !os.IsNotExist(err) {
+		log.Printf("process: warning - failed to remove lock file: %v", err)
+		errs = append(errs, fmt.Errorf("remove lock file failed: %w", err))
+	}
+
+	// Remove PID file
+	if err := os.Remove(lm.pidPath); err != nil && !os.IsNotExist(err) {
+		log.Printf("process: warning - failed to remove PID file: %v", err)
+		errs = append(errs, fmt.Errorf("remove PID file failed: %w", err))
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("process: cleanup failed with %d errors: %v", len(errs), errs[0])
+	}
 	return nil
 }
 
@@ -205,17 +256,22 @@ func RemovePID() error {
 		return fmt.Errorf("process: remove pid: failed to get path: %w", err)
 	}
 
+	var errs []error
+
 	// Remove PID file
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("process: remove pid file: %w", err)
+		errs = append(errs, fmt.Errorf("remove pid file: %w", err))
 	}
 
 	// Remove lock file if it exists
 	lockPath := path + ".lock"
 	if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
-		log.Printf("process: warning - failed to remove lock file: %v", err)
+		errs = append(errs, fmt.Errorf("remove lock file: %w", err))
 	}
 
+	if len(errs) > 0 {
+		return fmt.Errorf("process: remove pid failed with %d errors: %v", len(errs), errs[0])
+	}
 	return nil
 }
 
@@ -266,6 +322,14 @@ func readPID() (*pidInfo, error) {
 	return &pidInfo{pid: pid, exeName: exeName}, nil
 }
 
+// cleanupPIDFile removes the PID file and logs any cleanup errors.
+// This is a separate function to ensure cleanup errors are properly handled.
+func cleanupPIDFile(reason string) {
+	if err := RemovePID(); err != nil {
+		log.Printf("process: warning - failed to remove %s: %v", reason, err)
+	}
+}
+
 // IsDaemonRunning checks if the daemon associated with the stored PID is running.
 //
 // This function implements a two-phase approach to daemon detection:
@@ -280,7 +344,7 @@ func readPID() (*pidInfo, error) {
 // with many processes; callers should treat this as an infrequent operation.
 func IsDaemonRunning() bool {
 	var expectedName string
-	
+
 	if pidInfo, err := readPID(); err == nil {
 		// Use stored executable name from PID file for reliable detection
 		expectedName = pidInfo.exeName
@@ -291,15 +355,11 @@ func IsDaemonRunning() bool {
 
 		switch {
 		case pidInfo.pid == os.Getpid():
-			if err := RemovePID(); err != nil {
-				log.Printf("process: warning - failed to remove self PID file: %v", err)
-			}
+			cleanupPIDFile("self PID file")
 		case processExists(pidInfo.pid) && verifyProcessName(pidInfo.pid, expectedName):
 			return true
 		default:
-			if err := RemovePID(); err != nil {
-				log.Printf("process: warning - failed to remove stale PID file: %v", err)
-			}
+			cleanupPIDFile("stale PID file")
 		}
 	}
 
@@ -338,13 +398,11 @@ func GetDaemonPID() (int, error) {
 		}
 
 		if pidInfo.pid == os.Getpid() {
-			if err := RemovePID(); err != nil {
-				log.Printf("process: warning - failed to remove self PID file: %v", err)
-			}
+			cleanupPIDFile("self PID file")
 		} else if processExists(pidInfo.pid) && verifyProcessName(pidInfo.pid, expectedName) {
 			return pidInfo.pid, nil
-		} else if err := RemovePID(); err != nil {
-			log.Printf("process: warning - failed to remove PID file during cleanup: %v", err)
+		} else {
+			cleanupPIDFile("stale PID file during PID discovery")
 		}
 	}
 

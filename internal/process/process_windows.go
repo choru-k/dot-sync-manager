@@ -61,7 +61,7 @@ func terminateProcess(proc *os.Process) error {
 
 func stopAllDaemons(name string) error {
 	normalized := normalizeProcessName(name)
-	if normalized == "" {
+	if !isValidProcessName(normalized) {
 		return fmt.Errorf("process: invalid process name: %q", name)
 	}
 
@@ -147,4 +147,21 @@ func findProcessByName(name string) (int, error) {
 	}
 
 	return 0, fmt.Errorf("process: not found: %s", name)
+}
+
+// isValidProcessName validates that a process name contains only safe characters.
+// These restrictions prevent command injection and ensure the process name can be safely
+// used in shell commands and file operations. The allowed characters are:
+// - Letters (a-z, A-Z)
+// - Numbers (0-9)
+// - Hyphens (-), underscores (_), and periods (.)
+// This matches typical process naming conventions and avoids special shell characters.
+func isValidProcessName(name string) bool {
+	if name == "" {
+		return false
+	}
+	// Check for any character that is NOT a letter, number, or one of the allowed symbols.
+	return strings.IndexFunc(name, func(r rune) bool {
+		return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '-' && r != '_' && r != '.'
+	}) == -1
 }
