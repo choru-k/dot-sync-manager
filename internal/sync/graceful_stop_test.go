@@ -107,7 +107,8 @@ func TestSyncService_GracefulStop_ImmediateTimeout(t *testing.T) {
 
 	t.Log("Testing graceful stop with already cancelled context...")
 	err = syncSvc.GracefulStop(ctx)
-	assert.NoError(t, err) // Should handle cancelled context gracefully
+	assert.Error(t, err) // Should return context cancelled error
+	assert.Equal(t, context.Canceled, err)
 	assert.False(t, syncSvc.IsRunning())
 }
 
@@ -186,7 +187,9 @@ func TestSyncService_GracefulStop_ForcedShutdownsTracking(t *testing.T) {
 
 	t.Log("Testing graceful stop with forced shutdown tracking...")
 	err = syncSvc.GracefulStop(ctx)
-	assert.NoError(t, err)
+	// Should return timeout error due to 1 nanosecond timeout
+	assert.Error(t, err)
+	assert.Equal(t, context.DeadlineExceeded, err)
 
 	// Check if forced shutdowns were incremented (may be 0 depending on timing)
 	forcedShutdowns := atomic.LoadInt32(&syncSvc.forcedShutdowns)
