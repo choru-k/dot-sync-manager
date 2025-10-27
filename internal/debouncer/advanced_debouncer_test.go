@@ -8,6 +8,16 @@ import (
 	"time"
 )
 
+const (
+	// Test timing constants
+	testSmallDelay      = 10 * time.Millisecond
+	testExecutionDelay  = 1 * time.Millisecond
+	testRaceDelay       = 1 * time.Millisecond
+	testDebounceWait    = 200 * time.Millisecond
+	testManualSyncWait  = 100 * time.Millisecond
+	testBackoffWait     = 300 * time.Millisecond
+)
+
 func TestAdvancedDebouncer_New(t *testing.T) {
 	config := DefaultAdvancedConfig()
 	debouncer := NewAdvanced(config)
@@ -56,11 +66,11 @@ func TestAdvancedDebouncer_BasicDebounce(t *testing.T) {
 	// Add multiple operations rapidly
 	for i := 0; i < 5; i++ {
 		debouncer.Add("test", fn)
-		time.Sleep(10 * time.Millisecond) // Small delay between additions
+		time.Sleep(testSmallDelay) // Small delay between additions
 	}
 
 	// Wait for debounce to complete
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(testDebounceWait)
 
 	mu.Lock()
 	if callCount != 1 {
@@ -139,7 +149,7 @@ func TestAdvancedDebouncer_TriggerManualSync(t *testing.T) {
 	}
 
 	// Wait for execution
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(testManualSyncWait)
 
 	mu.Lock()
 	if callCount != 1 {
@@ -179,7 +189,7 @@ func TestAdvancedDebouncer_ChurnDetection(t *testing.T) {
 	// Generate rapid activity to trigger churn
 	for i := 0; i < config.ChurnThreshold; i++ {
 		debouncer.Add("test", fn)
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(testSmallDelay)
 	}
 
 	// Check if churn is detected
@@ -250,7 +260,7 @@ func TestAdvancedDebouncer_ExponentialBackoff(t *testing.T) {
 	// Generate more activity to trigger backoff
 	for i := 0; i < config.ChurnThreshold; i++ {
 		debouncer.Add("test", fn)
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(testSmallDelay)
 	}
 
 	// Check backoff is applied
@@ -367,7 +377,7 @@ func TestAdvancedDebouncer_GetStats(t *testing.T) {
 	// Add some activity
 	for i := 0; i < 3; i++ {
 		debouncer.Add("test", fn)
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(testSmallDelay)
 	}
 
 	stats := debouncer.GetStats()
@@ -479,7 +489,7 @@ func TestAdvancedDebouncer_ConcurrentAccess(t *testing.T) {
 
 	fn := func() {
 		// Simulate some work
-		time.Sleep(1 * time.Millisecond)
+		time.Sleep(testExecutionDelay)
 	}
 
 	// Launch multiple goroutines adding operations concurrently
@@ -498,7 +508,7 @@ func TestAdvancedDebouncer_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 
 	// Wait for all operations to complete
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(testBackoffWait)
 
 	// Should not have panicked and should have some activity
 	stats := debouncer.GetStats()
@@ -659,4 +669,86 @@ func TestAdvancedDebouncer_ConcurrentStopWithOperations(t *testing.T) {
 
 	// Test should complete without panics
 	t.Logf("Concurrent Stop with operations test completed successfully. Operations: %d", atomic.LoadInt64(&operationCount))
+}
+
+func TestAdvancedDebouncer_RaceConditionManualSyncAfterStop(t *testing.T) {
+	config := AdvancedDebouncerConfig{
+		BaseDelay:          50 * time.Millisecond,
+		MaxDelay:           1 * time.Second,
+		BackoffEnabled:     false,
+		ChurnThreshold:     10,
+		ChurnWindow:        200 * time.Millisecond,
+		DecayResetDuration: 1 * time.Second,
+		ManualSyncTimeout:  100 * time.Millisecond,
+	}
+
+	debouncer := NewAdvanced(config)
+	debouncer.Start()
+
+	var callCount int64
+	var panicCount int64
+	var wg sync.WaitGroup
+
+	fn := func() {
+		atomic.AddInt64(&callCount, 1)
+	}
+
+	// Test the specific race condition scenario:
+	// Thread A: Calls Stop() which closes channels
+	// Thread B: Calls TriggerManualSync() which might check stopped flag before channel close
+	// This should NOT cause "send on closed channel" panic after the fix
+
+	// Thread A: Stop the debouncer
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Stop() error: %v", err)
+		}
+	}()
+
+	// Small delay to ensure Stop() starts first
+	time.Sleep(testRaceDelay)
+
+	// Thread B: Rapid manual sync attempts that could trigger the race condition
+	numManualSyncs := 10
+	for i := 0; i < numManualSyncs; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					atomic.AddInt64(&panicCount, 1)
+					t.Errorf("Panic detected in manual sync %d: %v", id, r)
+				}
+			}()
+
+			err := debouncer.TriggerManualSync(fmt.Sprintf("race-test-%d", id), fn)
+			if err != nil {
+				// Expected after debouncer is stopped, should not panic
+				t.Logf("Manual sync %d returned error (expected): %v", id, err)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Validate no panics occurred
+	if atomic.LoadInt64(&panicCount) > 0 {
+		t.Fatalf("Race condition detected: %d panics occurred (should be 0)", atomic.LoadInt64(&panicCount))
+	}
+
+	// Some manual syncs might have succeeded before stop, some should fail after
+	// The key is that no panics should occur
+	t.Logf("Race condition test completed successfully. Manual syncs: %d, Panics: %d, Calls: %d",
+		numManualSyncs, atomic.LoadInt64(&panicCount), atomic.LoadInt64(&callCount))
+
+	// Additional verification: multiple Stop() calls should be safe
+	for i := 0; i < 3; i++ {
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Additional Stop() call %d error: %v", i, err)
+		}
+	}
+
+	t.Log("TOCTOU race condition fix validated - no 'send on closed channel' panics detected")
 }

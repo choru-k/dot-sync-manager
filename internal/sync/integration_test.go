@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -77,6 +78,7 @@ cache/
 		files []string
 		err   error
 	}
+	var syncEventsMu sync.Mutex
 
 	service.SetEventCallbacks(
 		func() {
@@ -84,10 +86,12 @@ cache/
 		},
 		func(files []string, err error) {
 			// Sync completed
+			syncEventsMu.Lock()
 			syncEvents = append(syncEvents, struct {
 				files []string
 				err   error
 			}{files, err})
+			syncEventsMu.Unlock()
 		},
 		func(err error) {
 			// Sync error
@@ -153,10 +157,14 @@ cache/
 	// This is actually the correct behavior for ignored files
 
 	// Check that sync events were triggered (may be less due to push failures)
-	if len(syncEvents) == 0 {
-		t.Errorf("Expected at least 1 sync event, got %d", len(syncEvents))
+	syncEventsMu.Lock()
+	syncEventsCount := len(syncEvents)
+	syncEventsMu.Unlock()
+
+	if syncEventsCount == 0 {
+		t.Errorf("Expected at least 1 sync event, got %d", syncEventsCount)
 	}
-	t.Logf("Sync events triggered: %d", len(syncEvents))
+	t.Logf("Sync events triggered: %d", syncEventsCount)
 
 	// Since we have a .gitignore file, ignored files won't be staged
 	// Let's check that the files we want to sync exist

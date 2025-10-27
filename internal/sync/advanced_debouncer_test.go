@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -38,16 +39,21 @@ func TestSyncService_AdvancedDebouncer_Integration(t *testing.T) {
 
 	// Test basic functionality
 	var called bool
+	var mu sync.Mutex
 	advancedDebouncer.Add("test", func() {
+		mu.Lock()
 		called = true
+		mu.Unlock()
 	})
 
 	// Wait for execution
 	time.Sleep(200 * time.Millisecond)
 
+	mu.Lock()
 	if !called {
 		t.Error("Expected function to be called")
 	}
+	mu.Unlock()
 
 	// Test stats
 	stats := advancedDebouncer.GetStats()
@@ -72,14 +78,18 @@ func TestSyncService_AdvancedDebouncer_Integration(t *testing.T) {
 	// Test immediate execution
 	called = false
 	advancedDebouncer.AddImmediate("immediate", func() {
+		mu.Lock()
 		called = true
+		mu.Unlock()
 	})
 
 	// Should be called immediately
 	time.Sleep(50 * time.Millisecond)
+	mu.Lock()
 	if !called {
 		t.Error("Expected immediate function to be called")
 	}
+	mu.Unlock()
 
 	// Stop the debouncer
 	if err := advancedDebouncer.Stop(); err != nil {
@@ -113,16 +123,21 @@ func TestSyncService_BasicDebouncer_BackwardCompatibility(t *testing.T) {
 
 	// Test basic functionality
 	var called bool
+	var mu sync.Mutex
 	basicDebouncer.Add("test", func() {
+		mu.Lock()
 		called = true
+		mu.Unlock()
 	})
 
 	// Wait for execution
 	time.Sleep(200 * time.Millisecond)
 
+	mu.Lock()
 	if !called {
 		t.Error("Expected function to be called")
 	}
+	mu.Unlock()
 
 	// Test that basic debouncer doesn't have advanced features
 	if basicDebouncer.GetDelay() != syncConfig.DebounceDelay {

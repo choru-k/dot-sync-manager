@@ -2,6 +2,7 @@ package debouncer
 
 import (
 	"context"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -17,29 +18,28 @@ func TestAdvancedDebouncer_TriggerManualSyncWithContext(t *testing.T) {
 	}()
 
 	t.Run("Context success", func(t *testing.T) {
-		var called bool
+		var called int32 // atomic bool
 		err := debouncer.TriggerManualSyncWithContext(context.Background(), "test", func() {
-			called = true
+			atomic.StoreInt32(&called, 1)
 		})
 
 		if err != nil {
 			t.Errorf("Unexpected error: %v", err)
 		}
 
-		if !called {
+		if atomic.LoadInt32(&called) == 0 {
 			t.Error("Expected function to be called")
 		}
 	})
 
 	t.Run("Context cancellation", func(t *testing.T) {
+		// Create a context that's already cancelled for deterministic behavior
 		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // Cancel immediately
 
-		// Cancel the context immediately
-		cancel()
-
-		var called bool
+		var called int32 // atomic bool
 		err := debouncer.TriggerManualSyncWithContext(ctx, "cancel-test", func() {
-			called = true
+			atomic.StoreInt32(&called, 1)
 		})
 
 		if err == nil {
@@ -50,22 +50,21 @@ func TestAdvancedDebouncer_TriggerManualSyncWithContext(t *testing.T) {
 			t.Errorf("Expected context.Canceled, got: %v", err)
 		}
 
-		if called {
+		if atomic.LoadInt32(&called) != 0 {
 			t.Error("Function should not have been called due to context cancellation")
 		}
 	})
 
 	t.Run("Context timeout", func(t *testing.T) {
-		// Create a context with very short timeout
+		// Create a context with very short timeout that will expire during the call
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 		defer cancel()
 
-		// Wait for context to timeout
-		time.Sleep(10 * time.Millisecond)
-
-		var called bool
+		var called int32 // atomic bool
 		err := debouncer.TriggerManualSyncWithContext(ctx, "timeout-test", func() {
-			called = true
+			// Function that takes longer than the context timeout
+			time.Sleep(50 * time.Millisecond)
+			atomic.StoreInt32(&called, 1)
 		})
 
 		if err == nil {
@@ -76,7 +75,7 @@ func TestAdvancedDebouncer_TriggerManualSyncWithContext(t *testing.T) {
 			t.Errorf("Expected context.DeadlineExceeded, got: %v", err)
 		}
 
-		if called {
+		if atomic.LoadInt32(&called) != 0 {
 			t.Error("Function should not have been called due to context timeout")
 		}
 	})
@@ -94,18 +93,18 @@ func TestAdvancedDebouncer_TriggerManualSyncWithContext(t *testing.T) {
 		}
 	}()
 
-		var called bool
+		var called int32 // atomic bool
 		err := debouncer.TriggerManualSyncWithContext(context.Background(), "timeout-manual", func() {
 			// Simulate a long operation
 			time.Sleep(50 * time.Millisecond)
-			called = true
+			atomic.StoreInt32(&called, 1)
 		})
 
 		if err == nil {
 			t.Error("Expected manual sync timeout error")
 		}
 
-		if called {
+		if atomic.LoadInt32(&called) != 0 {
 			t.Error("Function should have been interrupted by timeout")
 		}
 	})

@@ -68,7 +68,9 @@ func TestAdvancedDebouncer_StartResourceLeak(t *testing.T) {
 	syncMu.Unlock()
 
 	// Clean up
-	debouncer.Stop()
+	if err := debouncer.Stop(); err != nil {
+		t.Errorf("Failed to stop debouncer: %v", err)
+	}
 }
 
 // TestAdvancedDebouncer_StartStopRestart tests that Start() works correctly
@@ -89,7 +91,9 @@ func TestAdvancedDebouncer_StartStopRestart(t *testing.T) {
 	}
 
 	// Stop it
-	debouncer.Stop()
+	if err := debouncer.Stop(); err != nil {
+		t.Errorf("Failed to stop debouncer: %v", err)
+	}
 
 	// Wait a moment for cleanup
 	time.Sleep(50 * time.Millisecond)
@@ -107,7 +111,9 @@ func TestAdvancedDebouncer_StartStopRestart(t *testing.T) {
 	}
 
 	// Clean up
-	debouncer2.Stop()
+	if err := debouncer2.Stop(); err != nil {
+		t.Errorf("Failed to stop debouncer2: %v", err)
+	}
 }
 
 // TestAdvancedDebouncer_ConcurrentStarts tests many goroutines calling Start() concurrently
@@ -149,5 +155,7 @@ func TestAdvancedDebouncer_ConcurrentStarts(t *testing.T) {
 	}
 
 	// Clean up
-	debouncer.Stop()
+	if err := debouncer.Stop(); err != nil {
+		t.Errorf("Failed to stop debouncer: %v", err)
+	}
 }

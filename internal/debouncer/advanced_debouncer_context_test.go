@@ -42,7 +42,9 @@ func TestAdvancedDebouncer_ContextCancellation(t *testing.T) {
 	}
 
 	// Clean up
-	debouncer.Stop()
+	if err := debouncer.Stop(); err != nil {
+		t.Errorf("Failed to stop debouncer: %v", err)
+	}
 }
 
 // TestAdvancedDebouncer_ContextCancellationMidExecution tests cancellation during callback execution
@@ -105,7 +107,9 @@ func TestAdvancedDebouncer_ContextCancellationMidExecution(t *testing.T) {
 	}
 
 	// Clean up
-	debouncer.Stop()
+	if err := debouncer.Stop(); err != nil {
+		t.Errorf("Failed to stop debouncer: %v", err)
+	}
 }
 
 // TestAdvancedDebouncer_ContextNotCancelled ensures callbacks execute normally when context is not cancelled
@@ -143,7 +147,9 @@ func TestAdvancedDebouncer_ContextNotCancelled(t *testing.T) {
 	}
 
 	// Clean up
-	debouncer.Stop()
+	if err := debouncer.Stop(); err != nil {
+		t.Errorf("Failed to stop debouncer: %v", err)
+	}
 }
 
 // TestAdvancedDebouncer_DebouncerContextCancellation ensures that debouncer context cancels all callbacks
@@ -169,7 +175,9 @@ func TestAdvancedDebouncer_DebouncerContextCancellation(t *testing.T) {
 	// Stop the debouncer immediately (should cancel all pending callbacks)
 	go func() {
 		time.Sleep(10 * time.Millisecond) // Let debouncer start
-		debouncer.Stop()
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
 	}()
 
 	// Wait for everything to settle
@@ -216,5 +224,7 @@ func TestAdvancedDebouncer_BackwardsCompatibility(t *testing.T) {
 	}
 
 	// Clean up
-	debouncer.Stop()
+	if err := debouncer.Stop(); err != nil {
+		t.Errorf("Failed to stop debouncer: %v", err)
+	}
 }
