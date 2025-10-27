@@ -8,7 +8,7 @@ import (
 )
 
 func TestGetMachineName(t *testing.T) {
-	name := getMachineName()
+	name := getMachineNameFromOS()
 
 	if name == "" {
 		t.Error("Expected non-empty machine name")

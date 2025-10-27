@@ -6,6 +6,9 @@ import (
 )
 
 func TestValidateEditorCommand(t *testing.T) {
+	// Set test mode to prevent actual editor validation during tests
+	t.Setenv("DSM_TEST_MODE", "1")
+
 	tests := []struct {
 		name        string
 		editor      string

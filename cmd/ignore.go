@@ -92,11 +92,7 @@ func runIgnore(cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		// Use centralized editor selection logic
-		var selectErr error
-		editor, selectErr = getDefaultEditorForFile(ignoreFile)
-		if selectErr != nil {
-			return fmt.Errorf("failed to get default editor: %w", selectErr)
-		}
+		editor = getDefaultEditorForFile(ignoreFile)
 	}
 
 	fmt.Printf("📝 Opening .syncignore file: %s\n", ignoreFile)

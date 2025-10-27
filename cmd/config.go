@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -130,10 +131,7 @@ func runConfig(cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		// Use centralized editor selection logic
-		editor, err = getDefaultEditorForFile(configPath)
-		if err != nil {
-			return fmt.Errorf("failed to get default editor: %w", err)
-		}
+		editor = getDefaultEditorForFile(configPath)
 	}
 
 	fmt.Printf("📝 Opening configuration file: %s\n", configPath)
@@ -246,34 +244,49 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 
 // Helper functions for nested configuration access
 func getNestedValue(obj interface{}, key string) interface{} {
+	// Handle nil input defensively
+	if obj == nil {
+		return nil
+	}
+
+	// Validate key
+	if key == "" {
+		return nil
+	}
+
 	parts := strings.Split(key, ".")
 
 	// Handle special cases for struct access without JSON marshaling
 	if len(parts) == 2 && parts[0] == "machine" && parts[1] == "name" {
-		// Handle machine.name access directly from struct
-		if cfg, ok := obj.(*config.SyncConfig); ok {
-			return cfg.Machine.Name
-		}
-		if cfg, ok := obj.(config.SyncConfig); ok {
-			return cfg.Machine.Name
-		}
+		return getMachineName(obj)
 	}
 
 	// Convert struct to map using JSON marshaling/unmarshaling to respect custom JSON tags
 	jsonBytes, err := json.Marshal(obj)
 	if err != nil {
+		printError("Failed to marshal config for key lookup %q: %v", key, err)
 		return nil
 	}
 	var mapObj map[string]interface{}
 	if err := json.Unmarshal(jsonBytes, &mapObj); err != nil {
+		printError("Failed to unmarshal config for key lookup %q: %v", key, err)
 		return nil
 	}
 
 	current := interface{}(mapObj)
 
 	for _, part := range parts {
+		// Validate part is not empty
+		if part == "" {
+			return nil
+		}
+
 		switch v := current.(type) {
 		case map[string]interface{}:
+			// Defensive map access
+			if v == nil {
+				return nil
+			}
 			current = v[part]
 			if current == nil {
 				return nil
@@ -285,6 +298,7 @@ func getNestedValue(obj interface{}, key string) interface{} {
 			}
 			return nil
 		default:
+			// If we encounter any other type, we can't navigate further
 			return nil
 		}
 	}
@@ -298,9 +312,6 @@ func setNestedValue(obj interface{}, key string, value interface{}) bool {
 		return false
 	}
 	parts := strings.Split(key, ".")
-	if len(parts) == 0 {
-		return false
-	}
 
 	// Validate that the section is valid (using the same validation as validateConfigKey)
 	section := parts[0]
@@ -341,6 +352,7 @@ func setNestedValue(obj interface{}, key string, value interface{}) bool {
 	// Convert struct to map using JSON marshaling/unmarshaling to respect custom JSON tags
 	jsonBytes, err := json.Marshal(actualObj)
 	if err != nil {
+		printError("Failed to marshal config for key update %q: %v", key, err)
 		return false
 	}
 	mapObj, err := jsonToMap(jsonBytes)
@@ -445,7 +457,12 @@ func parseConfigValue(value string) interface{} {
 
 // structToMap converts a struct to a map[string]interface{} using JSON marshaling
 func structToMap(obj interface{}) (map[string]interface{}, error) {
-	// Marshal to JSON
+	// Handle all nil cases gracefully including typed nil pointers
+	if isNil(obj) {
+		return make(map[string]interface{}), nil
+	}
+
+	// Marshal to JSON with safety checks
 	jsonBytes, err := json.Marshal(obj)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal struct: %w", err)
@@ -459,6 +476,23 @@ func structToMap(obj interface{}) (map[string]interface{}, error) {
 
 	return result, nil
 }
+
+// isNil performs comprehensive nil checking including typed nil pointers
+func isNil(obj interface{}) bool {
+	if obj == nil {
+		return true
+	}
+
+	// Use reflection to detect typed nil pointers
+	v := reflect.ValueOf(obj)
+	switch v.Kind() {
+	case reflect.Ptr, reflect.Slice, reflect.Map, reflect.Chan, reflect.Func, reflect.Interface:
+		return v.IsNil()
+	default:
+		return false
+	}
+}
+
 
 // mapToStruct converts a map[string]interface{} to the config struct type
 func mapToStruct(data map[string]interface{}) (*config.SyncConfig, error) {
@@ -476,3 +510,4 @@ func mapToStruct(data map[string]interface{}) (*config.SyncConfig, error) {
 
 	return &result, nil
 }
+

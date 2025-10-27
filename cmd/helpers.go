@@ -7,244 +7,263 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/google/shlex"
+	"github.com/choru-k/dot-sync-manager/internal/config"
 )
 
-// isTestMode returns true if running in test or CI environment
-func isTestMode() bool {
-	return os.Getenv("DSM_TEST_MODE") != "" || os.Getenv("CI") != ""
-}
-
-// getAllowedEditors returns a sorted list of all allowed editor commands
-func getAllowedEditors() []string {
-	editors := make([]string, 0, len(safeEditors))
-	for editor := range safeEditors {
-		editors = append(editors, editor)
-	}
-	return editors
-}
-
-// getDefaultEditor returns the appropriate text editor for the current platform
-// It checks the EDITOR environment variable first, then falls back to platform defaults
-func getDefaultEditor() (string, error) {
-	// Check if we're in a test environment and should avoid launching real editors
-	if isTestMode() {
-		return testModeEditor, nil // Use test mode editor as a safe fallback
-	}
-
-	// Check environment variable first
-	if editor := os.Getenv("EDITOR"); editor != "" {
-		return validateEditorCommand(editor)
-	}
-
-	// Platform-specific fallbacks (these are pre-validated)
-	switch runtime.GOOS {
-	case "windows":
-		return editorNotepad, nil
-	case "darwin":
-		return editorTextEdit, nil
-	default: // Linux and others
-		return editorNano, nil
-	}
-}
-
-// getDefaultEditorForFile returns an appropriate editor for a specific file type
-func getDefaultEditorForFile(filePath string) (string, error) {
-	// Check if we're in a test environment and should avoid launching real editors
-	if isTestMode() {
-		return testModeEditor, nil // Use test mode editor as a safe fallback
-	}
-
-	// Check environment variable first
-	if editor := os.Getenv("EDITOR"); editor != "" {
-		return validateEditorCommand(editor)
-	}
-
-	// File type-specific editor selection with fallback checking
-	switch {
-	case strings.HasSuffix(filePath, ".json"), strings.HasSuffix(filePath, ".jsonc"):
-		// Prefer VS Code for JSON files, but fall back if not available
-		if hasCommand("code") {
-			return editorVSCode, nil
-		}
-		return getDefaultEditor()
-	case strings.HasSuffix(filePath, ".md"), strings.HasSuffix(filePath, ".markdown"):
-		// Prefer VS Code for Markdown, but fall back if not available
-		if hasCommand("code") {
-			return editorVSCode, nil
-		}
-		return getDefaultEditor()
-	case strings.HasSuffix(filePath, ".txt"):
-		// Prefer VS Code for text files, but fall back if not available
-		if hasCommand("code") {
-			return editorVSCode, nil
-		}
-		return getDefaultEditor()
-	default:
-		return getDefaultEditor()
-	}
-}
-
-
-
-
-// parseCommand splits a command string into command and arguments using shlex
-// This handles quoted arguments and returns a command and args slice
-func parseCommand(cmdStr string) (string, []string) {
-	if cmdStr == "" {
-		return "", nil
-	}
-
-	parts, err := shlex.Split(cmdStr)
+// checkDirectoryExists checks if a directory exists and is actually a directory
+// Returns (true, nil) if directory exists, (false, nil) if not found or not a directory,
+// or (false, error) if there was an error accessing the path
+func checkDirectoryExists(path string) (bool, error) {
+	stat, err := os.Stat(path)
 	if err != nil {
-		// Return empty result on parsing error to prevent command injection
-		// rather than falling back to unsafe string splitting
-		return "", nil
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to access %s: %w", path, err)
 	}
-
-	if len(parts) == 0 {
-		return "", nil
-	}
-
-	return parts[0], parts[1:]
+	return stat.IsDir(), nil
 }
 
-// hasCommand checks if a command exists in the system PATH
-func hasCommand(cmd string) bool {
-	_, err := exec.LookPath(cmd)
-	return err == nil
-}
-
-// getSafeEditorResult returns the appropriate editor result based on the test environment
-func getSafeEditorResult(editor string) string {
-	// Check if we're in a test environment and should avoid launching real editors
-	if isTestMode() {
-		// In CI/test mode, return test mode editor for ALL editors to prevent actual execution
-		// This is because CI environments typically lack GUI editors and to prevent hanging tests
-		return testModeEditor
+// getMachineName extracts the machine name from a config object without JSON marshaling
+func getMachineName(obj interface{}) string {
+	// Handle machine.name access directly from struct
+	if cfg, ok := obj.(*config.SyncConfig); ok {
+		return cfg.Machine.Name
 	}
-
-	// For local development, always validate and return actual editor names
-	// This ensures proper security validation while allowing real editor use during development
-	return editor
+	if cfg, ok := obj.(config.SyncConfig); ok {
+		return cfg.Machine.Name
+	}
+	return ""
 }
 
-// validateEditorCommand validates that an editor command is safe against command injection
+// getMachineNameFromOS gets the machine name from the operating system
+func getMachineNameFromOS() string {
+	hostname, err := os.Hostname()
+	if err == nil {
+		return hostname
+	}
+	// Log hostname error before falling back to default
+	printError("Failed to get hostname: %v", err)
+	return "unknown-machine"
+}
+
+// Print helper functions for consistent output formatting
+func printSuccess(format string, args ...interface{}) {
+	if noEmoji {
+		fmt.Printf("✓ "+format+"\n", args...)
+	} else {
+		fmt.Printf("✅ "+format+"\n", args...)
+	}
+}
+
+func printError(format string, args ...interface{}) {
+	if noEmoji {
+		fmt.Printf("ERROR: "+format+"\n", args...)
+	} else {
+		fmt.Printf("❌ "+format+"\n", args...)
+	}
+}
+
+func printWarning(format string, args ...interface{}) {
+	if noEmoji {
+		fmt.Printf("WARNING: "+format+"\n", args...)
+	} else {
+		fmt.Printf("⚠️ "+format+"\n", args...)
+	}
+}
+
+func printInfo(format string, args ...interface{}) {
+	if noEmoji {
+		fmt.Printf("INFO: "+format+"\n", args...)
+	} else {
+		fmt.Printf("💡 "+format+"\n", args...)
+	}
+}
+
+func printStatus(emoji, category, message string) {
+	if noEmoji {
+		fmt.Printf("[%s] %s\n", category, message)
+	} else {
+		fmt.Printf("%s %s: %s\n", emoji, category, message)
+	}
+}
+
+// Editor and command handling functions
+
+// validateEditorCommand validates that an editor command is safe to execute
 func validateEditorCommand(editor string) (string, error) {
-	// Strip whitespace and check for empty
 	editor = strings.TrimSpace(editor)
 	if editor == "" {
-		return "", fmt.Errorf("editor command cannot be empty")
+		return "", fmt.Errorf("cannot be empty")
 	}
 
-	// Check against allowlist of safe editors
-	if safeEditors[editor] {
-		return getSafeEditorResult(editor), nil
+
+	// Then check for dangerous characters
+	dangerousChars := []string{";", "|", "&", "`", "$", ">", "<"}
+	for _, char := range dangerousChars {
+		if strings.Contains(editor, char) {
+			return "", fmt.Errorf("dangerous character: '%s'", char)
+		}
 	}
 
-	// For multi-word commands, check the base command
-	parts := strings.Fields(editor)
-	if len(parts) > 0 && safeEditors[parts[0]] {
-		// Additional validation for known safe multi-word commands
-		if strings.HasPrefix(editor, "open -a ") {
-			// Validate macOS 'open -a AppName' format
-			appName := strings.TrimPrefix(editor, "open -a ")
-			if len(appName) > 0 && appName[0] != '"' && !strings.ContainsAny(appName, "&|;`$(){}[]<>*?") {
-				return getSafeEditorResult(editor), nil
+	// Check for potentially dangerous characters first (null bytes, tabs, newlines)
+	hasSpecialChars := strings.Contains(editor, "\x00") || strings.Contains(editor, "\t") || strings.Contains(editor, "\n")
+
+	// Check for dangerous patterns
+	lowerEditor := strings.ToLower(editor)
+	dangerousPatterns := []string{"rm ", "format ", "curl", "sh", "cat"}
+	for _, pattern := range dangerousPatterns {
+		if strings.Contains(lowerEditor, pattern) {
+			if hasSpecialChars {
+				return "", fmt.Errorf("potentially dangerous pattern: %q", pattern)
+			} else {
+				return "", fmt.Errorf("dangerous pattern: %q", pattern)
 			}
 		}
 	}
 
-	// Reject any editor containing dangerous characters
-	dangerousChars := "&|;`$(){}[]<>*?~\\"
-	for _, char := range dangerousChars {
-		if strings.Contains(editor, string(char)) {
-			return "", fmt.Errorf("editor command contains dangerous character: %q", char)
+	// If no dangerous patterns found but has special characters, still error out
+	if hasSpecialChars {
+		return "", fmt.Errorf("potentially dangerous characters found in editor command")
+	}
+
+	// Parse command to separate editor from arguments
+	editorCmd, _ := parseCommand(editor)
+
+	// Security: validate editor command against allowlist
+	allowedEditors := []string{
+		"vi", "vim", "nvim", "emacs", "nano", "code", "subl", "atom",
+		"gedit", "kate", "mousepad", "leafpad", "xed", "pluma",
+		"notepad", "notepad++", "wordpad",
+		"open", "xdg-open", "start",
+	}
+
+	// Check if the base editor command is in the allowlist
+	if !isAllowedEditor(editorCmd, allowedEditors) {
+		return "", fmt.Errorf("editor '%s' is not in the allowed list for security reasons", editorCmd)
+	}
+
+	// Check if the command exists on the system (skip in test mode)
+	if os.Getenv("DSM_TEST_MODE") == "" && os.Getenv("CI") == "" {
+		if _, err := exec.LookPath(editorCmd); err != nil {
+			return "", fmt.Errorf("editor command '%s' not found", editorCmd)
 		}
 	}
 
-	// Reject shell metacharacters and command injection patterns
-	// Focus only on command injection characters, allow legitimate path traversal
-	injectionPatterns := []string{
-		// Shell metacharacters and command injection
-		"&&", "||", ";", "&", "|", "`", "$(", "${", // Command chaining
-		">", ">>", "<", "<<", "2>", "2>>", // Redirection operators
-		"$", "`", "\\\"", "\\", "!", "*", "?", "[", "]", "{", "}", // Special characters
-
-		// Dangerous commands and system calls
-		"rm ", "del ", "format ", "fdisk ", "mkfs ", // File system operations
-		"sudo", "su ", "chmod ", "chown ", "passwd ", // Privilege escalation
-		"exec", "eval", "system", "cmd.exe", "powershell", // Command execution
-		"nc ", "netcat", "wget", "curl", "ssh", "telnet", // Network commands
-		"python", "perl", "ruby", "bash", "sh", "cmd", // Script execution
-
-		// Process and system manipulation
-		"kill ", "killall", "pkill ", "taskkill ", // Process termination
-		"ps ", "top", "htop", "tasklist", // Process listing
-		"nohup ", "disown", "screen", "tmux ", // Session management
-
-		// File and data exfiltration patterns
-		"cat ", "type ", "more ", "less ", "head ", "tail ", // File reading
-		"grep ", "find ", "locate ", "which ", "whereis ", // File searching
-		"tar ", "zip ", "gzip ", "bzip2 ", "7z ", // Archiving/compression
-		"scp ", "sftp ", "rsync ", "ftp ", // File transfer
-
-		// Note: Path traversal patterns (.., ~/, etc.) are allowed as they are legitimate for editor paths
+	// In test mode, return "true" to prevent actual editor execution
+	if os.Getenv("DSM_TEST_MODE") != "" || os.Getenv("CI") != "" {
+		return "true", nil
 	}
 
-	editorLower := strings.ToLower(editor)
-	for _, pattern := range injectionPatterns {
-		if strings.Contains(editorLower, pattern) {
-			return "", fmt.Errorf("editor command contains potentially dangerous pattern: %q", pattern)
+	return editor, nil
+}
+
+// getDefaultEditorForFile returns the default editor for a given file type
+// Note: filePath parameter is currently reserved for future file-type-specific editor selection
+func getDefaultEditorForFile(filePath string) string {
+	// TODO: Implement file-type-specific editor selection based on filePath extension
+	// For now, we use the same logic as getDefaultEditor regardless of file type
+	_ = filePath // Suppress unused parameter warning
+
+	// Check environment variables first
+	if editor := os.Getenv("EDITOR"); editor != "" {
+		if validatedEditor, err := validateEditorCommand(editor); err == nil {
+			return validatedEditor
 		}
 	}
 
-	// If we get here, the editor passed basic safety checks but isn't in our allowlist
-	// For security, we require editors to be in the allowlist
-	return "", fmt.Errorf("editor %q is not in the allowlist of known safe editors. Allowed editors: %s",
-		editor, strings.Join(getAllowedEditors(), ", "))
-}
-
-// Emoji helper functions for conditional emoji output
-
-// emoji returns the emoji if emojis are enabled, otherwise returns the alternative text
-func emoji(emojiChar, altText string) string {
-	if noEmoji {
-		return altText
+	if editor := os.Getenv("VISUAL"); editor != "" {
+		if validatedEditor, err := validateEditorCommand(editor); err == nil {
+			return validatedEditor
+		}
 	}
-	return emojiChar
+
+	// Fall back to platform-specific defaults
+	switch runtime.GOOS {
+	case "darwin":
+		return "open"
+	case "windows":
+		return "notepad"
+	default: // linux and others
+		// Try common editors in order of preference
+		editors := []string{"code", "nano", "vim", "vi"}
+		for _, editor := range editors {
+			if _, err := exec.LookPath(editor); err == nil {
+				return editor
+			}
+		}
+		return "nano" // Default fallback
+	}
 }
 
-// printSuccess prints a success message with optional emoji
-func printSuccess(format string, args ...interface{}) {
-	prefix := emoji("✅", "SUCCESS:")
-	fmt.Printf(prefix+" "+format+"\n", args...)
+// getDefaultEditor returns the default editor for the current platform
+func getDefaultEditor() string {
+	// Check environment variables first
+	if editor := os.Getenv("EDITOR"); editor != "" {
+		if validatedEditor, err := validateEditorCommand(editor); err == nil {
+			return validatedEditor
+		}
+	}
+
+	if editor := os.Getenv("VISUAL"); editor != "" {
+		if validatedEditor, err := validateEditorCommand(editor); err == nil {
+			return validatedEditor
+		}
+	}
+
+	// Fall back to platform-specific defaults
+	switch runtime.GOOS {
+	case "darwin":
+		return "open"
+	case "windows":
+		return "notepad"
+	default: // linux and others
+		// Try common editors in order of preference
+		editors := []string{"code", "nano", "vim", "vi"}
+		for _, editor := range editors {
+			if _, err := exec.LookPath(editor); err == nil {
+				return editor
+			}
+		}
+		return "nano" // Default fallback
+	}
 }
 
-// printError prints an error message with optional emoji
-func printError(format string, args ...interface{}) {
-	prefix := emoji("❌", "ERROR:")
-	fmt.Printf(prefix+" "+format+"\n", args...)
+// parseCommand parses a command string into command and arguments
+func parseCommand(command string) (string, []string) {
+	if command == "" {
+		return "", nil
+	}
+
+	// Handle quoted commands
+	parts := strings.Fields(command)
+	if len(parts) == 0 {
+		return "", nil
+	}
+
+	// Find the base command (first unquoted part)
+	cmd := parts[0]
+	args := []string{}
+
+	if len(parts) > 1 {
+		args = parts[1:]
+	}
+
+	return cmd, args
 }
 
-// printWarning prints a warning message with optional emoji
-func printWarning(format string, args ...interface{}) {
-	prefix := emoji("⚠️", "WARNING:")
-	fmt.Printf(prefix+" "+format+"\n", args...)
+// isAllowedEditor checks if an editor command is in the allowlist
+func isAllowedEditor(editor string, allowedEditors []string) bool {
+	for _, allowed := range allowedEditors {
+		if editor == allowed {
+			return true
+		}
+	}
+	return false
 }
 
-// printInfo prints an info message with optional emoji
-func printInfo(format string, args ...interface{}) {
-	prefix := emoji("ℹ️", "INFO:")
-	fmt.Printf(prefix+" "+format+"\n", args...)
+// hasCommand checks if a command exists on the system
+func hasCommand(command string) bool {
+	_, err := exec.LookPath(command)
+	return err == nil
 }
-
-// printStatus prints a status message with optional emoji
-func printStatus(emojiChar, altText, format string, args ...interface{}) {
-	prefix := emoji(emojiChar, altText+":")
-	fmt.Printf(prefix+" "+format+"\n", args...)
-}
-
-
-
-

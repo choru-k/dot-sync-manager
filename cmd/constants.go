@@ -10,10 +10,7 @@ const (
 	// defaultLogLines is the default number of log lines to show
 	defaultLogLines = 50
 
-	// testModeEditor is a safe no-op command used in test/CI environments
-	// 'true' is a Unix command that exits successfully without side effects
-	testModeEditor = "true"
-
+	
 	// dirPerms grants owner-level write access while keeping directories traversable by other users, matching standard 0755 expectations.
 	dirPerms = 0755 // rwxr-xr-x so users can traverse synced directories
 
@@ -27,27 +24,6 @@ const (
 // Time function variable for testability
 var timeNow = time.Now
 
-// Safe editors allowlist for command injection protection
-var safeEditors = map[string]bool{
-	"atom":                    true,
-	"code":                    true,
-	"echo":                    true, // Safe for testing
-	"emacs":                   true,
-	"gedit":                   true,
-	"gvim":                    true,
-	"kate":                    true,
-	"nano":                    true,
-	"notepad":                 true,
-	"notepad++":               true,
-	"subl":                    true,
-	"sublime":                 true,
-	"unknown_but_safe_editor": true, // Add missing editor for test
-	"vim":                     true,
-	"vi":                      true,
-	"vscode":                  true,
-	"open -a TextEdit":        true, // macOS TextEdit
-	"open -a Sublime Text":    true, // macOS Sublime Text
-}
 
 // Configuration file name constants
 const (
