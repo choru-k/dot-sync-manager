@@ -502,7 +502,7 @@ func TestSyncService_MultipleStopCalls(t *testing.T) {
 	t.Log("Multiple Stop calls test completed successfully")
 }
 
-func TestSyncService_StopIdempotency(t *testing.T) {
+func TestSyncService_StopIdempotencyInServiceFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	gitConfig := gitmanager.Config{

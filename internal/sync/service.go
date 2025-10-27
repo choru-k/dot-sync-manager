@@ -25,9 +25,6 @@ type DebouncerInterface interface {
 	Pending() int
 }
 
-// Note: syncServiceTimeout constant removed as we now use context.WithCancel
-// to prevent premature termination of long-running sync operations
-
 // SyncService handles file watching and automatic syncing
 //
 // Thread Safety:
@@ -47,8 +44,7 @@ type SyncService struct {
 	advancedDebouncer *debouncer.AdvancedDebouncer
 
 	// State
-	running int32 // atomic.Bool replacement: 1 = running, 0 = not running
-	stopped int32 // atomic.Bool replacement: 1 = stopped, 0 = not stopped
+	running int32 // atomic: 1 = running, 0 = not running
 	ctx     context.Context
 	cancel  context.CancelFunc
 
@@ -57,9 +53,6 @@ type SyncService struct {
 
 	// Thread safety
 	stopOnce sync.Once
-
-	// Deadlock prevention: track if Stop() is called from eventLoop
-	inEventLoop int32 // atomic.Bool: 1 if in eventLoop, 0 otherwise
 
 	// Event callbacks
 	onSyncStart    func()
@@ -152,20 +145,17 @@ func (s *SyncService) Start() error {
 		return fmt.Errorf("sync: service already running")
 	}
 
-// Check if this is a restart (service was stopped before)
+	// Reinitialize resources if this is a restart
 	if s.watcher == nil {
-		// Recreate context for restart
 		s.ctx, s.cancel = context.WithCancel(context.Background())
-		// Reset stopOnce to allow shutdown again
 		s.stopOnce = sync.Once{}
-		// Reset shutdownWG
 		s.shutdownWG = sync.WaitGroup{}
 
-		var err error
-		s.watcher, err = fsnotify.NewWatcher()
+		watcher, err := fsnotify.NewWatcher()
 		if err != nil {
-			return fmt.Errorf("sync: failed to create new watcher: %w", err)
+			return fmt.Errorf("sync: failed to create watcher: %w", err)
 		}
+		s.watcher = watcher
 	}
 
 	// Add the repository path to the watcher
@@ -184,8 +174,6 @@ func (s *SyncService) Start() error {
 	s.shutdownWG.Add(1)
 	go func() {
 		defer s.shutdownWG.Done()
-		atomic.StoreInt32(&s.inEventLoop, 1)
-		defer atomic.StoreInt32(&s.inEventLoop, 0)
 		s.eventLoop()
 	}()
 
@@ -195,35 +183,22 @@ func (s *SyncService) Start() error {
 
 // Stop stops the file watching service and returns any error encountered during shutdown
 func (s *SyncService) Stop() error {
-	// Check if service is currently running before using sync.Once
-	// This prevents premature Stop() calls from burning the once and
-	// disabling cleanup when the service is actually running later
+	// Early return if not running - this prevents burning sync.Once
 	if atomic.LoadInt32(&s.running) == 0 {
-		// Service is not running, nothing to do
 		return nil
 	}
 
 	var shutdownErrors []error
+	var wasRunning bool
 
-	// Use sync.Once to ensure cleanup happens only once when service is actually running
+	// Perform shutdown operations exactly once
 	s.stopOnce.Do(func() {
-		// State management explanation:
-		// - running (atomic int32): Fast atomic check for service state, used in IsRunning()
-		// - stopped (atomic int32): Prevents service reuse after Stop()
-		// This provides both performance (atomic reads) and thread safety
-		// with minimal complexity and no race conditions
-
-		// Atomically set running state to 0 and mark as stopped
-		atomic.StoreInt32(&s.running, 0)
-
-		// Mark service as stopped before cleanup to prevent reuse
-		atomic.StoreInt32(&s.stopped, 1)
-
+		wasRunning = atomic.SwapInt32(&s.running, 0) == 1
 		if !wasRunning {
-			// Service wasn't running, nothing to clean up
 			return
 		}
 
+		// Cancel context to signal shutdown
 		s.cancel()
 
 		// Cancel pending debounces
@@ -242,21 +217,22 @@ func (s *SyncService) Stop() error {
 				shutdownErrors = append(shutdownErrors, fmt.Errorf("failed to close watcher: %w", err))
 			}
 		}
-
-		log.Println("sync: shutdown initiated")
 	})
 
-	// Wait for the eventLoop goroutine to finish processing
-	// This is done outside the sync.Once to prevent deadlock when Stop()
-	// is called from within the event loop (e.g., from callbacks)
+	// If service wasn't running when stopOnce was executed, nothing to do
+	if !wasRunning {
+		return nil
+	}
+
+	// Wait for event loop to finish
 	s.shutdownWG.Wait()
 
-	// Set watcher to nil after eventLoop has exited so it can be recreated in Start()
+	// Clean up for potential restart
 	s.watcher = nil
 
 	log.Println("sync: stopped")
 
-	// Combine any shutdown errors into a single error
+	// Return any shutdown errors
 	if len(shutdownErrors) > 0 {
 		if len(shutdownErrors) == 1 {
 			return shutdownErrors[0]
@@ -373,36 +349,24 @@ func (s *SyncService) performManualSync() {
 	// Add panic recovery to prevent service crashes
 	defer func() {
 		if r := recover(); r != nil {
-			errMsg := fmt.Sprintf("panic in manual sync for repository %s: %v", s.config.RepoPath, r)
-			log.Printf("sync: %s", errMsg)
-
-			if s.onError != nil {
-				s.onError(fmt.Errorf("sync: %s", errMsg))
-			}
-
-			if s.onSyncComplete != nil {
-				s.onSyncComplete(nil, fmt.Errorf("sync: %s", errMsg))
-			}
+			err := fmt.Errorf("panic in manual sync for repository %s: %v", s.config.RepoPath, r)
+			log.Printf("sync: %v", err)
+			s.notifyError(err)
+			s.notifySyncComplete(nil, err)
 		}
 	}()
 
-	if s.onSyncStart != nil {
-		s.onSyncStart()
-	}
+	s.notifySyncStart()
 
 	// Use the git manager to stage, commit, and push changes
 	changedFiles, err := s.gitManager.StageCommitAndPush(s.ctx, time.Now())
 
-	if s.onSyncComplete != nil {
-		s.onSyncComplete(changedFiles, err)
-	}
+	s.notifySyncComplete(changedFiles, err)
 
 	if err != nil {
-		errMsg := fmt.Sprintf("manual sync failed on repository %s: %v", s.config.RepoPath, err)
-		log.Printf("sync: %s", errMsg)
-		if s.onError != nil {
-			s.onError(fmt.Errorf("sync: %s", errMsg))
-		}
+		err = fmt.Errorf("manual sync failed on repository %s: %w", s.config.RepoPath, err)
+		log.Printf("sync: %v", err)
+		s.notifyError(err)
 		return
 	}
 
@@ -443,6 +407,27 @@ func (s *SyncService) SetEventCallbacks(onSyncStart func(), onSyncComplete func(
 	s.onSyncStart = onSyncStart
 	s.onSyncComplete = onSyncComplete
 	s.onError = onError
+}
+
+// notifySyncStart triggers the sync start callback if set
+func (s *SyncService) notifySyncStart() {
+	if s.onSyncStart != nil {
+		s.onSyncStart()
+	}
+}
+
+// notifySyncComplete triggers the sync complete callback if set
+func (s *SyncService) notifySyncComplete(files []string, err error) {
+	if s.onSyncComplete != nil {
+		s.onSyncComplete(files, err)
+	}
+}
+
+// notifyError triggers the error callback if set
+func (s *SyncService) notifyError(err error) {
+	if s.onError != nil {
+		s.onError(err)
+	}
 }
 
 // IsRunning returns whether the service is currently running

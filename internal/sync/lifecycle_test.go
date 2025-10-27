@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -71,21 +70,21 @@ func TestSyncService_StartStopStartLifecycle(t *testing.T) {
 		// Small delay to ensure cleanup is complete
 		time.Sleep(10 * time.Millisecond)
 
-		// Attempt to start the service again (this should fail)
+		// Attempt to start the service again (this should succeed - services are restartable)
 		err = service.Start()
-		if err == nil {
-			t.Fatal("Expected error when trying to restart service after Stop()")
+		if err != nil {
+			t.Fatalf("Expected service to restart successfully after Stop(), got error: %v", err)
 		}
 
-		// Verify the error message contains the expected text
-		expectedError := "service cannot be restarted after Stop()"
-		if !strings.Contains(err.Error(), expectedError) {
-			t.Errorf("Expected error to contain '%s', got: %v", expectedError, err)
+		// Verify service is running again
+		if !service.IsRunning() {
+			t.Error("Service should be running after successful restart")
 		}
 
-		// Verify service is still not running
-		if service.IsRunning() {
-			t.Error("Service should not be running after failed restart attempt")
+		// Stop the service again to clean up
+		err = service.Stop()
+		if err != nil {
+			t.Fatalf("Failed to stop restarted service: %v", err)
 		}
 	})
 
@@ -164,21 +163,21 @@ func TestSyncService_StartStopStartLifecycle(t *testing.T) {
 		// Small delay to ensure cleanup
 		time.Sleep(10 * time.Millisecond)
 
-		// Should NOT be able to start again
+		// Should be able to start again (services are restartable)
 		err = newService.Start()
-		if err == nil {
-			t.Fatal("Expected error when trying to restart service after concurrent stops")
+		if err != nil {
+			t.Fatalf("Expected service to restart successfully after concurrent stops, got error: %v", err)
 		}
 
-		// Verify the error message contains the expected text
-		expectedError := "service cannot be restarted after Stop()"
-		if !strings.Contains(err.Error(), expectedError) {
-			t.Errorf("Expected error to contain '%s', got: %v", expectedError, err)
+		// Verify it's running
+		if !newService.IsRunning() {
+			t.Error("Service should be running after successful restart")
 		}
 
-		// Verify it's not running
-		if newService.IsRunning() {
-			t.Error("Service should not be running after failed restart attempt")
+		// Stop the service again to clean up
+		err = newService.Stop()
+		if err != nil {
+			t.Fatalf("Failed to stop restarted service: %v", err)
 		}
 	})
 }
