@@ -150,8 +150,10 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	}
 
 	if err := process.WritePIDExclusive(os.Getpid()); err != nil {
-		if stopErr := service.Stop(); stopErr != nil {
-			return fmt.Errorf("failed to write PID file: %w; also failed to stop service: %w", err, stopErr)
+		if service != nil {
+			if stopErr := service.Stop(); stopErr != nil {
+				return fmt.Errorf("failed to write PID file: %w; also failed to stop service: %w", err, stopErr)
+			}
 		}
 		return fmt.Errorf("failed to write PID file: %w", err)
 	}

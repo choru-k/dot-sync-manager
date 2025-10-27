@@ -244,22 +244,10 @@ func (s *SyncService) Start() error {
 		s.mu.Lock()
 		// Double-check after acquiring write lock
 		if s.watcher == nil {
-			log.Printf("sync: restarting service - recreating resources for repository: %s", s.config.RepoPath)
-			s.ctx, s.cancel = context.WithCancel(context.Background())
-			atomic.StoreInt32(&s.shutdownInitiated, 0) // reset shutdown flag for new lifecycle
-
-			newWatcher, err := fsnotify.NewWatcher()
-			if err != nil {
+			if err := s.recreateResources(); err != nil {
 				s.mu.Unlock()
 				rollbackState()
-				return fmt.Errorf("sync: failed to create watcher during service restart [%s]: %w", ErrIDWatcherCreateFailed, err)
-			}
-			s.watcher = newWatcher
-
-			// Restart advanced debouncer if it was previously stopped
-			if s.advancedDebouncer != nil {
-				s.advancedDebouncer.Start()
-				log.Printf("sync: restarted advanced debouncer for repository: %s", s.config.RepoPath)
+				return err
 			}
 			// Update the local watcher reference after successful recreation
 			watcher = s.watcher
@@ -631,4 +619,29 @@ func (s *SyncService) GetStats() map[string]interface{} {
 	}
 
 	return stats
+}
+
+// recreateResources recreates the watcher and other resources needed for service restart
+// This method must be called with s.mu.Lock() held
+func (s *SyncService) recreateResources() error {
+	log.Printf("sync: restarting service - recreating resources for repository: %s", s.config.RepoPath)
+
+	// Reset context and shutdown flag for new lifecycle
+	s.ctx, s.cancel = context.WithCancel(context.Background())
+	atomic.StoreInt32(&s.shutdownInitiated, 0)
+
+	// Create new watcher
+	newWatcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("sync: failed to create watcher during service restart [%s]: %w", ErrIDWatcherCreateFailed, err)
+	}
+	s.watcher = newWatcher
+
+	// Restart advanced debouncer if it was previously stopped
+	if s.advancedDebouncer != nil {
+		s.advancedDebouncer.Start()
+		log.Printf("sync: restarted advanced debouncer for repository: %s", s.config.RepoPath)
+	}
+
+	return nil
 }

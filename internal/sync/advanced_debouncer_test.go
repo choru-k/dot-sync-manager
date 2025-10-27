@@ -8,24 +8,35 @@ import (
 	"github.com/choru-k/dot-sync-manager/internal/debouncer"
 )
 
+// Advanced debouncer test timing constants for easier tuning and consistency
+const (
+	advTestDebounceDelay   = 100 * time.Millisecond
+	advTestBaseDelay      = 100 * time.Millisecond
+	advTestMaxDelay       = 1 * time.Second
+	advTestChurnWindow    = 200 * time.Millisecond
+	advTestDecayResetDur  = 1 * time.Second
+	advTestExecutionDelay = 200 * time.Millisecond
+	advTestShortWait      = 50 * time.Millisecond
+)
+
 func TestSyncService_AdvancedDebouncer_Integration(t *testing.T) {
 	// Test that we can create a sync service with advanced debouncer configuration
 	// without actually needing a git repository
 
 	// Create sync service configuration with advanced debouncer
 	backoffConfig := &debouncer.AdvancedDebouncerConfig{
-		BaseDelay:          100 * time.Millisecond,
-		MaxDelay:           1 * time.Second,
+		BaseDelay:          advTestBaseDelay,
+		MaxDelay:           advTestMaxDelay,
 		BackoffEnabled:     true,
 		BackoffMultiplier:  2.0,
 		ChurnThreshold:     3,
-		ChurnWindow:        200 * time.Millisecond,
-		DecayResetDuration: 1 * time.Second,
+		ChurnWindow:        advTestChurnWindow,
+		DecayResetDuration: advTestDecayResetDur,
 	}
 
 	_ = &Config{
 		RepoPath:        "/tmp/test", // Dummy path
-		DebounceDelay:   100 * time.Millisecond,
+		DebounceDelay:   advTestDebounceDelay,
 		AutoSyncEnabled: true,
 		IgnoreFile:      ".syncignore",
 		Backoff:         backoffConfig,
@@ -47,7 +58,7 @@ func TestSyncService_AdvancedDebouncer_Integration(t *testing.T) {
 	})
 
 	// Wait for execution
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(advTestExecutionDelay)
 
 	mu.Lock()
 	if !called {
@@ -84,7 +95,7 @@ func TestSyncService_AdvancedDebouncer_Integration(t *testing.T) {
 	})
 
 	// Should be called immediately
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(advTestShortWait)
 	mu.Lock()
 	if !called {
 		t.Error("Expected immediate function to be called")
@@ -104,7 +115,7 @@ func TestSyncService_BasicDebouncer_BackwardCompatibility(t *testing.T) {
 	// Create sync service configuration without backoff (basic debouncer)
 	syncConfig := &Config{
 		RepoPath:        "/tmp/test", // Dummy path
-		DebounceDelay:   100 * time.Millisecond,
+		DebounceDelay:   advTestDebounceDelay,
 		AutoSyncEnabled: true,
 		IgnoreFile:      ".syncignore",
 		Backoff:         nil, // No backoff configuration
@@ -131,7 +142,7 @@ func TestSyncService_BasicDebouncer_BackwardCompatibility(t *testing.T) {
 	})
 
 	// Wait for execution
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(advTestExecutionDelay)
 
 	mu.Lock()
 	if !called {

@@ -23,6 +23,11 @@ const (
 
 	// DebouncerTimeout is the maximum time to wait for debouncer operations
 	DebouncerTimeout = 10 * time.Minute
+
+	// Error IDs for monitoring and debugging - local to debouncer package
+	// These IDs help track specific error types in monitoring systems like Sentry
+	ErrIDDebouncerCallbackPanic     = "DEBOUNCER_CALLBACK_PANIC"
+	ErrIDDebouncerTimerCancelFailed = "DEBOUNCER_TIMER_CANCEL_FAILED"
 )
 
 // AdvancedDebouncer provides configurable debounce with exponential backoff
@@ -254,7 +259,7 @@ func (d *AdvancedDebouncer) AddWithContext(ctx context.Context, key string, fn f
 		defer func() {
 			if r := recover(); r != nil {
 				// Create proper error from panic
-				err := fmt.Errorf("panic in debounced callback for key %s: %v [%s]", key, r, "DEBOUNCER_CALLBACK_PANIC")
+				err := fmt.Errorf("panic in debounced callback for key %s: %v [%s]", key, r, ErrIDDebouncerCallbackPanic)
 				log.Printf("ERROR: %v", err)
 
 				// Propagate error through error callback if available
@@ -687,7 +692,7 @@ func (d *AdvancedDebouncer) Stop() error {
 
 	// Cancel all pending timers and operations with error collection
 		if errs := d.cancelAllTimers(); len(errs) > 0 {
-			shutdownErrors = append(shutdownErrors, fmt.Errorf("errors cancelling timers during shutdown [%s]: %w", "DEBOUNCER_TIMER_CANCEL_FAILED", errors.Join(errs...)))
+			shutdownErrors = append(shutdownErrors, fmt.Errorf("errors cancelling timers during shutdown [%s]: %w", ErrIDDebouncerTimerCancelFailed, errors.Join(errs...)))
 		}
 
 	// Cancel the context to stop any pending callbacks
@@ -747,6 +752,18 @@ func (d *AdvancedDebouncer) Start() {
 	if atomic.LoadInt32(&d.started) == 1 {
 		return // Already started (another goroutine won the race)
 	}
+
+	// Reset stopped state to allow restart after Stop()
+	d.manualSyncMu.Lock()
+	if d.stopped {
+		// Recreate channels that were closed during Stop()
+		d.done = make(chan struct{})
+		d.manualSyncQueue = make(chan manualSyncRequest, 100)
+		d.stopped = false
+		// Reset the sync.Once for shutdown
+		d.stopOnce = sync.Once{}
+	}
+	d.manualSyncMu.Unlock()
 
 	// Mark as started before launching goroutine
 	atomic.StoreInt32(&d.started, 1)

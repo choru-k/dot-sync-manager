@@ -316,6 +316,7 @@ func (p *Parser) matchMultiPattern(patternParts, pathParts []string) bool {
 
 // GetPatterns returns the current patterns (for testing)
 func (p *Parser) GetPatterns() []Pattern {
+	// RLock protects concurrent read access to the patterns slice
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.patterns
