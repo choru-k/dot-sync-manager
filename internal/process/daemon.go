@@ -1,20 +1,25 @@
 package process
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
-	"github.com/choru-k/dot-sync-manager/internal/util"
+	"github.com/gofrs/flock"
 )
 
 const (
-	pidFileName  = ".dotfile-sync-manager.pid"
-	pidFilePerms = 0o600 // owner read/write only to protect daemon PID information
-	exeExtension = ".exe" // Windows executable extension
+	pidFileName        = ".dotfile-sync-manager.pid"
+	pidFilePerms       = 0o600 // owner read/write only to protect daemon PID information
+	exeExtension       = ".exe" // Windows executable extension
+	lockTimeout        = 5 * time.Second
+	lockRetryInterval  = 100 * time.Millisecond
+	maxLockRetries     = lockTimeout / lockRetryInterval
 )
 
 // pidFilePath returns the absolute path to the PID file in the user's home directory.
@@ -28,46 +33,149 @@ func pidFilePath() (string, error) {
 	return filepath.Join(home, pidFileName), nil
 }
 
-// WritePIDExclusive atomically creates the PID file with O_EXCL flag.
+// WritePIDExclusive atomically creates the PID file with exclusive file locking.
 // This prevents TOCTOU race conditions between checking if daemon is running
-// and writing the PID file. Returns an error if PID file already exists.
+// and writing the PID file. Uses flock for cross-platform file locking.
 func WritePIDExclusive(pid int) (err error) {
 	if pid <= 0 {
 		return fmt.Errorf("process: write pid exclusive: invalid pid %d", pid)
 	}
-	
+
 	// Get the current executable name for reliable daemon detection
 	exeName := defaultProcessName()
-	
+
 	path, err := pidFilePath()
 	if err != nil {
 		return fmt.Errorf("process: write pid exclusive: failed to get path: %w", err)
 	}
-	
+
+	// Create lock file path - use .lock extension for the lock file
+	lockPath := path + ".lock"
+	fileLock := flock.New(lockPath)
+
+	// Try to acquire exclusive lock with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), lockTimeout)
+	defer cancel()
+
+	locked, err := fileLock.TryLockContext(ctx, lockRetryInterval)
+	if err != nil {
+		return fmt.Errorf("process: write pid exclusive: failed to acquire lock: %w", err)
+	}
+	if !locked {
+		return fmt.Errorf("process: daemon already running (cannot acquire lock)")
+	}
+	defer func() {
+		if unlockErr := fileLock.Unlock(); unlockErr != nil {
+			log.Printf("process: warning - failed to unlock PID file: %v", unlockErr)
+		}
+		// Clean up lock file
+		if removeErr := os.Remove(lockPath); removeErr != nil && !os.IsNotExist(removeErr) {
+			log.Printf("process: warning - failed to remove lock file: %v", removeErr)
+		}
+	}()
+
+	// Check for stale PID file and clean up if necessary
+	if err := cleanupStalePIDFile(path, exeName); err != nil {
+		return fmt.Errorf("process: write pid exclusive: failed to cleanup stale PID: %w", err)
+	}
+
 	// Store both PID and executable name in format: "PID:exe_name"
 	content := fmt.Sprintf("%d:%s", pid, exeName)
-	
-	// Create file atomically with O_EXCL flag
-	flags := os.O_WRONLY | os.O_CREATE | os.O_EXCL
-	var file *os.File
-	file, err = os.OpenFile(path, flags, pidFilePerms)
-	if err != nil {
-		if os.IsExist(err) {
-			return fmt.Errorf("process: daemon already running (PID file exists)")
-		}
+
+	// Write PID file atomically
+	if err := os.WriteFile(path, []byte(content), pidFilePerms); err != nil {
 		return fmt.Errorf("process: write pid exclusive: %w", err)
 	}
-	defer util.CloseAndCaptureErr(file, &err)
-	
-	if _, err := file.WriteString(content); err != nil {
-		// Clean up on write failure
-		if removeErr := os.Remove(path); removeErr != nil {
-			log.Printf("process: warning - failed to remove PID file after write error: %v", removeErr)
-		}
-		return fmt.Errorf("process: write pid exclusive: %w", err)
-	}
-	
+
 	return nil
+}
+
+// cleanupStalePIDFile checks if the existing PID file contains a stale PID and
+// removes it if the process is no longer running or doesn't match the expected name.
+func cleanupStalePIDFile(pidPath, expectedExeName string) error {
+	pidInfo, err := readPIDFromPath(pidPath)
+	if err != nil {
+		// PID file doesn't exist or can't be read - that's fine
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("process: cleanup stale pid: failed to read PID file: %w", err)
+	}
+
+	// Check if the stored PID is still running and matches expected name
+	if pidInfo.pid == os.Getpid() {
+		// PID file contains current process PID - remove it
+		if err := os.Remove(pidPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("process: cleanup stale pid: failed to remove self PID file: %w", err)
+		}
+		return nil
+	}
+
+	// Verify if process is actually running
+	if !processExists(pidInfo.pid) {
+		// Process is not running - stale PID file
+		if err := os.Remove(pidPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("process: cleanup stale pid: failed to remove stale PID file: %w", err)
+		}
+		log.Printf("process: removed stale PID file for dead process %d", pidInfo.pid)
+		return nil
+	}
+
+	// Process is running, verify the executable name
+	storedExeName := pidInfo.exeName
+	if storedExeName == "" {
+		// Legacy PID file format - use current executable name for comparison
+		storedExeName = expectedExeName
+	}
+
+	if !verifyProcessName(pidInfo.pid, storedExeName) {
+		// Process name doesn't match - PID has been recycled
+		if err := os.Remove(pidPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("process: cleanup stale pid: failed to remove recycled PID file: %w", err)
+		}
+		log.Printf("process: removed PID file with recycled PID %d (name mismatch)", pidInfo.pid)
+		return nil
+	}
+
+	// Process is running and name matches - daemon is already running
+	return fmt.Errorf("process: daemon already running (PID %d)", pidInfo.pid)
+}
+
+// readPIDFromPath reads and parses the PID and executable name from a specific PID file path.
+// This is a version of readPID that works with any path for testing and cleanup purposes.
+func readPIDFromPath(path string) (*pidInfo, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err // Don't wrap error to preserve os.IsNotExist check
+	}
+	content := strings.TrimSpace(string(data))
+
+	// Parse content into parts (legacy: "PID", new: "PID:exe_name")
+	parts := strings.SplitN(content, ":", 2)
+	pidStr := parts[0]
+
+	// Validate PID first (common to both formats)
+	pid, convErr := strconv.Atoi(pidStr)
+	if convErr != nil {
+		return nil, fmt.Errorf("process: invalid pid value %q: %w", pidStr, convErr)
+	}
+	if pid <= 0 {
+		return nil, fmt.Errorf("process: invalid pid value %q: must be positive: %w", pidStr, convErr)
+	}
+
+	// Handle format-specific logic
+	if len(parts) == 1 {
+		// Legacy format: just the PID, no executable name
+		return &pidInfo{pid: pid, exeName: ""}, nil
+	}
+
+	// New format: PID:exe_name
+	exeName := parts[1]
+	if exeName == "" {
+		return nil, fmt.Errorf("process: missing executable name in pid file")
+	}
+
+	return &pidInfo{pid: pid, exeName: exeName}, nil
 }
 
 // WritePID persists the daemon PID and executable name for later lookup.
@@ -90,15 +198,24 @@ func WritePID(pid int) error {
 	return os.WriteFile(path, []byte(content), pidFilePerms)
 }
 
-// RemovePID deletes the stored PID file if it exists.
+// RemovePID deletes the stored PID file and associated lock file if they exist.
 func RemovePID() error {
 	path, err := pidFilePath()
 	if err != nil {
 		return fmt.Errorf("process: remove pid: failed to get path: %w", err)
 	}
+
+	// Remove PID file
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("process: remove pid file: %w", err)
 	}
+
+	// Remove lock file if it exists
+	lockPath := path + ".lock"
+	if err := os.Remove(lockPath); err != nil && !os.IsNotExist(err) {
+		log.Printf("process: warning - failed to remove lock file: %v", err)
+	}
+
 	return nil
 }
 
@@ -248,6 +365,14 @@ func GetDaemonPID() (int, error) {
 		return 0, fmt.Errorf("process: pid %d does not match expected daemon", pid)
 	}
 	return pid, nil
+}
+
+// DefaultProcessName returns the expected binary name for daemon detection.
+// Uses os.Executable() to get the actual running binary name, falling back
+// to "dot-sync-manager" if that fails. This ensures we can find the daemon
+// even if the binary was renamed or executed from a different path.
+func DefaultProcessName() string {
+	return defaultProcessName()
 }
 
 // defaultProcessName returns the expected binary name for daemon detection.
