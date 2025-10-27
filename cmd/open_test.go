@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -257,6 +258,33 @@ func TestOpenCmd_EditorIntegration(t *testing.T) {
 }
 
 func TestGetEditorCommand(t *testing.T) {
+	// For CI testing in Linux containers, we expect the Linux behavior
+	// The getDefaultEditorCommon() function tries editors in order: code, nano, vim, vi
+	// If none are found, it falls back to "nano"
+	var expectedDefault string
+	if os.Getenv("CI") != "" || os.Getenv("DSM_TEST_MODE") != "" {
+		// In CI/test mode, we expect the fallback to "nano" unless "code" is available
+		if _, err := exec.LookPath("code"); err == nil {
+			expectedDefault = "code"
+		} else {
+			expectedDefault = "nano"
+		}
+	} else {
+		// For local testing, use the actual platform detection
+		switch runtime.GOOS {
+		case "darwin":
+			expectedDefault = "open" // macOS default
+		case "windows":
+			expectedDefault = "notepad" // Windows default
+		default:
+			if _, err := exec.LookPath("code"); err == nil {
+				expectedDefault = "code"
+			} else {
+				expectedDefault = "nano" // Linux fallback
+			}
+		}
+	}
+
 	tests := []struct {
 		name     string
 		filePath string
@@ -265,17 +293,17 @@ func TestGetEditorCommand(t *testing.T) {
 		{
 			name:     "text file",
 			filePath: "/tmp/test.txt",
-			expected: editorVSCode, // Default to VS Code
+			expected: expectedDefault,
 		},
 		{
 			name:     "markdown file",
 			filePath: "/tmp/test.md",
-			expected: editorVSCode, // Default to VS Code
+			expected: expectedDefault,
 		},
 		{
 			name:     "json file",
 			filePath: "/tmp/config.json",
-			expected: editorVSCode, // Default to VS Code
+			expected: expectedDefault,
 		},
 	}
 

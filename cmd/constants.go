@@ -14,12 +14,7 @@ const (
 	// dirPerms grants owner-level write access while keeping directories traversable by other users, matching standard 0755 expectations.
 	dirPerms = 0755 // rwxr-xr-x so users can traverse synced directories
 
-	// Editor fallbacks by platform
-	editorNotepad  = "notepad"
-	editorTextEdit = "open -a TextEdit"
-	editorNano     = "nano"
-	editorVSCode   = "code"
-)
+	)
 
 // Time function variable for testability
 var timeNow = time.Now
