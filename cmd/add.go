@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
@@ -47,10 +46,11 @@ const (
 )
 
 var (
-	mkdirAllFunc = os.MkdirAll
-	removeFunc   = os.Remove
-	symlinkFunc  = os.Symlink
-	renameFunc   = os.Rename
+	mkdirAllFunc  = os.MkdirAll
+	removeFunc    = os.Remove
+	symlinkFunc   = os.Symlink
+	renameFunc    = os.Rename
+	readFileFunc  = os.ReadFile
 
 	copyFileFunc = copyFile
 	saveConfigFn = func(cfg *config.SyncConfig, path string) error {
@@ -230,40 +230,9 @@ Hint: Only add files from outside the repository`, absPath)
 		return "", fmt.Errorf("target path is outside repository: %s", absTarget)
 	}
 
-	// SECURITY NOTE: We create the target file atomically to prevent TOCTOU attacks.
-	// This approach ensures there's no race condition between checking existence
-	// and creating the file/symlink.
-
-	// Try to create the target file atomically first to check if it exists
-	// If it already exists, we'll get an error and can report it safely
-	testFile := filepath.Join(filepath.Dir(targetPath), ".dsm-test-"+strconv.Itoa(os.Getpid()))
-	defer func() {
-		// Clean up the test file
-		if _, err := os.Stat(testFile); err == nil {
-			_ = os.Remove(testFile)
-		}
-	}()
-
-	if err := mkdirAllFunc(filepath.Dir(targetPath), dirPerms); err != nil {
-		return "", fmt.Errorf("failed to create target directory: %w", err)
-	}
-
-	// Use atomic file creation to test if the target path is available
-	if err := util.CreateFileSecurely(testFile, []byte("test"), 0644); err == nil {
-		// Test file created successfully, remove it and continue
-		_ = os.Remove(testFile)
-	} else if strings.Contains(err.Error(), "already exists") {
-		// This shouldn't happen with our unique filename, but handle it
-		return "", fmt.Errorf("unable to create test file in target directory")
-	}
-
-	// Now check if the actual target exists (this is just a final safety check)
-	if _, err := os.Stat(targetPath); err == nil {
-		return "", fmt.Errorf(`target file already exists in dotfiles: %s
-This file may have been added previously`, targetPath)
-	} else if err != nil && !os.IsNotExist(err) {
-		return "", fmt.Errorf("failed to check target path: %w", err)
-	}
+	// NOTE: This function only performs validation and path calculation.
+	// Directory creation and file operations are handled in executeAddTransaction
+	// to follow the style guide separation of concerns and prevent TOCTOU attacks.
 
 	return targetPath, nil
 }
@@ -278,6 +247,11 @@ func executeAddTransaction(cfg *config.SyncConfig, filePath, targetPath string) 
 		return "", false, fmt.Errorf("failed to create backup directory: %w", err)
 	}
 
+	// Create target directory to follow style guide separation of concerns
+	if err := mkdirAllFunc(filepath.Dir(targetPath), dirPerms); err != nil {
+		return "", false, fmt.Errorf("failed to create target directory: %w", err)
+	}
+
 	timestamp := timeNow().Format(backupTimestampFormat)
 	filename := filepath.Base(filePath)
 	backupPath := filepath.Join(backupDir, fmt.Sprintf("%s-%s", filename, timestamp))
@@ -288,11 +262,21 @@ func executeAddTransaction(cfg *config.SyncConfig, filePath, targetPath string) 
 	backupCreated := true
 	fmt.Printf("📦 Backed up original file to: %s\n", backupPath)
 
-	if err := copyFileFunc(filePath, targetPath); err != nil {
+	// Read source file content for atomic creation
+	sourceData, err := readFileFunc(filePath)
+	if err != nil {
 		if backupCreated {
-			fmt.Printf("⚠️  Failed to copy file to dotfiles. Backup of original file retained at: %s\n", backupPath)
+			fmt.Printf("⚠️  Failed to read source file. Backup of original file retained at: %s\n", backupPath)
 		}
-		return backupPath, backupCreated, fmt.Errorf("failed to copy file to dotfiles: %w", err)
+		return backupPath, backupCreated, fmt.Errorf("failed to read source file: %w", err)
+	}
+
+	// Use CreateFileSecurely for atomic file creation to prevent TOCTOU attacks
+	if err := util.CreateFileSecurely(targetPath, sourceData, 0644); err != nil {
+		if backupCreated {
+			fmt.Printf("⚠️  Failed to create file in dotfiles. Backup of original file retained at: %s\n", backupPath)
+		}
+		return backupPath, backupCreated, fmt.Errorf("failed to create file in dotfiles: %w", err)
 	}
 
 	if err := removeFunc(filePath); err != nil {

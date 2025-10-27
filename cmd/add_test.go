@@ -237,19 +237,19 @@ func TestRunAddCopyFailureRetainsBackup(t *testing.T) {
 		t.Fatalf("failed to write source file: %v", err)
 	}
 
-	originalCopy := copyFileFunc
-	callCount := 0
-	copyFileFunc = func(src, dst string) error {
-		callCount++
-		if callCount == 2 {
-			return errors.New("simulated copy failure")
+	// Mock readFileFunc to simulate a failure during source file reading
+	originalReadFile := readFileFunc
+	readFileFunc = func(path string) ([]byte, error) {
+		// Let backup creation succeed by checking if this is the backup copy
+		if strings.Contains(path, ".backup/") {
+			return originalReadFile(path)
 		}
-		return originalCopy(src, dst)
+		return nil, errors.New("simulated file read failure")
 	}
-	t.Cleanup(func() { copyFileFunc = originalCopy })
+	t.Cleanup(func() { readFileFunc = originalReadFile })
 
-	if err := runAdd(&cobra.Command{}, []string{source}); err == nil || !strings.Contains(err.Error(), "failed to copy file to dotfiles") {
-		t.Fatalf("expected copy error, got %v", err)
+	if err := runAdd(&cobra.Command{}, []string{source}); err == nil || !strings.Contains(err.Error(), "failed to read source file") {
+		t.Fatalf("expected file read error, got %v", err)
 	}
 
 	info, err := os.Lstat(source)
@@ -257,7 +257,7 @@ func TestRunAddCopyFailureRetainsBackup(t *testing.T) {
 		t.Fatalf("failed to stat original file: %v", err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		t.Fatalf("expected original file to remain regular file when copy fails")
+		t.Fatalf("expected original file to remain regular file when file creation fails")
 	}
 
 	target, err := getTargetPath(repoPath, source)
@@ -265,7 +265,7 @@ func TestRunAddCopyFailureRetainsBackup(t *testing.T) {
 		t.Fatalf("failed to compute target path: %v", err)
 	}
 	if _, err := os.Stat(target); err == nil || !os.IsNotExist(err) {
-		t.Fatalf("expected no target file after copy failure, err=%v", err)
+		t.Fatalf("expected no target file after creation failure, err=%v", err)
 	}
 
 	backupDir := filepath.Join(repoPath, defaultBackupDirName)
