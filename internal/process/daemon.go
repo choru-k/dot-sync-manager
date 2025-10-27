@@ -249,6 +249,8 @@ func WritePID(pid int) error {
 }
 
 // RemovePID deletes the stored PID file and associated lock file if they exist.
+// This is a legacy function maintained for compatibility.
+// New code should use LockManager.Unlock() for proper cleanup.
 func RemovePID() error {
 	path, err := pidFilePath()
 	if err != nil {
@@ -271,6 +273,8 @@ func RemovePID() error {
 	if len(errs) > 0 {
 		return fmt.Errorf("process: remove pid failed with %d errors: %v", len(errs), errs[0])
 	}
+
+	log.Printf("process: PID file removed successfully: %s", path)
 	return nil
 }
 

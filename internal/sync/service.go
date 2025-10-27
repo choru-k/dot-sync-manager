@@ -122,6 +122,9 @@ type SyncService struct {
 	lastShutdownError error
 	shutdownErrorMu  sync.Mutex
 
+	// Shutdown monitoring
+	forcedShutdowns int32 // atomic.Int: tracks forced shutdowns for monitoring
+
 	// Event callbacks
 	onSyncStart    func()
 	onSyncComplete func(files []string, err error)
@@ -327,6 +330,7 @@ func (s *SyncService) Start() error {
 	log.Printf("sync: started watching %s", s.config.RepoPath)
 	return nil
 }
+
 
 // Stop stops the file watching service and returns any error encountered during shutdown
 //
