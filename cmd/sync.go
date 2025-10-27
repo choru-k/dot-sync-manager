@@ -11,6 +11,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	// syncTimeout is the maximum time to wait for sync operations
+	syncTimeout = 5 * time.Minute
+)
+
 // syncCmd represents the sync command
 var syncCmd = &cobra.Command{
 	Use:   "sync",
@@ -46,7 +51,8 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	gmCfg := cfg.ToGitManagerConfig()
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), syncTimeout)
+	defer cancel()
 
 	gitMgr, err := gitmanager.NewGitManager(ctx, gmCfg)
 	if err != nil {
@@ -97,7 +103,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	// Stage and commit changes
-	changed, err := gitMgr.StageAndCommit(ctx, time.Now())
+	changed, err := gitMgr.StageAndCommit(ctx, timeNow())
 	if err != nil {
 		return fmt.Errorf("failed to stage or commit changes: %w", err)
 	}

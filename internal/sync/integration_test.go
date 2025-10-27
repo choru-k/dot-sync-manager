@@ -99,7 +99,11 @@ cache/
 	if err := service.Start(); err != nil {
 		t.Fatalf("Failed to start sync service: %v", err)
 	}
-	defer service.Stop()
+	defer func() {
+		if err := service.Stop(); err != nil {
+			t.Fatalf("Failed to stop service: %v", err)
+		}
+	}()
 
 	// Give the watcher a moment to start
 	time.Sleep(50 * time.Millisecond)

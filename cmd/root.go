@@ -20,14 +20,9 @@ import (
 var (
 	configFile string
 	verbose    bool
+	noEmoji    bool
 )
 
-const (
-	// ConfigFileName is the PRD-standardized config filename
-	ConfigFileName = ".sync-config.json"
-	// LegacyConfigFileName is the historical config filename used before PRD standardization
-	LegacyConfigFileName = ".dotfile-sync.json"
-)
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -49,7 +44,10 @@ func Execute() error {
 func init() {
 	rootCmd.PersistentFlags().StringVar(&configFile, "config", "", "Path to configuration file")
 	// TODO(future): Implement verbose logging throughout commands when verbose flag is set
+	// This would involve adding detailed logging statements in all command functions
+	// and using a proper logging framework (like logrus or zap) with configurable levels
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
+	rootCmd.PersistentFlags().BoolVar(&noEmoji, "no-emoji", false, "Disable emoji output")
 }
 
 // getConfig loads configuration using proper discovery logic.
@@ -132,6 +130,10 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
 
 	gitCfg := cfg.ToGitManagerConfig()
+	// gitCfg is a struct, not a pointer, so we validate its fields instead of checking for nil
+	if gitCfg.RepoPath == "" {
+		return fmt.Errorf("failed to create git manager configuration: invalid repository path")
+	}
 	gitMgr, err := gitmanager.NewGitManager(ctx, gitCfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize git manager: %w", err)
@@ -148,7 +150,11 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	}
 
 	if err := process.WritePIDExclusive(os.Getpid()); err != nil {
-		service.Stop()
+		if service != nil {
+			if stopErr := service.Stop(); stopErr != nil {
+				return fmt.Errorf("failed to write PID file: %w; also failed to stop service: %w", err, stopErr)
+			}
+		}
 		return fmt.Errorf("failed to write PID file: %w", err)
 	}
 
@@ -161,7 +167,11 @@ func runRoot(cmd *cobra.Command, args []string) error {
 
 	defer func() {
 		signal.Stop(signalCh)
-		service.Stop()
+		if service != nil {
+			if err := service.Stop(); err != nil {
+				log.Printf("sync: warning - failed to stop service gracefully: %v", err)
+			}
+		}
 		if err := process.RemovePID(); err != nil {
 			log.Printf("process: warning - failed to remove PID file: %v", err)
 		}

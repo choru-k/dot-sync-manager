@@ -6,6 +6,7 @@ import (
 	"log"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -18,6 +19,9 @@ const (
 
 	// DefaultShutdownTimeout is the default timeout for graceful shutdown
 	DefaultShutdownTimeout = 100 * time.Millisecond
+
+	// DebouncerTimeout is the maximum time to wait for debouncer operations
+	DebouncerTimeout = 10 * time.Minute
 )
 
 // AdvancedDebouncer provides configurable debounce with exponential backoff
@@ -58,6 +62,15 @@ type AdvancedDebouncer struct {
 
 	// Shutdown handling
 	done chan struct{}
+
+	// Context for cancellation
+	ctx    context.Context
+	cancel context.CancelFunc
+
+	// Start/stop state management
+	started int32 // atomic.Bool replacement: 1 = started, 0 = not started
+	startMu sync.Mutex
+	stopOnce sync.Once // Ensures Stop() is only called once
 }
 
 type manualSyncRequest struct {
@@ -124,7 +137,7 @@ func NewAdvanced(config AdvancedDebouncerConfig) *AdvancedDebouncer {
 		config.ManualSyncTimeout = DefaultAdvancedConfig().ManualSyncTimeout
 	}
 
-	return &AdvancedDebouncer{
+	debouncer := &AdvancedDebouncer{
 		baseDelay:          config.BaseDelay,
 		currentDelay:       config.BaseDelay,
 		maxDelay:           config.MaxDelay,
@@ -141,11 +154,24 @@ func NewAdvanced(config AdvancedDebouncerConfig) *AdvancedDebouncer {
 		manualSyncTimeout:  config.ManualSyncTimeout,
 		maxActivityHistory: DefaultMaxActivityHistory, // Cap to prevent unbounded growth
 		done:               make(chan struct{}),
+		started:            0, // Initialize as not started
 	}
+
+	// Initialize context for cancellation without timeout
+	ctx, cancel := context.WithCancel(context.Background())
+	debouncer.ctx, debouncer.cancel = ctx, cancel
+
+	return debouncer
 }
 
 // Add adds a function to be debounced with advanced backoff logic
 func (d *AdvancedDebouncer) Add(key string, fn func()) {
+	// Use the debouncer's context for operations without creating a new one
+	d.AddWithContext(d.ctx, key, fn)
+}
+
+// AddWithContext adds a function to be debounced with advanced backoff logic and context support
+func (d *AdvancedDebouncer) AddWithContext(ctx context.Context, key string, fn func()) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -165,13 +191,49 @@ func (d *AdvancedDebouncer) Add(key string, fn func()) {
 	// Store the callback
 	d.callback[key] = fn
 
-	// Capture the callback to avoid race conditions
+	// Capture the callback and context to avoid race conditions
 	capturedFn := fn
+	capturedCtx := ctx
 
 	// Create new timer with calculated delay
 	d.timers[key] = time.AfterFunc(delay, func() {
+		// First, check if the operation context is cancelled
+		if capturedCtx.Err() != nil {
+			// Context cancelled, don't execute callback
+			d.mu.Lock()
+			delete(d.timers, key)
+			delete(d.callback, key)
+			d.mu.Unlock()
+			return
+		}
+
+		// Check if debouncer context is cancelled
+		if d.ctx.Err() != nil {
+			// Debouncer context cancelled, don't execute callback
+			d.mu.Lock()
+			delete(d.timers, key)
+			delete(d.callback, key)
+			d.mu.Unlock()
+			return
+		}
+
 		d.mu.Lock()
 		defer d.mu.Unlock()
+
+		// Double-check context cancellation after acquiring lock
+		if capturedCtx.Err() != nil {
+			// Context cancelled, clean up and return
+			delete(d.timers, key)
+			delete(d.callback, key)
+			return
+		}
+
+		if d.ctx.Err() != nil {
+			// Debouncer context cancelled, clean up and return
+			delete(d.timers, key)
+			delete(d.callback, key)
+			return
+		}
 
 		// Execute the captured callback with panic recovery
 		defer func() {
@@ -180,6 +242,8 @@ func (d *AdvancedDebouncer) Add(key string, fn func()) {
 				log.Printf("Warning: panic in debounced callback for key %s: %v", key, r)
 			}
 		}()
+
+		// Execute callback
 		capturedFn()
 
 		// Clean up
@@ -420,6 +484,11 @@ func (d *AdvancedDebouncer) IsChurnMode() bool {
 	return d.isChurnDetected()
 }
 
+// IsBackoffEnabled returns true if exponential backoff is enabled
+func (d *AdvancedDebouncer) IsBackoffEnabled() bool {
+	return d.backoffEnabled
+}
+
 // GetActivityCount returns the number of activities in the current window
 func (d *AdvancedDebouncer) GetActivityCount() int {
 	d.activityMu.RLock()
@@ -513,19 +582,24 @@ func (d *AdvancedDebouncer) GetStats() map[string]interface{} {
 
 // Stop stops the debouncer and cleans up resources with graceful shutdown
 func (d *AdvancedDebouncer) Stop() {
-	d.CancelAll()
+	d.stopOnce.Do(func() {
+		d.CancelAll()
 
-	// Signal shutdown to queue processor
-	close(d.done)
+		// Cancel the context to stop any pending callbacks
+		d.cancel()
 
-	// Close the queue to unblock any remaining operations
-	close(d.manualSyncQueue)
+		// Reset started flag to allow restart if needed
+		atomic.StoreInt32(&d.started, 0)
 
-	// Give a brief moment for clean shutdown
-	time.Sleep(DefaultShutdownTimeout)
+		// Signal shutdown to queue processor
+		close(d.done)
 
-	// The actual goroutine should exit quickly due to the done signal and queue closure
-	// Any remaining operations will naturally complete or timeout
+		// Close the queue to unblock any remaining operations
+		close(d.manualSyncQueue)
+
+		// Give a brief moment for clean shutdown
+		time.Sleep(DefaultShutdownTimeout)
+	})
 }
 
 // Start starts the manual sync queue processor.
@@ -537,6 +611,27 @@ func (d *AdvancedDebouncer) Stop() {
 // Note: The manual sync queue processor is designed to be robust and will
 // handle requests even if called immediately after Start(). The queue has
 // a buffer of 100 items to handle rapid successive requests.
+//
+// This method is thread-safe and will only start the goroutine once,
+// even if called multiple times from different goroutines.
 func (d *AdvancedDebouncer) Start() {
+	// Use atomic check first for fast path (avoid lock if already started)
+	if atomic.LoadInt32(&d.started) == 1 {
+		return // Already started
+	}
+
+	// Use mutex to ensure only one goroutine is started
+	d.startMu.Lock()
+	defer d.startMu.Unlock()
+
+	// Double-check with mutex protection
+	if atomic.LoadInt32(&d.started) == 1 {
+		return // Already started (another goroutine won the race)
+	}
+
+	// Mark as started before launching goroutine
+	atomic.StoreInt32(&d.started, 1)
+
+	// Start the goroutine
 	go d.processManualSyncQueue()
 }

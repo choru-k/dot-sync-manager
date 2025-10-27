@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -59,7 +60,11 @@ func TestSyncService_ManualSyncWithAutoSyncDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to start sync service: %v", err)
 	}
-	defer syncService.Stop()
+	defer func() {
+		if err := syncService.Stop(); err != nil {
+			t.Fatalf("Failed to stop sync service: %v", err)
+		}
+	}()
 
 	// Test manual sync - should work even though AutoSyncEnabled is false
 	err = syncService.ManualSync()
@@ -120,7 +125,9 @@ func TestSyncService_ManualSyncAfterStop(t *testing.T) {
 	}
 
 	// Stop the service
-	syncService.Stop()
+	if err := syncService.Stop(); err != nil {
+		t.Fatalf("Failed to stop sync service: %v", err)
+	}
 
 	// Test manual sync after stop - should return error, not panic
 	err = syncService.ManualSync()
@@ -128,8 +135,8 @@ func TestSyncService_ManualSyncAfterStop(t *testing.T) {
 		t.Error("Expected error when calling ManualSync after Stop")
 	}
 
-	if err != nil && err.Error() != "sync service is stopped" {
-		t.Errorf("Expected 'sync service is stopped' error, got: %v", err)
+	if err != nil && !strings.Contains(err.Error(), "sync service is stopped") {
+		t.Errorf("Expected error containing 'sync service is stopped', got: %v", err)
 	}
 }
 
@@ -169,7 +176,9 @@ func TestSyncService_ManualSyncAfterStop_BasicDebouncer(t *testing.T) {
 		t.Fatalf("Failed to start sync service: %v", err)
 	}
 
-	syncService.Stop()
+	if err := syncService.Stop(); err != nil {
+		t.Fatalf("Failed to stop sync service: %v", err)
+	}
 
 	// Should also return error with basic debouncer
 	err = syncService.ManualSync()
@@ -177,7 +186,7 @@ func TestSyncService_ManualSyncAfterStop_BasicDebouncer(t *testing.T) {
 		t.Error("Expected error when calling ManualSync after Stop with basic debouncer")
 	}
 
-	if err != nil && err.Error() != "sync service is stopped" {
-		t.Errorf("Expected 'sync service is stopped' error, got: %v", err)
+	if err != nil && !strings.Contains(err.Error(), "sync service is stopped") {
+		t.Errorf("Expected error containing 'sync service is stopped', got: %v", err)
 	}
 }

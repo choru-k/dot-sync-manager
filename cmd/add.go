@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
 	"github.com/choru-k/dot-sync-manager/internal/util"
@@ -34,8 +33,6 @@ func init() {
 }
 
 const (
-	// dirPerms grants owner-level write access while keeping directories traversable by other users, matching standard 0755 expectations.
-	dirPerms = 0755 // rwxr-xr-x so users can traverse synced directories
 	// filePerms allows owner read/write access while providing read access to group and others, appropriate for most dotfiles.
 	filePerms = 0644 // rw-r--r-- standard readable file permissions for dotfiles
 	// sensitiveFilePerms restricts access to owner only, suitable for files containing secrets or private keys.
@@ -49,11 +46,11 @@ const (
 )
 
 var (
-	mkdirAllFunc = os.MkdirAll
-	removeFunc   = os.Remove
-	symlinkFunc  = os.Symlink
-	renameFunc   = os.Rename
-	timeNow      = time.Now
+	mkdirAllFunc  = os.MkdirAll
+	removeFunc    = os.Remove
+	symlinkFunc   = os.Symlink
+	renameFunc    = os.Rename
+	readFileFunc  = os.ReadFile
 
 	copyFileFunc = copyFile
 	saveConfigFn = func(cfg *config.SyncConfig, path string) error {
@@ -98,7 +95,7 @@ var (
 func runAdd(cmd *cobra.Command, args []string) error {
 	filePath, err := validateSourceFile(cmd, args[0])
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to validate source file: %w", err)
 	}
 
 	cfg, err := getConfig()
@@ -108,16 +105,16 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	targetPath, err := prepareTargetPath(cfg, filePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to prepare target path: %w", err)
 	}
 
 	backupPath, backupCreated, err := executeAddTransaction(cfg, filePath, targetPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to execute add transaction: %w", err)
 	}
 
 	if err := updateAndSaveConfig(cfg, targetPath, filePath, backupPath, backupCreated); err != nil {
-		return err
+		return fmt.Errorf("failed to update configuration: %w", err)
 	}
 
 	if backupCreated && backupPath != "" {
@@ -137,15 +134,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 }
 
 func validateSourceFile(cmd *cobra.Command, rawPath string) (string, error) {
-	expandedPath, err := util.ExpandPath(rawPath)
+	expandedPath, err := validatePathExists(rawPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to expand file path %s: %w", rawPath, err)
+		return "", err
 	}
 
 	fileInfo, err := os.Lstat(expandedPath)
-	if os.IsNotExist(err) {
-		return "", fmt.Errorf("file does not exist: %s", expandedPath)
-	}
 	if err != nil {
 		return "", fmt.Errorf("failed to stat file: %w", err)
 	}
@@ -236,16 +230,9 @@ Hint: Only add files from outside the repository`, absPath)
 		return "", fmt.Errorf("target path is outside repository: %s", absTarget)
 	}
 
-	if _, err := os.Stat(targetPath); err == nil {
-		return "", fmt.Errorf(`target file already exists in dotfiles: %s
-This file may have been added previously`, targetPath)
-	} else if err != nil && !os.IsNotExist(err) {
-		return "", fmt.Errorf("failed to check target path: %w", err)
-	}
-
-	if err := mkdirAllFunc(filepath.Dir(targetPath), dirPerms); err != nil {
-		return "", fmt.Errorf("failed to create target directory: %w", err)
-	}
+	// NOTE: This function only performs validation and path calculation.
+	// Directory creation and file operations are handled in executeAddTransaction
+	// to follow the style guide separation of concerns and prevent TOCTOU attacks.
 
 	return targetPath, nil
 }
@@ -260,6 +247,11 @@ func executeAddTransaction(cfg *config.SyncConfig, filePath, targetPath string) 
 		return "", false, fmt.Errorf("failed to create backup directory: %w", err)
 	}
 
+	// Create target directory to follow style guide separation of concerns
+	if err := mkdirAllFunc(filepath.Dir(targetPath), dirPerms); err != nil {
+		return "", false, fmt.Errorf("failed to create target directory: %w", err)
+	}
+
 	timestamp := timeNow().Format(backupTimestampFormat)
 	filename := filepath.Base(filePath)
 	backupPath := filepath.Join(backupDir, fmt.Sprintf("%s-%s", filename, timestamp))
@@ -270,11 +262,21 @@ func executeAddTransaction(cfg *config.SyncConfig, filePath, targetPath string) 
 	backupCreated := true
 	fmt.Printf("📦 Backed up original file to: %s\n", backupPath)
 
-	if err := copyFileFunc(filePath, targetPath); err != nil {
+	// Read source file content for atomic creation
+	sourceData, err := readFileFunc(filePath)
+	if err != nil {
 		if backupCreated {
-			fmt.Printf("⚠️  Failed to copy file to dotfiles. Backup of original file retained at: %s\n", backupPath)
+			fmt.Printf("⚠️  Failed to read source file. Backup of original file retained at: %s\n", backupPath)
 		}
-		return backupPath, backupCreated, fmt.Errorf("failed to copy file to dotfiles: %w", err)
+		return backupPath, backupCreated, fmt.Errorf("failed to read source file: %w", err)
+	}
+
+	// Use CreateFileSecurely for atomic file creation to prevent TOCTOU attacks
+	if err := util.CreateFileSecurely(targetPath, sourceData, 0644); err != nil {
+		if backupCreated {
+			fmt.Printf("⚠️  Failed to create file in dotfiles. Backup of original file retained at: %s\n", backupPath)
+		}
+		return backupPath, backupCreated, fmt.Errorf("failed to create file in dotfiles: %w", err)
 	}
 
 	if err := removeFunc(filePath); err != nil {
@@ -469,7 +471,9 @@ func copyFile(src, dst string) (err error) {
 	return destFile.Sync()
 }
 
-// isSensitiveFile checks if a file path matches patterns for sensitive files.
+// isSensitiveFile checks if a file path matches patterns for sensitive files that should not
+// be stored in version control. This includes SSH keys, credentials, GPG keys, and other
+// sensitive configuration files. Returns true if the file matches any sensitive pattern.
 func isSensitiveFile(path string) bool {
 	// Normalize path separators
 	path = filepath.ToSlash(path)

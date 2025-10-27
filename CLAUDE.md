@@ -10,26 +10,26 @@ Dotfile Sync Manager (DSM) is a Go application that automatically syncs dotfiles
 
 ### Build and Run
 ```bash
-# Build the main application (binary name: dot-sync-manager)
-go build -v -o bin/dot-sync-manager .
+# Build the main application (binary name: dsm)
+go build -v -o bin/dsm .
 
-# Run CLI commands (use 'dsm' as the command name)
-./bin/dot-sync-manager init
-./bin/dot-sync-manager add ~/.bashrc
-./bin/dot-sync-manager list
-./bin/dot-sync-manager status
-./bin/dot-sync-manager start
-./bin/dot-sync-manager stop
-./bin/dot-sync-manager sync
+# Run CLI commands
+./bin/dsm init
+./bin/dsm add ~/.bashrc
+./bin/dsm list
+./bin/dsm status
+./bin/dsm start
+./bin/dsm stop
+./bin/dsm sync
 
 # Run with config file
-./bin/dot-sync-manager -config ~/.dotfile-sync.json status
+./bin/dsm -config ~/.dotfile-sync.json status
 
 # Run with verbose logging
-./bin/dot-sync-manager -v status
+./bin/dsm -v status
 
 # Show version
-./bin/dot-sync-manager -version
+./bin/dsm -version
 ```
 
 ### Testing
@@ -63,8 +63,8 @@ go mod tidy
 go vet ./...
 
 # Build for specific platforms
-GOOS=linux GOARCH=amd64 go build -v -o bin/dotfile-sync-manager-linux .
-GOOS=darwin GOARCH=arm64 go build -v -o bin/dotfile-sync-manager-darwin .
+GOOS=linux GOARCH=amd64 go build -v -o bin/dsm-linux .
+GOOS=darwin GOARCH=arm64 go build -v -o bin/dsm-darwin .
 ```
 
 ### GitHub CLI

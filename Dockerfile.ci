@@ -1,0 +1,90 @@
+# Dockerfile for CI testing - matches GitHub Actions ubuntu-latest with Go 1.23
+FROM ubuntu:22.04
+
+# Install required packages
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    ca-certificates \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Go 1.23 (same as GitHub Actions) - detect architecture
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "arm64" ]; then \
+        curl -L https://go.dev/dl/go1.23.5.linux-arm64.tar.gz -o go1.23.5.linux-arm64.tar.gz \
+        && tar -C /usr/local -xzf go1.23.5.linux-arm64.tar.gz \
+        && rm go1.23.5.linux-arm64.tar.gz; \
+    else \
+        curl -L https://go.dev/dl/go1.23.5.linux-amd64.tar.gz -o go1.23.5.linux-amd64.tar.gz \
+        && tar -C /usr/local -xzf go1.23.5.linux-amd64.tar.gz \
+        && rm go1.23.5.linux-amd64.tar.gz; \
+    fi
+
+# Set up Go environment
+ENV PATH="/usr/local/go/bin:${PATH}"
+ENV GOPATH="/root/go"
+ENV GOCACHE="/root/.cache/go-build"
+
+# Create working directory
+WORKDIR /app
+
+# Copy go mod files first (for better caching)
+COPY go.mod go.sum ./
+
+# Download dependencies (same as CI step)
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Match GitHub Actions environment exactly (CI=true is set automatically)
+ENV CI=true
+
+# Add the CI script
+COPY <<EOF /ci-script.sh
+#!/bin/bash
+set -e
+
+echo "=== CI Docker Environment Test ==="
+echo "Go version:"
+go version
+echo ""
+echo "=== Step 1: Download dependencies ==="
+go mod download
+echo ""
+echo "=== Step 2: Verify dependencies ==="
+go mod verify
+echo ""
+echo "=== Step 3: Run go vet ==="
+go vet ./...
+echo ""
+echo "=== Step 4: Run tests with coverage ==="
+go test -v -coverprofile=coverage.out ./...
+echo ""
+echo "=== Step 5: Build ==="
+go build -v -o bin/dsm .
+echo ""
+echo "=== Step 6: Verify binary ==="
+ls -la bin/dsm
+echo ""
+echo "=== CI Test Results Summary ==="
+echo "Checking for any failing tests..."
+if go test ./... 2>&1 | grep -q "FAIL"; then
+    echo "❌ Some tests failed!"
+    go test ./... 2>&1 | grep "FAIL" -A 3 -B 1
+    exit 1
+else
+    echo "✅ All tests passed!"
+    echo ""
+    echo "Coverage report:"
+    go tool cover -func=coverage.out
+fi
+echo ""
+echo "✅ CI Pipeline Completed Successfully!"
+EOF
+
+RUN chmod +x /ci-script.sh
+
+# Run the CI script
+CMD ["/ci-script.sh"]

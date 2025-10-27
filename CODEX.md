@@ -132,8 +132,8 @@ golangci-lint run
 
 ### Post-Merge Validation
 - **Verify tests pass**: `go test ./...`
-- **Confirm build succeeds**: `go build -v -o bin/dotfile-sync-manager .`
-- **Check binary functionality**: `./bin/dotfile-sync-manager -version`
+- **Confirm build succeeds**: `go build -v -o bin/dsm .`
+- **Check binary functionality**: `./bin/dsm -version`
 - **Update documentation** if behavior changed
 
 ### Escalations
@@ -160,10 +160,10 @@ golangci-lint run
 
 ```bash
 # Build
-go build -v -o bin/dotfile-sync-manager .
+go build -v -o bin/dsm .
 
 # Run
-./bin/dotfile-sync-manager -config ~/.dotfile-sync.json -verbose
+./bin/dsm -config ~/.dotfile-sync.json -verbose
 
 # Test
 go test -v ./...

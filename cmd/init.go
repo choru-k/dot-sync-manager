@@ -26,9 +26,8 @@ const (
 	// forceConfirmationKeyword is the exact string users must type to confirm destructive operations
 	forceConfirmationKeyword = "DELETE"
 
-	// File permission constants
-	restrictiveConfigFilePerms = 0600 // owner read/write only (for sensitive config data)
-	defaultFilePerms           = 0644 // owner rw, group/others read (for normal files)
+	// restrictiveConfigFilePerms is for sensitive configuration data
+	restrictiveConfigFilePerms = 0600 // owner read/write only
 )
 
 // initCmd represents the init command
@@ -100,7 +99,7 @@ Options:
 	}
 
 	// Get machine name
-	machineName := getMachineName()
+	machineName := getMachineNameFromOS()
 
 	// Get Git author info if not provided
 	if authorName == "" {
@@ -219,7 +218,7 @@ Options:
 
 	// Only create .syncignore if it doesn't exist
 	if !ignoreExists {
-		if err := os.WriteFile(ignorePath, []byte(defaultSyncIgnoreContent), defaultFilePerms); err != nil {
+		if err := util.CreateFileSecurely(ignorePath, []byte(defaultSyncIgnoreContent), defaultFilePerms); err != nil {
 			return fmt.Errorf("failed to create .syncignore file: %w", err)
 		}
 		fmt.Printf("✅ Ignore file created: %s\n", ignorePath)
@@ -248,13 +247,6 @@ Options:
 	return nil
 }
 
-func getMachineName() string {
-	if hostname, err := os.Hostname(); err == nil {
-		return hostname
-	}
-	// Silently ignore hostname errors - fallback to "unknown-machine" is sufficient
-	return "unknown-machine"
-}
 
 // promptForNonEmpty repeatedly prompts the user until a non-empty value is entered.
 // It displays a friendly error message with the field name capitalized.

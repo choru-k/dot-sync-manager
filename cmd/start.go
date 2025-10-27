@@ -115,11 +115,11 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 // waitForDaemonStartup polls for the daemon to fully initialize by checking for PID file
 func waitForDaemonStartup(timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
+	deadline := timeNow().Add(timeout)
 	ticker := time.NewTicker(daemonStartupPollInterval)
 	defer ticker.Stop()
 
-	for time.Now().Before(deadline) {
+	for timeNow().Before(deadline) {
 		// Check if daemon is running by checking PID file and process existence
 		if isDaemonRunning() {
 			return nil
@@ -154,7 +154,12 @@ func runForegroundDaemon(cfg *config.SyncConfig) error {
 	if err := syncSvc.Start(); err != nil {
 		return fmt.Errorf("failed to start sync service: %w", err)
 	}
-	defer syncSvc.Stop()
+	defer func() {
+		if err := syncSvc.Stop(); err != nil {
+			// Log error but don't fail shutdown
+			fmt.Printf("Warning: error stopping sync service: %v\n", err)
+		}
+	}()
 
 	if err := process.WritePIDExclusive(os.Getpid()); err != nil {
 		return fmt.Errorf("failed to write PID file: %w", err)
