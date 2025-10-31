@@ -63,10 +63,17 @@ func stateToString(state ServiceState) string {
 // - Uses atomic state management to prevent race conditions
 // - The service can be safely started and stopped from multiple goroutines
 //
+// Lifecycle Management:
+// - Create a new SyncService instance for each service lifecycle
+// - Start() can only be called once per instance
+// - Stop() can be called multiple times safely (idempotent)
+// - After Stop(), create a new instance rather than trying to restart
+// - This design follows Go idioms and avoids complex restart logic
+//
 // Lock Ordering Rules (to prevent deadlocks):
 // 1. Atomic state operations (CompareAndSwapInt32, LoadInt32) - no locks required
 // 2. sync.RWMutex (mu) - protects watcher recreation and critical sections
-// 3. Atomic shutdownInitiated flag - ensures cleanup happens exactly once per lifecycle
+// 3. sync.Once - ensures cleanup happens exactly once per lifecycle
 //
 // IMPORTANT: Never acquire locks after performing atomic state changes.
 // Always use atomic operations for state transitions, and only acquire
@@ -103,8 +110,12 @@ type SyncService struct {
 	// Lock ordering: mu protects watcher recreation, atomic state protects service lifecycle
 	mu       sync.RWMutex
 
-	// Flag to ensure shutdown operations happen exactly once per stop cycle
-	shutdownInitiated int32 // atomic: 0 = not initiated, 1 = initiated
+	// Once to ensure shutdown operations happen exactly once per stop cycle
+	shutdownOnce sync.Once
+
+	// Error tracking for concurrent Stop() calls
+	lastShutdownError error
+	shutdownErrorMu  sync.Mutex
 
 	// Event callbacks
 	onSyncStart    func()
@@ -216,7 +227,7 @@ func New(gitManager *gitmanager.GitManager, config *Config) (*SyncService, error
 // - This method is thread-safe and can be called concurrently
 // - Uses atomic CompareAndSwapInt32 for lock-free state transitions
 // - Supports service restart after Stop() by recreating resources
-// - Uses atomic shutdownInitiated flag in Stop() to ensure cleanup happens exactly once per lifecycle
+// - Uses sync.Once in Stop() to ensure cleanup happens exactly once per lifecycle
 // - Restart functionality allows service reuse without creating new instances
 func (s *SyncService) Start() error {
 	// Fast atomic check for running state
@@ -228,31 +239,48 @@ func (s *SyncService) Start() error {
 		return fmt.Errorf("sync: service is stopping, please wait (current state: %s) [%s]", stateToString(ServiceState(currentState)), ErrIDServiceStopRaceCondition)
 	}
 
-	// Rollback function to reset state if initialization fails
+	// Track whether event loop was started for proper cleanup
+	eventLoopStarted := false
+
+	// Rollback function to reset state and clean up resources if initialization fails
 	rollbackState := func() {
 		atomic.StoreInt32(&s.state, int32(StateStopped))
-	}
 
-	// Check if this is a restart scenario (service was stopped before)
-	// Services support restart after Stop() by recreating all necessary resources
-	// Use read lock first for fast path, then write lock for recreation
-	s.mu.RLock()
-	watcher := s.watcher
-	s.mu.RUnlock()
+		// Cancel context to stop event loop if it was started
+		if eventLoopStarted {
+			s.cancel()
+		}
 
-	if watcher == nil {
+		// Clean up any resources that were created during Start()
 		s.mu.Lock()
-		// Double-check after acquiring write lock
-		if s.watcher == nil {
-			if err := s.recreateResources(); err != nil {
-				s.mu.Unlock()
-				rollbackState()
-				return err
+		if s.watcher != nil {
+			// Close the watcher to prevent resource leaks
+			if err := s.watcher.Close(); err != nil {
+				log.Printf("sync: warning - failed to close watcher during rollback [%s]: %v", ErrIDWatcherCloseFailed, err)
 			}
-			// Update the local watcher reference after successful recreation
-			watcher = s.watcher
+			s.watcher = nil
 		}
 		s.mu.Unlock()
+
+		// Cancel debouncer to prevent background goroutines
+		if s.debouncer != nil {
+			s.debouncer.CancelAll()
+		}
+
+		// Reset shutdownOnce to allow clean shutdown if needed later
+		s.shutdownOnce = sync.Once{}
+	}
+
+	// Check if resources already exist - if not, this is a restart scenario
+	// For simplicity and reliability, we don't support restart after Stop()
+	// Users should create a new SyncService instance instead
+	s.mu.Lock()
+	watcher := s.watcher
+	s.mu.Unlock()
+
+	if watcher == nil {
+		rollbackState()
+		return fmt.Errorf("sync: service has been stopped and cannot be restarted [%s]: %s", ErrIDServiceRestartNotSupported, ErrIDServiceAlreadyStopped)
 	}
 
 	// Ensure we have a valid watcher (this should never be nil after the above logic)
@@ -276,6 +304,7 @@ func (s *SyncService) Start() error {
 
 	
 	// Start the event loop
+	eventLoopStarted = true
 	s.shutdownWG.Add(1)
 	go func() {
 		defer s.shutdownWG.Done()
@@ -287,17 +316,56 @@ func (s *SyncService) Start() error {
 }
 
 // Stop stops the file watching service and returns any error encountered during shutdown
+//
+// Error Handling Contract:
+// - Errors indicate resource leaks but service is still stopped
+// - Returns error only for monitoring/alerting purposes
+// - Service state will be StateStopped even if errors occur during cleanup
+// - Errors are aggregated and returned as a single error using errors.Join()
+// - Non-critical errors (like watcher close failures) are logged but don't prevent shutdown
+//
+// Thread Safety:
+// - This method is thread-safe and can be called concurrently
+// - Multiple concurrent calls to Stop() are safe due to sync.Once and atomic state management
+// - Will wait for any in-progress Stop() operations to complete before returning
+// - Uses sync.Once to ensure cleanup operations happen exactly once per lifecycle
 func (s *SyncService) Stop() error {
 	// Early return if not running - this prevents unnecessary work
 	if !atomic.CompareAndSwapInt32(&s.state, int32(StateRunning), int32(StateStopping)) {
-		// Either not running or already stopping/stopped
+		// Check the previous state after CAS fails to handle premature Stop() correctly
+		current := atomic.LoadInt32(&s.state)
+		if current == int32(StateStopping) {
+			// Already stopping - wait for completion to prevent race condition
+			// Use a timeout to prevent potential deadlocks
+			done := make(chan struct{})
+			go func() {
+				s.shutdownWG.Wait()
+				close(done)
+			}()
+
+			select {
+			case <-done:
+				// Shutdown completed successfully
+			case <-time.After(5 * time.Second):
+				// Timeout - don't block forever, log warning and continue
+				log.Printf("sync: warning - shutdown wait timed out, this may indicate a deadlock [%s]", ErrIDShutdownTimeout)
+			}
+
+			// Return any error that occurred during the concurrent shutdown
+			s.shutdownErrorMu.Lock()
+			lastError := s.lastShutdownError
+			s.shutdownErrorMu.Unlock()
+			if lastError != nil {
+				return lastError
+			}
+		}
 		return nil
 	}
 
 	var shutdownErrors []error
 
-	// Ensure shutdown operations happen exactly once using atomic flag
-	if atomic.CompareAndSwapInt32(&s.shutdownInitiated, 0, 1) {
+	// Ensure shutdown operations happen exactly once using sync.Once
+	s.shutdownOnce.Do(func() {
 		// Cancel context to signal shutdown
 		s.cancel()
 
@@ -322,31 +390,53 @@ func (s *SyncService) Stop() error {
 
 			if err := watcherToClose.Close(); err != nil {
 				shutdownErrors = append(shutdownErrors, fmt.Errorf("sync: failed to close file system watcher for repository %s [%s]: %w", s.config.RepoPath, ErrIDWatcherCloseFailed, err))
-				log.Printf("sync: warning - watcher close error may indicate filesystem issues [%s]: %v", ErrIDWatcherCloseFailed, err)
+				log.Printf("sync: ERROR - watcher close failed, potential resource leak detected [%s]: %v", ErrIDWatcherCloseFailed, err)
 			}
 		} else {
 			s.mu.Unlock() // Release lock if no watcher to close
 		}
+	})
+
+	// Wait for event loop to finish BEFORE transitioning to stopped state
+	// This prevents a race condition where Start() could increment the WaitGroup
+	// after Stop() has already begun waiting, which would cause a deadlock
+	// Use a timeout to prevent potential deadlocks
+	done := make(chan struct{})
+	go func() {
+		s.shutdownWG.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Event loop completed successfully
+	case <-time.After(5 * time.Second):
+		// Timeout - don't block forever, log warning and continue
+		log.Printf("sync: warning - event loop shutdown wait timed out [%s]", ErrIDShutdownTimeout)
 	}
 
-	// Safely transition to stopped state
+	// Safely transition to stopped state only after all goroutines have finished
 	atomic.StoreInt32(&s.state, int32(StateStopped))
-
-	// Wait for event loop to finish
-	s.shutdownWG.Wait()
 
 	log.Println("sync: stopped")
 
-	// Return any shutdown errors using modern Go error aggregation
+	// Store the final error for concurrent callers
+	var finalError error
 	if len(shutdownErrors) > 0 {
 		if len(shutdownErrors) == 1 {
-			return shutdownErrors[0]
+			finalError = fmt.Errorf("sync: shutdown error [%s]: %w", ErrIDShutdownError, shutdownErrors[0])
+		} else {
+			// Wrap the joined error with an error ID for monitoring
+			finalError = fmt.Errorf("sync: multiple errors during shutdown [%s]: %w", ErrIDMultipleShutdownErrors, errors.Join(shutdownErrors...))
 		}
-		// Wrap the joined error with an error ID for monitoring
-		return fmt.Errorf("sync: multiple errors during shutdown [%s]: %w", ErrIDMultipleShutdownErrors, errors.Join(shutdownErrors...))
+
+		// Store error for concurrent callers
+		s.shutdownErrorMu.Lock()
+		s.lastShutdownError = finalError
+		s.shutdownErrorMu.Unlock()
 	}
 
-	return nil
+	return finalError
 }
 
 // watchRecursive adds all subdirectories to the watcher
@@ -386,7 +476,8 @@ func (s *SyncService) watchRecursiveWithWatcher(watcher *fsnotify.Watcher, root 
 			}
 
 			if err := watcher.Add(path); err != nil {
-				return fmt.Errorf("sync: failed to watch %s: %w", path, err)
+				// Log warning but continue - single directory failure shouldn't stop the service
+				log.Printf("sync: warning - failed to watch %s: %v", path, err)
 			}
 		}
 
@@ -397,6 +488,14 @@ func (s *SyncService) watchRecursiveWithWatcher(watcher *fsnotify.Watcher, root 
 // eventLoop handles file system events
 func (s *SyncService) eventLoop() {
 	for {
+		// Check if context is cancelled first - this ensures prompt exit
+		select {
+		case <-s.ctx.Done():
+			return
+		default:
+			// Continue to watcher access
+		}
+
 		// Protect watcher access in event loop - get reference under lock
 		s.mu.RLock()
 		watcher := s.watcher
@@ -407,35 +506,35 @@ func (s *SyncService) eventLoop() {
 			return
 		}
 
-		// Check if context is cancelled before accessing watcher channels
+		// Use a timeout select to prevent blocking indefinitely on watcher channels
+		// This allows the event loop to check context cancellation and watcher nil status periodically
+		timeout := time.NewTimer(100 * time.Millisecond)
 		select {
 		case <-s.ctx.Done():
-			return
-		default:
-			// Continue to watcher event handling
-		}
-
-		// Access watcher channels with the reference we obtained under lock
-		// This prevents race conditions where watcher could be set to nil
-		select {
-		case <-s.ctx.Done():
+			timeout.Stop()
 			return
 
 		case event, ok := <-watcher.Events:
+			timeout.Stop()
 			if !ok {
 				return
 			}
-
 			s.handleEvent(event)
 
 		case err, ok := <-watcher.Errors:
+			timeout.Stop()
 			if !ok {
 				return
 			}
-
 			if s.onError != nil {
 				s.onError(fmt.Errorf("sync: watcher error: %w", err))
 			}
+
+		case <-timeout.C:
+			// Timeout occurred - loop again to check context and watcher status
+			// This prevents indefinite blocking and allows graceful shutdown
+			timeout.Stop()
+			continue
 		}
 	}
 }
@@ -621,27 +720,4 @@ func (s *SyncService) GetStats() map[string]interface{} {
 	return stats
 }
 
-// recreateResources recreates the watcher and other resources needed for service restart
-// This method must be called with s.mu.Lock() held
-func (s *SyncService) recreateResources() error {
-	log.Printf("sync: restarting service - recreating resources for repository: %s", s.config.RepoPath)
 
-	// Reset context and shutdown flag for new lifecycle
-	s.ctx, s.cancel = context.WithCancel(context.Background())
-	atomic.StoreInt32(&s.shutdownInitiated, 0)
-
-	// Create new watcher
-	newWatcher, err := fsnotify.NewWatcher()
-	if err != nil {
-		return fmt.Errorf("sync: failed to create watcher during service restart [%s]: %w", ErrIDWatcherCreateFailed, err)
-	}
-	s.watcher = newWatcher
-
-	// Restart advanced debouncer if it was previously stopped
-	if s.advancedDebouncer != nil {
-		s.advancedDebouncer.Start()
-		log.Printf("sync: restarted advanced debouncer for repository: %s", s.config.RepoPath)
-	}
-
-	return nil
-}

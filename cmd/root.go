@@ -167,8 +167,10 @@ func runRoot(cmd *cobra.Command, args []string) error {
 
 	defer func() {
 		signal.Stop(signalCh)
-		if err := service.Stop(); err != nil {
-			log.Printf("sync: warning - failed to stop service gracefully: %v", err)
+		if service != nil {
+			if err := service.Stop(); err != nil {
+				log.Printf("sync: warning - failed to stop service gracefully: %v", err)
+			}
 		}
 		if err := process.RemovePID(); err != nil {
 			log.Printf("process: warning - failed to remove PID file: %v", err)

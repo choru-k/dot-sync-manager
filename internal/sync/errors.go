@@ -14,8 +14,10 @@ package sync
 
 const (
 	// Service lifecycle errors
-	ErrIDServiceAlreadyRunning   = "SYNC_SERVICE_ALREADY_RUNNING"
-	ErrIDServiceStopRaceCondition = "SYNC_SERVICE_STOP_RACE_CONDITION"
+	ErrIDServiceAlreadyRunning     = "SYNC_SERVICE_ALREADY_RUNNING"
+	ErrIDServiceStopRaceCondition   = "SYNC_SERVICE_STOP_RACE_CONDITION"
+	ErrIDServiceRestartNotSupported = "SYNC_SERVICE_RESTART_NOT_SUPPORTED"
+	ErrIDServiceAlreadyStopped      = "SYNC_SERVICE_ALREADY_STOPPED"
 
 	// Watcher errors
 	ErrIDWatcherCreateFailed    = "SYNC_WATCHER_CREATE_FAILED"
@@ -36,6 +38,9 @@ const (
 	ErrIDConfigRepoPathRequired = "SYNC_CONFIG_REPO_PATH_REQUIRED"
 
 	// General errors
+	ErrIDShutdownError          = "SYNC_SHUTDOWN_ERROR"
 	ErrIDMultipleShutdownErrors = "SYNC_MULTIPLE_SHUTDOWN_ERRORS"
 	ErrIDReloadIgnorePatterns   = "SYNC_RELOAD_IGNORE_PATTERNS_FAILED"
+	ErrIDResourceCleanupPanic   = "SYNC_RESOURCE_CLEANUP_PANIC"
+	ErrIDShutdownTimeout        = "SYNC_SHUTDOWN_TIMEOUT"
 )
