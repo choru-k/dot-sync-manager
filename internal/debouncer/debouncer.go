@@ -1,6 +1,7 @@
 package debouncer
 
 import (
+	"log"
 	"sync"
 	"time"
 )
@@ -48,7 +49,13 @@ func (d *Debouncer) Add(key string, fn func()) {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 
-		// Execute the captured callback (not from map to avoid races)
+		// Execute the captured callback with panic recovery
+		defer func() {
+			if r := recover(); r != nil {
+				// Log panic but don't crash the debouncer
+				log.Printf("Warning: panic in debounced callback for key %s: %v", key, r)
+			}
+		}()
 		capturedFn()
 
 		// Clean up

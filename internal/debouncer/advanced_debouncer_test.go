@@ -3,8 +3,19 @@ package debouncer
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+)
+
+const (
+	// Test timing constants
+	testSmallDelay      = 10 * time.Millisecond
+	testExecutionDelay  = 1 * time.Millisecond
+	testRaceDelay       = 1 * time.Millisecond
+	testDebounceWait    = 200 * time.Millisecond
+	testManualSyncWait  = 100 * time.Millisecond
+	testBackoffWait     = 300 * time.Millisecond
 )
 
 func TestAdvancedDebouncer_New(t *testing.T) {
@@ -37,7 +48,11 @@ func TestAdvancedDebouncer_BasicDebounce(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	t.Cleanup(func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
+	})
 
 	var callCount int
 	var mu sync.Mutex
@@ -51,11 +66,11 @@ func TestAdvancedDebouncer_BasicDebounce(t *testing.T) {
 	// Add multiple operations rapidly
 	for i := 0; i < 5; i++ {
 		debouncer.Add("test", fn)
-		time.Sleep(10 * time.Millisecond) // Small delay between additions
+		time.Sleep(testSmallDelay) // Small delay between additions
 	}
 
 	// Wait for debounce to complete
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(testDebounceWait)
 
 	mu.Lock()
 	if callCount != 1 {
@@ -80,7 +95,11 @@ func TestAdvancedDebouncer_ImmediateExecution(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	t.Cleanup(func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
+	})
 
 	var callCount int
 	var mu sync.Mutex
@@ -108,7 +127,11 @@ func TestAdvancedDebouncer_TriggerManualSync(t *testing.T) {
 	config := DefaultAdvancedConfig()
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	t.Cleanup(func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
+	})
 
 	var callCount int
 	var mu sync.Mutex
@@ -126,7 +149,7 @@ func TestAdvancedDebouncer_TriggerManualSync(t *testing.T) {
 	}
 
 	// Wait for execution
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(testManualSyncWait)
 
 	mu.Lock()
 	if callCount != 1 {
@@ -148,7 +171,11 @@ func TestAdvancedDebouncer_ChurnDetection(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	t.Cleanup(func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
+	})
 
 	var callCount int
 	var mu sync.Mutex
@@ -162,7 +189,7 @@ func TestAdvancedDebouncer_ChurnDetection(t *testing.T) {
 	// Generate rapid activity to trigger churn
 	for i := 0; i < config.ChurnThreshold; i++ {
 		debouncer.Add("test", fn)
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(testSmallDelay)
 	}
 
 	// Check if churn is detected
@@ -208,7 +235,11 @@ func TestAdvancedDebouncer_ExponentialBackoff(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	t.Cleanup(func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
+	})
 
 	var callCount int
 	var mu sync.Mutex
@@ -229,7 +260,7 @@ func TestAdvancedDebouncer_ExponentialBackoff(t *testing.T) {
 	// Generate more activity to trigger backoff
 	for i := 0; i < config.ChurnThreshold; i++ {
 		debouncer.Add("test", fn)
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(testSmallDelay)
 	}
 
 	// Check backoff is applied
@@ -248,7 +279,11 @@ func TestAdvancedDebouncer_Cancel(t *testing.T) {
 	config := DefaultAdvancedConfig()
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	t.Cleanup(func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
+	})
 
 	var callCount int
 	var mu sync.Mutex
@@ -283,7 +318,11 @@ func TestAdvancedDebouncer_CancelAll(t *testing.T) {
 	config := DefaultAdvancedConfig()
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	t.Cleanup(func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
+	})
 
 	var callCount int
 	var mu sync.Mutex
@@ -320,7 +359,11 @@ func TestAdvancedDebouncer_GetStats(t *testing.T) {
 	config := DefaultAdvancedConfig()
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	t.Cleanup(func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
+	})
 
 	var callCount int
 	var mu sync.Mutex
@@ -334,7 +377,7 @@ func TestAdvancedDebouncer_GetStats(t *testing.T) {
 	// Add some activity
 	for i := 0; i < 3; i++ {
 		debouncer.Add("test", fn)
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(testSmallDelay)
 	}
 
 	stats := debouncer.GetStats()
@@ -434,7 +477,11 @@ func TestAdvancedDebouncer_ConcurrentAccess(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	t.Cleanup(func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
+	})
 
 	var wg sync.WaitGroup
 	numGoroutines := 10
@@ -442,7 +489,7 @@ func TestAdvancedDebouncer_ConcurrentAccess(t *testing.T) {
 
 	fn := func() {
 		// Simulate some work
-		time.Sleep(1 * time.Millisecond)
+		time.Sleep(testExecutionDelay)
 	}
 
 	// Launch multiple goroutines adding operations concurrently
@@ -461,11 +508,247 @@ func TestAdvancedDebouncer_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 
 	// Wait for all operations to complete
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(testBackoffWait)
 
 	// Should not have panicked and should have some activity
 	stats := debouncer.GetStats()
 	if stats["activity_count"] == nil {
 		t.Error("Expected activity count in stats")
 	}
+}
+
+func TestAdvancedDebouncer_ConcurrentStopNew(t *testing.T) {
+	config := DefaultAdvancedConfig()
+	debouncer := NewAdvanced(config)
+	debouncer.Start()
+
+	// Test concurrent Stop calls
+	numGoroutines := 10
+	var wg sync.WaitGroup
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := debouncer.Stop(); err != nil {
+				t.Logf("Concurrent Stop() error: %v", err)
+			}
+		}()
+	}
+
+	wg.Wait()
+
+	// Additional verification: multiple calls should be safe
+	// Call Stop a few more times sequentially
+	for i := 0; i < 3; i++ {
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Sequential Stop() error: %v", err)
+		} // Should not panic
+	}
+
+	t.Log("Concurrent Stop test completed successfully")
+}
+
+func TestAdvancedDebouncer_MultipleStopCalls(t *testing.T) {
+	config := DefaultAdvancedConfig()
+	debouncer := NewAdvanced(config)
+	debouncer.Start()
+
+	// Add some pending operations
+	var callCount int64
+	var mu sync.Mutex
+
+	fn := func() {
+		mu.Lock()
+		defer mu.Unlock()
+		atomic.AddInt64(&callCount, 1)
+	}
+
+	// Add some operations
+	for i := 0; i < 3; i++ {
+		debouncer.Add(fmt.Sprintf("test-%d", i), fn)
+	}
+
+	// Test multiple sequential Stop() calls
+	for i := 0; i < 5; i++ {
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Multiple Stop() error: %v", err)
+		} // Should not panic, cleanup should happen only once
+	}
+
+	// Stop() now blocks until cleanup is complete via shutdownWG.Wait() - no sleep needed
+
+	t.Log("Multiple Stop calls test completed successfully")
+}
+
+func TestAdvancedDebouncer_StopIdempotency(t *testing.T) {
+	config := DefaultAdvancedConfig()
+	debouncer := NewAdvanced(config)
+	debouncer.Start()
+
+	// First stop should cancel all operations and close channels
+	if err := debouncer.Stop(); err != nil {
+		t.Errorf("First Stop() failed: %v", err)
+	}
+
+	// Stop() now blocks until cleanup is complete via shutdownWG.Wait() - no sleep needed
+
+	// Multiple subsequent stops should not panic
+	for i := 0; i < 10; i++ {
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Subsequent Stop() error: %v", err)
+		}
+	}
+
+	// The debouncer should be in a consistent state
+	// Note: After stop, the debouncer is in a shutdown state and cannot be restarted
+	// This is expected behavior
+
+	t.Log("Stop idempotency test completed successfully")
+}
+
+func TestAdvancedDebouncer_ConcurrentStopWithOperations(t *testing.T) {
+	config := AdvancedDebouncerConfig{
+		BaseDelay:          50 * time.Millisecond,
+		MaxDelay:           1 * time.Second,
+		BackoffEnabled:     false,
+		ChurnThreshold:     10,
+		ChurnWindow:        200 * time.Millisecond,
+		DecayResetDuration: 1 * time.Second,
+		ManualSyncTimeout:  100 * time.Millisecond,
+	}
+
+	debouncer := NewAdvanced(config)
+	debouncer.Start()
+	t.Cleanup(func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Errorf("Failed to stop debouncer: %v", err)
+		}
+	})
+
+	var operationCount int64
+	var wg sync.WaitGroup
+
+	// Start adding operations concurrently
+	numOperationGoroutines := 5
+	for i := 0; i < numOperationGoroutines; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for j := 0; j < 10; j++ {
+				fn := func() {
+					atomic.AddInt64(&operationCount, 1)
+				}
+				debouncer.Add(fmt.Sprintf("concurrent-test-%d-%d", id, j), fn)
+				time.Sleep(5 * time.Millisecond)
+			}
+		}(i)
+	}
+
+	// Wait for some operations to be added
+	time.Sleep(20 * time.Millisecond)
+
+	// Start concurrent Stop calls
+	numStopGoroutines := 3
+	var stopWg sync.WaitGroup
+	for i := 0; i < numStopGoroutines; i++ {
+		stopWg.Add(1)
+		go func() {
+			defer stopWg.Done()
+			if err := debouncer.Stop(); err != nil {
+				t.Logf("Concurrent Stop() error in operations test: %v", err)
+			}
+		}()
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+	stopWg.Wait()
+
+	// Stop() now blocks until cleanup is complete via shutdownWG.Wait() - no sleep needed
+
+	// Test should complete without panics
+	t.Logf("Concurrent Stop with operations test completed successfully. Operations: %d", atomic.LoadInt64(&operationCount))
+}
+
+func TestAdvancedDebouncer_RaceConditionManualSyncAfterStop(t *testing.T) {
+	config := AdvancedDebouncerConfig{
+		BaseDelay:          50 * time.Millisecond,
+		MaxDelay:           1 * time.Second,
+		BackoffEnabled:     false,
+		ChurnThreshold:     10,
+		ChurnWindow:        200 * time.Millisecond,
+		DecayResetDuration: 1 * time.Second,
+		ManualSyncTimeout:  100 * time.Millisecond,
+	}
+
+	debouncer := NewAdvanced(config)
+	debouncer.Start()
+
+	var callCount int64
+	var panicCount int64
+	var wg sync.WaitGroup
+
+	fn := func() {
+		atomic.AddInt64(&callCount, 1)
+	}
+
+	// Test the specific race condition scenario:
+	// Thread A: Calls Stop() which closes channels
+	// Thread B: Calls TriggerManualSync() which might check stopped flag before channel close
+	// This should NOT cause "send on closed channel" panic after the fix
+
+	// Thread A: Stop the debouncer
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Stop() error: %v", err)
+		}
+	}()
+
+	// Small delay to ensure Stop() starts first
+	time.Sleep(testRaceDelay)
+
+	// Thread B: Rapid manual sync attempts that could trigger the race condition
+	numManualSyncs := 10
+	for i := 0; i < numManualSyncs; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			defer func() {
+				if r := recover(); r != nil {
+					atomic.AddInt64(&panicCount, 1)
+					t.Errorf("Panic detected in manual sync %d: %v", id, r)
+				}
+			}()
+
+			err := debouncer.TriggerManualSync(fmt.Sprintf("race-test-%d", id), fn)
+			if err != nil {
+				// Expected after debouncer is stopped, should not panic
+				t.Logf("Manual sync %d returned error (expected): %v", id, err)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+
+	// Validate no panics occurred
+	if atomic.LoadInt64(&panicCount) > 0 {
+		t.Fatalf("Race condition detected: %d panics occurred (should be 0)", atomic.LoadInt64(&panicCount))
+	}
+
+	// Some manual syncs might have succeeded before stop, some should fail after
+	// The key is that no panics should occur
+	t.Logf("Race condition test completed successfully. Manual syncs: %d, Panics: %d, Calls: %d",
+		numManualSyncs, atomic.LoadInt64(&panicCount), atomic.LoadInt64(&callCount))
+
+	// Additional verification: multiple Stop() calls should be safe
+	for i := 0; i < 3; i++ {
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Additional Stop() call %d error: %v", i, err)
+		}
+	}
+
+	t.Log("TOCTOU race condition fix validated - no 'send on closed channel' panics detected")
 }

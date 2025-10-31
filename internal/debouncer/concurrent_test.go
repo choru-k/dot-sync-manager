@@ -3,6 +3,7 @@ package debouncer
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -21,14 +22,17 @@ func TestAdvancedDebouncer_ConcurrentManualSync(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	defer func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Deferred Stop() error: %v", err)
+		}
+	}()
 
 	var wg sync.WaitGroup
 	numGoroutines := 10
 	syncsPerGoroutine := 5
 
 	var successCount int64
-	var mu sync.Mutex
 
 	// Launch multiple goroutines doing manual syncs concurrently
 	for i := 0; i < numGoroutines; i++ {
@@ -40,9 +44,7 @@ func TestAdvancedDebouncer_ConcurrentManualSync(t *testing.T) {
 				key := fmt.Sprintf("sync-%d-%d", id, j)
 
 				err := debouncer.TriggerManualSync(key, func() {
-					mu.Lock()
-					successCount++
-					mu.Unlock()
+					atomic.AddInt64(&successCount, 1)
 				})
 
 				if err != nil {
@@ -58,8 +60,9 @@ func TestAdvancedDebouncer_ConcurrentManualSync(t *testing.T) {
 	wg.Wait()
 
 	expectedCount := int64(numGoroutines * syncsPerGoroutine)
-	if successCount != expectedCount {
-		t.Errorf("Expected %d successful syncs, got %d", expectedCount, successCount)
+	actualCount := atomic.LoadInt64(&successCount)
+	if actualCount != expectedCount {
+		t.Errorf("Expected %d successful syncs, got %d", expectedCount, actualCount)
 	}
 }
 
@@ -77,12 +80,15 @@ func TestAdvancedDebouncer_ConcurrentMixedOperations(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	defer func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Deferred Stop() error: %v", err)
+		}
+	}()
 
 	var wg sync.WaitGroup
 	var debouncedCount int64
 	var manualCount int64
-	var mu sync.Mutex
 
 	// Goroutine for debounced operations
 	wg.Add(1)
@@ -91,9 +97,7 @@ func TestAdvancedDebouncer_ConcurrentMixedOperations(t *testing.T) {
 		for i := 0; i < 20; i++ {
 			key := fmt.Sprintf("debounced-%d", i)
 			debouncer.Add(key, func() {
-				mu.Lock()
-				debouncedCount++
-				mu.Unlock()
+				atomic.AddInt64(&debouncedCount, 1)
 			})
 			time.Sleep(20 * time.Millisecond)
 		}
@@ -106,9 +110,7 @@ func TestAdvancedDebouncer_ConcurrentMixedOperations(t *testing.T) {
 		for i := 0; i < 10; i++ {
 			key := fmt.Sprintf("manual-%d", i)
 			if err := debouncer.TriggerManualSync(key, func() {
-				mu.Lock()
-				manualCount++
-				mu.Unlock()
+				atomic.AddInt64(&manualCount, 1)
 			}); err != nil {
 				t.Errorf("TriggerManualSync failed: %v", err)
 			}
@@ -123,9 +125,7 @@ func TestAdvancedDebouncer_ConcurrentMixedOperations(t *testing.T) {
 		for i := 0; i < 5; i++ {
 			key := fmt.Sprintf("immediate-%d", i)
 			debouncer.AddImmediate(key, func() {
-				mu.Lock()
-				manualCount++
-				mu.Unlock()
+				atomic.AddInt64(&manualCount, 1)
 			})
 			time.Sleep(80 * time.Millisecond)
 		}
@@ -136,15 +136,18 @@ func TestAdvancedDebouncer_ConcurrentMixedOperations(t *testing.T) {
 	// Wait for all debounced operations to complete
 	time.Sleep(500 * time.Millisecond)
 
-	if debouncedCount == 0 {
+	finalDebouncedCount := atomic.LoadInt64(&debouncedCount)
+	finalManualCount := atomic.LoadInt64(&manualCount)
+
+	if finalDebouncedCount == 0 {
 		t.Error("Expected at least some debounced operations to execute")
 	}
 
-	if manualCount == 0 {
+	if finalManualCount == 0 {
 		t.Error("Expected at least some manual/immediate operations to execute")
 	}
 
-	t.Logf("Debounced operations: %d, Manual/Immediate operations: %d", debouncedCount, manualCount)
+	t.Logf("Debounced operations: %d, Manual/Immediate operations: %d", finalDebouncedCount, finalManualCount)
 }
 
 func TestAdvancedDebouncer_ConcurrentQueueOverflow(t *testing.T) {
@@ -161,14 +164,17 @@ func TestAdvancedDebouncer_ConcurrentQueueOverflow(t *testing.T) {
 
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	defer func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Deferred Stop() error: %v", err)
+		}
+	}()
 
 	var wg sync.WaitGroup
 	numGoroutines := 150 // More than the queue capacity of 100
 
 	var successCount int64
 	var timeoutCount int64
-	var mu sync.Mutex
 
 	// Launch more goroutines than queue capacity to test overflow handling
 	for i := 0; i < numGoroutines; i++ {
@@ -181,17 +187,13 @@ func TestAdvancedDebouncer_ConcurrentQueueOverflow(t *testing.T) {
 			err := debouncer.TriggerManualSync(key, func() {
 				// Simulate some work
 				time.Sleep(10 * time.Millisecond)
-				mu.Lock()
-				successCount++
-				mu.Unlock()
+				atomic.AddInt64(&successCount, 1)
 			})
 
 			if err != nil {
-				mu.Lock()
 				if err.Error() == "manual sync timeout after 100ms" {
-					timeoutCount++
+					atomic.AddInt64(&timeoutCount, 1)
 				}
-				mu.Unlock()
 			}
 		}(i)
 	}
@@ -200,9 +202,11 @@ func TestAdvancedDebouncer_ConcurrentQueueOverflow(t *testing.T) {
 
 	// Some operations should succeed, some might timeout due to the queue overflow
 	// The exact numbers depend on timing, but we should see both success and timeout
-	t.Logf("Successful syncs: %d, Timeout syncs: %d", successCount, timeoutCount)
+	finalSuccessCount := atomic.LoadInt64(&successCount)
+	finalTimeoutCount := atomic.LoadInt64(&timeoutCount)
+	t.Logf("Successful syncs: %d, Timeout syncs: %d", finalSuccessCount, finalTimeoutCount)
 
-	if successCount == 0 {
+	if finalSuccessCount == 0 {
 		t.Error("Expected at least some successful syncs despite queue overflow")
 	}
 }
@@ -235,7 +239,9 @@ func TestAdvancedDebouncer_ConcurrentStop(t *testing.T) {
 
 	// Stop the debouncer while operations are in progress
 	start := time.Now()
-	debouncer.Stop()
+	if err := debouncer.Stop(); err != nil {
+		t.Errorf("Failed to stop debouncer during operations test: %v", err)
+	}
 	stopDuration := time.Since(start)
 
 	// Stop should complete quickly even with operations in progress
@@ -252,7 +258,11 @@ func TestAdvancedDebouncer_ConcurrentStatsAccess(t *testing.T) {
 	config := DefaultAdvancedConfig()
 	debouncer := NewAdvanced(config)
 	debouncer.Start()
-	defer debouncer.Stop()
+	defer func() {
+		if err := debouncer.Stop(); err != nil {
+			t.Logf("Deferred Stop() error: %v", err)
+		}
+	}()
 
 	var wg sync.WaitGroup
 	numGoroutines := 10

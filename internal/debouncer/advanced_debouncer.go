@@ -2,6 +2,7 @@ package debouncer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -22,10 +23,27 @@ const (
 
 	// DebouncerTimeout is the maximum time to wait for debouncer operations
 	DebouncerTimeout = 10 * time.Minute
+
+	// Error IDs for monitoring and debugging - local to debouncer package
+	// These IDs help track specific error types in monitoring systems like Sentry
+	ErrIDDebouncerCallbackPanic       = "DEBOUNCER_CALLBACK_PANIC"
+	ErrIDDebouncerImmediatePanic      = "DEBOUNCER_IMMEDIATE_PANIC"
+	ErrIDDebouncerManualSyncPanic     = "DEBOUNCER_MANUAL_SYNC_PANIC"
+	ErrIDDebouncerChannelPanic        = "DEBOUNCER_CHANNEL_PANIC"
+	ErrIDDebouncerQueuePanic          = "DEBOUNCER_QUEUE_PANIC"
+	ErrIDDebouncerTimerNotStopped     = "DEBOUNCER_TIMER_NOT_STOPPED"
+	ErrIDDebouncerTimerCancelFailed   = "DEBOUNCER_TIMER_CANCEL_FAILED"
 )
 
 // AdvancedDebouncer provides configurable debounce with exponential backoff
 // and rapid file churn detection
+//
+// Thread Safety:
+// - All public methods are thread-safe and can be called concurrently
+// - Stop() is idempotent and can be called multiple times safely
+// - Uses sync.Once to ensure cleanup operations happen exactly once
+// - Manual sync operations are safely rejected after Stop()
+// - The debouncer can be safely used from multiple goroutines
 type AdvancedDebouncer struct {
 	// Basic debounce settings
 	baseDelay      time.Duration
@@ -61,11 +79,18 @@ type AdvancedDebouncer struct {
 	manualSyncTimeout time.Duration
 
 	// Shutdown handling
-	done chan struct{}
+	done    chan struct{}
+	stopped bool // Track stopped state to prevent race conditions
+
+	// Goroutine coordination for graceful shutdown
+	shutdownWG sync.WaitGroup
 
 	// Context for cancellation
 	ctx    context.Context
 	cancel context.CancelFunc
+
+	// Error handling
+	onError func(error)
 
 	// Start/stop state management
 	started int32 // atomic.Bool replacement: 1 = started, 0 = not started
@@ -74,10 +99,9 @@ type AdvancedDebouncer struct {
 }
 
 type manualSyncRequest struct {
-	fn        func()
-	key       string
-	immediate bool
-	result    chan error
+	fn     func()
+	key    string
+	result chan error
 }
 
 // AdvancedDebouncerConfig holds configuration for the advanced debouncer
@@ -235,24 +259,32 @@ func (d *AdvancedDebouncer) AddWithContext(ctx context.Context, key string, fn f
 			return
 		}
 
-		// Execute the captured callback with panic recovery
+		// Defer cleanup to ensure it runs even if fn panics and handle panic recovery
 		defer func() {
+			// Clean up resources first to prevent leaks
+			delete(d.timers, key)
+			delete(d.callback, key)
+
+			// Handle panic recovery
 			if r := recover(); r != nil {
-				// Log panic if needed, but don't crash
-				log.Printf("Warning: panic in debounced callback for key %s: %v", key, r)
+				// Create proper error from panic
+				err := fmt.Errorf("panic in debounced callback for key %s: %v [%s]", key, r, ErrIDDebouncerCallbackPanic)
+				log.Printf("ERROR: %v", err)
+
+				// Propagate error through error callback if available
+				if d.onError != nil {
+					d.onError(err)
+				}
+				return // Don't reset backoff on panic
 			}
+
+			// Reset backoff count after successful execution
+			d.backoffCount = 0
+			d.currentDelay = d.baseDelay
 		}()
 
 		// Execute callback
 		capturedFn()
-
-		// Clean up
-		delete(d.timers, key)
-		delete(d.callback, key)
-
-		// Reset backoff count after successful execution
-		d.backoffCount = 0
-		d.currentDelay = d.baseDelay
 	})
 }
 
@@ -269,32 +301,72 @@ func (d *AdvancedDebouncer) AddImmediate(key string, fn func()) {
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				// Log panic if needed, but don't crash
-				log.Printf("Warning: panic in AddImmediate for key %s: %v", key, r)
+				// Create proper error from panic
+				err := fmt.Errorf("panic in AddImmediate for key %s: %v [%s]", key, r, ErrIDDebouncerImmediatePanic)
+				log.Printf("ERROR: %v", err)
+
+				// Propagate error through error callback if available
+				if d.onError != nil {
+					d.onError(err)
+				}
 			}
 		}()
 		fn()
 	}()
 }
 
+// triggerManualSyncInternal implements the core logic for manual sync operations
+// with simplified locking pattern and optional context support.
+// Returns whether the request was queued to the channel or handled directly.
+func (d *AdvancedDebouncer) triggerManualSyncInternal(ctx context.Context, key string, fn func(), result chan error) (bool, error) {
+	request := manualSyncRequest{
+		fn:     fn,
+		key:    key,
+		result: result,
+	}
+
+	// Critical fix: Hold lock throughout entire check+send operation to eliminate TOCTOU race
+	// This prevents "send on closed channel" panic if Stop() happens between check and send
+	d.manualSyncMu.Lock()
+	defer d.manualSyncMu.Unlock()
+
+	if d.stopped {
+		return false, fmt.Errorf("debouncer is stopped")
+	}
+
+	// Try to send to queue. The select has a default so it won't block.
+	var sent bool
+	select {
+	case d.manualSyncQueue <- request:
+		sent = true
+		// Request queued successfully
+	case <-ctx.Done():
+		// Context cancelled during send attempt
+		return false, ctx.Err()
+	default:
+		// Queue is full, execute directly
+		sent = false
+	}
+
+	return sent, nil
+}
+
 // TriggerManualSync executes a manual sync with proper queue handling
 func (d *AdvancedDebouncer) TriggerManualSync(key string, fn func()) error {
 	result := make(chan error, 1)
 
-	request := manualSyncRequest{
-		fn:        fn,
-		key:       key,
-		immediate: true,
-		result:    result,
+	sent, err := d.triggerManualSyncInternal(context.Background(), key, fn, result)
+	if err != nil {
+		return err
 	}
 
-	// Send request to manual sync queue
-	select {
-	case d.manualSyncQueue <- request:
-		// Request queued successfully
-	default:
-		// Queue is full, execute directly
-		go d.handleManualSync(request)
+	if !sent {
+		// Execute directly since queue was full
+		go d.handleManualSync(manualSyncRequest{
+			fn:        fn,
+			key:       key,
+						result:    result,
+		})
 	}
 
 	// Wait for result or timeout
@@ -327,8 +399,17 @@ func (d *AdvancedDebouncer) processManualSyncQueue() {
 func (d *AdvancedDebouncer) handleManualSync(request manualSyncRequest) {
 	defer func() {
 		if r := recover(); r != nil {
+			err := fmt.Errorf("panic during manual sync for key %s: %v [%s]", request.key, r, ErrIDDebouncerManualSyncPanic)
+			log.Printf("ERROR: %v", err)
+
+			// Propagate error through result channel
 			if request.result != nil {
-				request.result <- fmt.Errorf("panic during manual sync: %v", r)
+				request.result <- err
+			}
+
+			// Propagate error through error callback if available
+			if d.onError != nil {
+				d.onError(err)
 			}
 		}
 	}()
@@ -336,19 +417,11 @@ func (d *AdvancedDebouncer) handleManualSync(request manualSyncRequest) {
 	// Cancel any existing debounced operation for this key
 	d.Cancel(request.key)
 
-	// Execute the function
-	if request.immediate {
-		// Execute immediately
-		request.fn()
-		if request.result != nil {
-			request.result <- nil
-		}
-	} else {
-		// Execute with normal debounce logic
-		d.Add(request.key, request.fn)
-		if request.result != nil {
-			request.result <- nil
-		}
+	// Execute the function immediately for manual sync operations
+	// Manual sync should not be debounced - user explicitly requested it
+	request.fn()
+	if request.result != nil {
+		request.result <- nil
 	}
 }
 
@@ -448,6 +521,31 @@ func (d *AdvancedDebouncer) CancelAll() {
 	}
 }
 
+// cancelAllTimers cancels all pending timers and returns any errors encountered
+func (d *AdvancedDebouncer) cancelAllTimers() []error {
+	var errors []error
+
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	// Cancel all timers and collect any errors
+	for key, timer := range d.timers {
+		if !timer.Stop() {
+			// Timer already fired or expired, this is not an error per se
+			// but we'll log it for debugging purposes
+			log.Printf("Warning: timer for key %s was not stopped (may have already fired) [%s]", key, ErrIDDebouncerTimerNotStopped)
+		}
+		delete(d.timers, key)
+	}
+
+	// Clear all callbacks
+	for key := range d.callback {
+		delete(d.callback, key)
+	}
+
+	return errors
+}
+
 // Pending returns the number of pending debounced functions
 func (d *AdvancedDebouncer) Pending() int {
 	d.mu.RLock()
@@ -500,22 +598,18 @@ func (d *AdvancedDebouncer) GetActivityCount() int {
 func (d *AdvancedDebouncer) TriggerManualSyncWithContext(ctx context.Context, key string, fn func()) error {
 	result := make(chan error, 1)
 
-	request := manualSyncRequest{
-		fn:        fn,
-		key:       key,
-		immediate: true,
-		result:    result,
+	sent, err := d.triggerManualSyncInternal(ctx, key, fn, result)
+	if err != nil {
+		return err
 	}
 
-	// Send request to manual sync queue
-	select {
-	case d.manualSyncQueue <- request:
-		// Request queued successfully
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-		// Queue is full, execute directly
-		go d.handleManualSync(request)
+	if !sent {
+		// Execute directly since queue was full or context cancelled
+		go d.handleManualSync(manualSyncRequest{
+			fn:        fn,
+			key:       key,
+						result:    result,
+		})
 	}
 
 	// Wait for result, timeout, or context cancellation
@@ -581,25 +675,69 @@ func (d *AdvancedDebouncer) GetStats() map[string]interface{} {
 }
 
 // Stop stops the debouncer and cleans up resources with graceful shutdown
-func (d *AdvancedDebouncer) Stop() {
+// Returns any error encountered during shutdown
+func (d *AdvancedDebouncer) Stop() error {
+	var shutdownErrors []error
+
 	d.stopOnce.Do(func() {
-		d.CancelAll()
+		// Set stopped flag to prevent new operations
+		d.manualSyncMu.Lock()
+		d.stopped = true
+		d.manualSyncMu.Unlock()
 
-		// Cancel the context to stop any pending callbacks
-		d.cancel()
+	// Cancel all pending timers and operations with error collection
+		if errs := d.cancelAllTimers(); len(errs) > 0 {
+			shutdownErrors = append(shutdownErrors, fmt.Errorf("errors cancelling timers during shutdown [%s]: %w", ErrIDDebouncerTimerCancelFailed, errors.Join(errs...)))
+		}
 
-		// Reset started flag to allow restart if needed
+	// Cancel the context to stop any pending callbacks
+	d.cancel()
+
+	// Reset started flag to allow restart if needed
 		atomic.StoreInt32(&d.started, 0)
 
-		// Signal shutdown to queue processor
-		close(d.done)
+	// Signal shutdown to queue processor
+	safeCloseChannel(d.done, "done", &shutdownErrors)
 
-		// Close the queue to unblock any remaining operations
-		close(d.manualSyncQueue)
+	// Drain the queue to process any pending manual sync requests before shutdown
+	// This prevents dropping pending work during shutdown
+	drainQueue := func() {
+		for {
+			select {
+			case request, ok := <-d.manualSyncQueue:
+				if !ok {
+					// Queue already closed
+					return
+				}
+				// Process the pending request
+				d.handleManualSync(request)
+			default:
+				// Queue is empty, safe to close
+				return
+			}
+		}
+	}
+	drainQueue()
 
-		// Give a brief moment for clean shutdown
-		time.Sleep(DefaultShutdownTimeout)
+	// Close the queue to prevent new requests
+	safeCloseManualSyncQueue(d.manualSyncQueue, "manual sync", &shutdownErrors)
+
+	// Wait for the goroutine to finish processing
+	// This ensures clean shutdown without relying on arbitrary timeouts
+	d.shutdownWG.Wait()
+
+	// The actual goroutine should exit quickly due to the done signal and queue closure
+	// Any remaining operations will naturally complete or timeout
 	})
+
+	if len(shutdownErrors) > 0 {
+		if len(shutdownErrors) == 1 {
+			return shutdownErrors[0]
+		}
+		return fmt.Errorf("multiple errors during debouncer shutdown: %v", shutdownErrors)
+	}
+
+	return nil
 }
 
 // Start starts the manual sync queue processor.
@@ -629,9 +767,55 @@ func (d *AdvancedDebouncer) Start() {
 		return // Already started (another goroutine won the race)
 	}
 
+	// Reset stopped state to allow restart after Stop()
+	d.manualSyncMu.Lock()
+	if d.stopped {
+		// Recreate channels that were closed during Stop()
+		d.done = make(chan struct{})
+		d.manualSyncQueue = make(chan manualSyncRequest, 100)
+		d.stopped = false
+		// Reset the sync.Once for shutdown
+		d.stopOnce = sync.Once{}
+	}
+	d.manualSyncMu.Unlock()
+
 	// Mark as started before launching goroutine
 	atomic.StoreInt32(&d.started, 1)
 
-	// Start the goroutine
-	go d.processManualSyncQueue()
+	// Start the goroutine with WaitGroup coordination
+	d.shutdownWG.Add(1)
+	go func() {
+		defer d.shutdownWG.Done()
+		d.processManualSyncQueue()
+	}()
+}
+
+// SetErrorHandler sets a callback function to handle errors that occur during debounced operations.
+// This is useful for monitoring and logging purposes.
+func (d *AdvancedDebouncer) SetErrorHandler(onError func(error)) {
+	d.onError = onError
+}
+
+// safeCloseChannel safely closes a channel with panic recovery
+func safeCloseChannel(ch chan struct{}, context string, shutdownErrors *[]error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err := fmt.Errorf("panic during %s channel closure [%s]: %v", context, ErrIDDebouncerChannelPanic, r)
+			*shutdownErrors = append(*shutdownErrors, err)
+			log.Printf("ERROR: %v", err)
+		}
+	}()
+	close(ch)
+}
+
+// safeCloseManualSyncQueue safely closes the manual sync queue with panic recovery
+func safeCloseManualSyncQueue(ch chan manualSyncRequest, context string, shutdownErrors *[]error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err := fmt.Errorf("panic during %s queue closure [%s]: %v", context, ErrIDDebouncerQueuePanic, r)
+			*shutdownErrors = append(*shutdownErrors, err)
+			log.Printf("ERROR: %v", err)
+		}
+	}()
+	close(ch)
 }

@@ -1,10 +1,22 @@
 package sync
 
 import (
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/debouncer"
+)
+
+// Advanced debouncer test timing constants for easier tuning and consistency
+const (
+	advTestDebounceDelay   = 100 * time.Millisecond
+	advTestBaseDelay      = 100 * time.Millisecond
+	advTestMaxDelay       = 1 * time.Second
+	advTestChurnWindow    = 200 * time.Millisecond
+	advTestDecayResetDur  = 1 * time.Second
+	advTestExecutionDelay = 200 * time.Millisecond
+	advTestShortWait      = 50 * time.Millisecond
 )
 
 func TestSyncService_AdvancedDebouncer_Integration(t *testing.T) {
@@ -13,18 +25,18 @@ func TestSyncService_AdvancedDebouncer_Integration(t *testing.T) {
 
 	// Create sync service configuration with advanced debouncer
 	backoffConfig := &debouncer.AdvancedDebouncerConfig{
-		BaseDelay:          100 * time.Millisecond,
-		MaxDelay:           1 * time.Second,
+		BaseDelay:          advTestBaseDelay,
+		MaxDelay:           advTestMaxDelay,
 		BackoffEnabled:     true,
 		BackoffMultiplier:  2.0,
 		ChurnThreshold:     3,
-		ChurnWindow:        200 * time.Millisecond,
-		DecayResetDuration: 1 * time.Second,
+		ChurnWindow:        advTestChurnWindow,
+		DecayResetDuration: advTestDecayResetDur,
 	}
 
 	_ = &Config{
 		RepoPath:        "/tmp/test", // Dummy path
-		DebounceDelay:   100 * time.Millisecond,
+		DebounceDelay:   advTestDebounceDelay,
 		AutoSyncEnabled: true,
 		IgnoreFile:      ".syncignore",
 		Backoff:         backoffConfig,
@@ -38,16 +50,21 @@ func TestSyncService_AdvancedDebouncer_Integration(t *testing.T) {
 
 	// Test basic functionality
 	var called bool
+	var mu sync.Mutex
 	advancedDebouncer.Add("test", func() {
+		mu.Lock()
 		called = true
+		mu.Unlock()
 	})
 
 	// Wait for execution
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(advTestExecutionDelay)
 
+	mu.Lock()
 	if !called {
 		t.Error("Expected function to be called")
 	}
+	mu.Unlock()
 
 	// Test stats
 	stats := advancedDebouncer.GetStats()
@@ -72,17 +89,23 @@ func TestSyncService_AdvancedDebouncer_Integration(t *testing.T) {
 	// Test immediate execution
 	called = false
 	advancedDebouncer.AddImmediate("immediate", func() {
+		mu.Lock()
 		called = true
+		mu.Unlock()
 	})
 
 	// Should be called immediately
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(advTestShortWait)
+	mu.Lock()
 	if !called {
 		t.Error("Expected immediate function to be called")
 	}
+	mu.Unlock()
 
 	// Stop the debouncer
-	advancedDebouncer.Stop()
+	if err := advancedDebouncer.Stop(); err != nil {
+		t.Errorf("Failed to stop advanced debouncer: %v", err)
+	}
 }
 
 func TestSyncService_BasicDebouncer_BackwardCompatibility(t *testing.T) {
@@ -92,7 +115,7 @@ func TestSyncService_BasicDebouncer_BackwardCompatibility(t *testing.T) {
 	// Create sync service configuration without backoff (basic debouncer)
 	syncConfig := &Config{
 		RepoPath:        "/tmp/test", // Dummy path
-		DebounceDelay:   100 * time.Millisecond,
+		DebounceDelay:   advTestDebounceDelay,
 		AutoSyncEnabled: true,
 		IgnoreFile:      ".syncignore",
 		Backoff:         nil, // No backoff configuration
@@ -111,16 +134,21 @@ func TestSyncService_BasicDebouncer_BackwardCompatibility(t *testing.T) {
 
 	// Test basic functionality
 	var called bool
+	var mu sync.Mutex
 	basicDebouncer.Add("test", func() {
+		mu.Lock()
 		called = true
+		mu.Unlock()
 	})
 
 	// Wait for execution
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(advTestExecutionDelay)
 
+	mu.Lock()
 	if !called {
 		t.Error("Expected function to be called")
 	}
+	mu.Unlock()
 
 	// Test that basic debouncer doesn't have advanced features
 	if basicDebouncer.GetDelay() != syncConfig.DebounceDelay {

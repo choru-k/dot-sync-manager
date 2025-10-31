@@ -13,6 +13,7 @@ bin/dot-sync-manager
 bin/dotfile-sync-manager
 bin/*
 
+
 # Test binary, built with `go test -c`
 *.test
 

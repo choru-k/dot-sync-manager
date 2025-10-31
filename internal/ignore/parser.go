@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/choru-k/dot-sync-manager/internal/util"
 )
@@ -20,6 +21,7 @@ type Pattern struct {
 type Parser struct {
 	patterns []Pattern
 	root     string
+	mu       sync.RWMutex
 }
 
 // New creates a new ignore parser
@@ -40,6 +42,9 @@ func (p *Parser) LoadFromFile(filename string) (err error) {
 		return err
 	}
 	defer util.CloseAndCaptureErr(file, &err)
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -86,6 +91,9 @@ func (p *Parser) parsePattern(line string) Pattern {
 
 // Match checks if a path matches any of the ignore patterns
 func (p *Parser) Match(path string) bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
 	// Convert to relative path from root
 	relPath := path
 	if p.root != "" {
@@ -308,10 +316,15 @@ func (p *Parser) matchMultiPattern(patternParts, pathParts []string) bool {
 
 // GetPatterns returns the current patterns (for testing)
 func (p *Parser) GetPatterns() []Pattern {
+	// RLock protects concurrent read access to the patterns slice
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	return p.patterns
 }
 
 // Clear removes all patterns
 func (p *Parser) Clear() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.patterns = make([]Pattern, 0)
 }
