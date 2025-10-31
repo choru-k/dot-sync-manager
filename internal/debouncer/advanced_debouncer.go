@@ -259,8 +259,13 @@ func (d *AdvancedDebouncer) AddWithContext(ctx context.Context, key string, fn f
 			return
 		}
 
-		// Execute the captured callback with panic recovery
+		// Defer cleanup to ensure it runs even if fn panics and handle panic recovery
 		defer func() {
+			// Clean up resources first to prevent leaks
+			delete(d.timers, key)
+			delete(d.callback, key)
+
+			// Handle panic recovery
 			if r := recover(); r != nil {
 				// Create proper error from panic
 				err := fmt.Errorf("panic in debounced callback for key %s: %v [%s]", key, r, ErrIDDebouncerCallbackPanic)
@@ -270,19 +275,16 @@ func (d *AdvancedDebouncer) AddWithContext(ctx context.Context, key string, fn f
 				if d.onError != nil {
 					d.onError(err)
 				}
+				return // Don't reset backoff on panic
 			}
+
+			// Reset backoff count after successful execution
+			d.backoffCount = 0
+			d.currentDelay = d.baseDelay
 		}()
 
 		// Execute callback
 		capturedFn()
-
-		// Clean up
-		delete(d.timers, key)
-		delete(d.callback, key)
-
-		// Reset backoff count after successful execution
-		d.backoffCount = 0
-		d.currentDelay = d.baseDelay
 	})
 }
 

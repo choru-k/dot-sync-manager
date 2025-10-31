@@ -21,6 +21,11 @@ import (
 const (
 	DefaultDebounceDelay = 30 * time.Second
 	DefaultIgnoreFile    = ".syncignore"
+
+	// EventLoopTimeout determines how frequently the event loop checks for
+	// context cancellation and service state changes. This prevents indefinite
+	// blocking on watcher channels while maintaining responsiveness.
+	EventLoopTimeout = 100 * time.Millisecond
 )
 
 // DebouncerInterface defines the interface for both basic and advanced debouncers
@@ -67,8 +72,8 @@ func stateToString(state ServiceState) string {
 // - Create a new SyncService instance for each service lifecycle
 // - Start() can only be called once per instance
 // - Stop() can be called multiple times safely (idempotent)
-// - After Stop(), create a new instance rather than trying to restart
-// - This design follows Go idioms and avoids complex restart logic
+// - ⚠️  IMPORTANT: After Stop(), the service cannot be restarted. Create a new SyncService instance instead.
+// - This design follows Go idioms and avoids complex restart logic and resource leaks
 //
 // Lock Ordering Rules (to prevent deadlocks):
 // 1. Atomic state operations (CompareAndSwapInt32, LoadInt32) - no locks required
@@ -265,6 +270,14 @@ func (s *SyncService) Start() error {
 		// Cancel debouncer to prevent background goroutines
 		if s.debouncer != nil {
 			s.debouncer.CancelAll()
+
+			// Additional cleanup for advanced debouncer to prevent goroutine leaks
+			if s.advancedDebouncer != nil {
+				// Stop the advanced debouncer to clean up its goroutines and channels
+				if err := s.advancedDebouncer.Stop(); err != nil {
+					log.Printf("sync: warning - failed to stop advanced debouncer during rollback [%s]: %v", ErrIDAdvancedDebouncerStopFailed, err)
+				}
+			}
 		}
 
 		// Reset shutdownOnce to allow clean shutdown if needed later
@@ -316,6 +329,12 @@ func (s *SyncService) Start() error {
 }
 
 // Stop stops the file watching service and returns any error encountered during shutdown
+//
+// ⚠️  IMPORTANT: After calling Stop(), this SyncService instance cannot be restarted.
+// Create a new SyncService instance instead. This limitation exists because:
+//   - File system watchers cannot be reliably recreated after Close()
+//   - Context cancellation permanently disables the event loop
+//   - Goroutine coordination structures are designed for one-time use
 //
 // Error Handling Contract:
 // - Errors indicate resource leaks but service is still stopped
@@ -508,7 +527,7 @@ func (s *SyncService) eventLoop() {
 
 		// Use a timeout select to prevent blocking indefinitely on watcher channels
 		// This allows the event loop to check context cancellation and watcher nil status periodically
-		timeout := time.NewTimer(100 * time.Millisecond)
+		timeout := time.NewTimer(EventLoopTimeout)
 		select {
 		case <-s.ctx.Done():
 			timeout.Stop()
