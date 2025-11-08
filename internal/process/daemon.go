@@ -19,7 +19,6 @@ const (
 	exeExtension       = ".exe" // Windows executable extension
 	lockTimeout        = 5 * time.Second
 	lockRetryInterval  = 100 * time.Millisecond
-	maxLockRetries     = lockTimeout / lockRetryInterval
 )
 
 // pidFilePath returns the absolute path to the PID file in the user's home directory.
@@ -211,7 +210,7 @@ func readPIDFromPath(path string) (*pidInfo, error) {
 		return nil, fmt.Errorf("process: invalid pid value %q: %w", pidStr, convErr)
 	}
 	if pid <= 0 {
-		return nil, fmt.Errorf("process: invalid pid value %q: must be positive: %w", pidStr, convErr)
+		return nil, fmt.Errorf("process: invalid pid value %q: must be positive", pidStr)
 	}
 
 	// Handle format-specific logic
@@ -288,38 +287,13 @@ func readPID() (*pidInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	data, err := os.ReadFile(path)
+
+	pidInfo, err := readPIDFromPath(path)
 	if err != nil {
 		return nil, fmt.Errorf("process: read pid file: %w", err)
 	}
-	content := strings.TrimSpace(string(data))
-	
-	// Parse content into parts (legacy: "PID", new: "PID:exe_name")
-	parts := strings.SplitN(content, ":", 2)
-	pidStr := parts[0]
-	
-	// Validate PID first (common to both formats)
-	pid, convErr := strconv.Atoi(pidStr)
-	if convErr != nil {
-		return nil, fmt.Errorf("process: invalid pid value %q: %w", pidStr, convErr)
-	}
-	if pid <= 0 {
-		return nil, fmt.Errorf("process: invalid pid value %q: must be positive: %w", pidStr, convErr)
-	}
-	
-	// Handle format-specific logic
-	if len(parts) == 1 {
-		// Legacy format: just the PID, no executable name
-		return &pidInfo{pid: pid, exeName: ""}, nil
-	}
-	
-	// New format: PID:exe_name
-	exeName := parts[1]
-	if exeName == "" {
-		return nil, fmt.Errorf("process: missing executable name in pid file")
-	}
-	
-	return &pidInfo{pid: pid, exeName: exeName}, nil
+
+	return pidInfo, nil
 }
 
 // cleanupPIDFile removes the PID file and logs any cleanup errors.
