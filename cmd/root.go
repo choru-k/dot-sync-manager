@@ -149,7 +149,9 @@ func runRoot(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to start sync service: %w", err)
 	}
 
-	if err := process.WritePIDExclusive(os.Getpid()); err != nil {
+	// Acquire PID file lock for the daemon's entire lifetime
+	lockManager, err := process.WritePIDExclusive(os.Getpid())
+	if err != nil {
 		if service != nil {
 			if stopErr := service.Stop(); stopErr != nil {
 				return fmt.Errorf("failed to write PID file: %w; also failed to stop service: %w", err, stopErr)
@@ -172,8 +174,8 @@ func runRoot(cmd *cobra.Command, args []string) error {
 				log.Printf("sync: warning - failed to stop service gracefully: %v", err)
 			}
 		}
-		if err := process.RemovePID(); err != nil {
-			log.Printf("process: warning - failed to remove PID file: %v", err)
+		if err := lockManager.Unlock(); err != nil {
+			log.Printf("process: warning - failed to cleanup PID file and lock: %v", err)
 		}
 	}()
 

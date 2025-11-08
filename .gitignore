@@ -7,11 +7,13 @@
 dotfile-sync-manager
 dsm
 dsm-*
+test-dsm-*
 bin/dsm
 bin/dsm-*
 bin/dot-sync-manager
 bin/dotfile-sync-manager
 bin/*
+test-dsm-*
 
 
 # Test binary, built with `go test -c`
