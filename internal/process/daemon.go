@@ -131,7 +131,7 @@ func readPID() (*pidInfo, error) {
 		return nil, fmt.Errorf("process: invalid pid value %q: %w", pidStr, convErr)
 	}
 	if pid <= 0 {
-		return nil, fmt.Errorf("process: invalid pid value %q: must be positive: %w", pidStr, convErr)
+		return nil, fmt.Errorf("process: invalid pid value %q: must be positive", pidStr)
 	}
 	
 	// Handle format-specific logic
@@ -174,6 +174,7 @@ func IsDaemonRunning() bool {
 
 		switch {
 		case pidInfo.pid == os.Getpid():
+			log.Printf("process: removing self-PID file - daemon process is current process")
 			if err := RemovePID(); err != nil {
 				log.Printf("process: warning - failed to remove self PID file: %v", err)
 			}
@@ -221,6 +222,7 @@ func GetDaemonPID() (int, error) {
 		}
 
 		if pidInfo.pid == os.Getpid() {
+			log.Printf("process: removing self-PID file - found current process in PID file")
 			if err := RemovePID(); err != nil {
 				log.Printf("process: warning - failed to remove self PID file: %v", err)
 			}
