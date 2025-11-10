@@ -203,11 +203,11 @@ func setupGitRepository(t *testing.T, repoPath string) {
 
 	// Configure git user
 	cmd = execCommandContext(ctx, "git", "-C", repoPath, "config", "user.name", "Test User")
-	output, err = cmd.CombinedOutput()
+	err = cmd.Run()
 	require.NoError(t, err, "Git user config should succeed")
 
 	cmd = execCommandContext(ctx, "git", "-C", repoPath, "config", "user.email", "test@example.com")
-	output, err = cmd.CombinedOutput()
+	err = cmd.Run()
 	require.NoError(t, err, "Git email config should succeed")
 
 	t.Logf("✅ Git repository initialized at: %s", repoPath)

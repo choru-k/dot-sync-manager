@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"log"
 	"testing"
 	"time"
 
@@ -9,6 +10,14 @@ import (
 	"github.com/choru-k/dot-sync-manager/internal/process"
 	"github.com/choru-k/dot-sync-manager/internal/sync"
 )
+
+// safeUnlock safely unlocks a LockManager and logs any errors without affecting test flow
+func safeUnlock(lockManager *process.LockManager) {
+	if err := lockManager.Unlock(); err != nil {
+		// Log the error but don't fail the test - cleanup errors are non-critical
+		log.Printf("warning: failed to unlock during cleanup: %v", err)
+	}
+}
 
 // TestGracefulShutdown_TimeoutContext tests that gracefulShutdown uses a fresh timeout context
 // and doesn't inherit cancellation from the signal context
@@ -49,7 +58,7 @@ func TestGracefulShutdown_TimeoutContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create lock manager: %v", err)
 	}
-	defer lockManager.Unlock() // Clean up
+	defer safeUnlock(lockManager) // Clean up
 
 	// Test that gracefulShutdown works even with cancelled signal context
 	// This verifies Bug Fix 1: Line 223 uses context.Background() instead of signalCtx
@@ -105,6 +114,6 @@ func TestGracefulShutdown_PIDLockRelease(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to acquire new lock after gracefulShutdown, PID may not be cleaned up: %v", err)
 	} else {
-		newLockManager.Unlock() // Clean up
+		safeUnlock(newLockManager) // Clean up
 	}
 }

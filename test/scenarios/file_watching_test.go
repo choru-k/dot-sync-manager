@@ -262,11 +262,11 @@ func setupDSMForWatchingTest(t *testing.T, sourceDir string) {
 
 	// Configure git user
 	cmd = execCommandContext(ctx, "git", "-C", targetDir, "config", "user.name", "Test User")
-	output, err = cmd.CombinedOutput()
+	err = cmd.Run()
 	require.NoError(t, err, "Git user config should succeed")
 
 	cmd = execCommandContext(ctx, "git", "-C", targetDir, "config", "user.email", "test@example.com")
-	output, err = cmd.CombinedOutput()
+	err = cmd.Run()
 	require.NoError(t, err, "Git email config should succeed")
 
 	// Verify DSM can read configuration correctly (this confirms DSM is properly initialized)
