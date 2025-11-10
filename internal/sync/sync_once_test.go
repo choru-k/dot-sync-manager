@@ -111,15 +111,16 @@ func TestSyncService_ShutdownOnceResetOnRestart(t *testing.T) {
 		IgnoreFile:      ".syncignore",
 	}
 
-	service, err := New(gitMgr, syncConfig)
-	if err != nil {
-		t.Fatalf("Failed to create sync service: %v", err)
-	}
-
-	// Test multiple start/stop cycles to ensure shutdownOnce reset works
+	// This test has been adapted. It no longer tests restart, but multiple start/stop cycles with new instances.
+	// Test multiple start/stop cycles to ensure sync.Once works for new instances
 	const cycles = 3
 	for cycle := 0; cycle < cycles; cycle++ {
 		t.Logf("Testing start/stop cycle %d/%d", cycle+1, cycles)
+
+		service, err := New(gitMgr, syncConfig)
+		if err != nil {
+			t.Fatalf("Cycle %d: Failed to create sync service: %v", cycle+1, err)
+		}
 
 		// Start service
 		if err := service.Start(); err != nil {

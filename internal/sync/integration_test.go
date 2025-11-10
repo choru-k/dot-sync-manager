@@ -79,6 +79,7 @@ cache/
 		err   error
 	}
 	var syncEventsMu sync.Mutex
+	syncCompleted := make(chan struct{}, 10) // Buffered channel
 
 	service.SetEventCallbacks(
 		func() {
@@ -92,6 +93,10 @@ cache/
 				err   error
 			}{files, err})
 			syncEventsMu.Unlock()
+			select {
+			case syncCompleted <- struct{}{}:
+			default:
+			}
 		},
 		func(err error) {
 			// Sync error
@@ -118,8 +123,8 @@ cache/
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 
-	// Wait for debounce and sync
-	time.Sleep(200 * time.Millisecond)
+	// Wait for sync to complete
+	<-syncCompleted
 
 	// Test 2: Create a file that should be ignored (.log file)
 	logFile := filepath.Join(repoPath, "debug.log")
@@ -136,8 +141,8 @@ cache/
 		t.Fatalf("Failed to create important log file: %v", err)
 	}
 
-	// Wait for debounce and sync
-	time.Sleep(200 * time.Millisecond)
+	// Wait for sync to complete
+	<-syncCompleted
 
 	// Test 4: Create a directory that should be ignored
 	cacheDir := filepath.Join(repoPath, "cache")

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"sync"
 	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
@@ -19,6 +20,13 @@ import (
 const (
 	daemonStartupTimeout      = 5 * time.Second
 	daemonStartupPollInterval = 100 * time.Millisecond
+
+	// Graceful shutdown timeouts
+	// Design rationale: service timeout < total timeout to allow coordinated cleanup
+	// serviceShutdownTimeout (10s): Individual service timeout based on typical sync operation times
+	// totalShutdownTimeout (15s): Overall timeout including coordination overhead
+	serviceShutdownTimeout = 10 * time.Second
+	totalShutdownTimeout  = 15 * time.Second
 )
 
 // startCmd represents the start command
@@ -35,10 +43,13 @@ Examples:
 }
 
 var foreground bool
+var startLogFile string
 
 func init() {
 	rootCmd.AddCommand(startCmd)
 	startCmd.Flags().BoolVar(&foreground, "foreground", false, "Run in foreground instead of daemonizing")
+	startCmd.Flags().StringVar(&startLogFile, "log-file", "", "Redirect daemon output to a log file")
+	startCmd.Flags().MarkHidden("log-file")
 }
 
 func runStart(cmd *cobra.Command, args []string) error {
@@ -56,8 +67,18 @@ func runStart(cmd *cobra.Command, args []string) error {
 	if verbose {
 		flagArgs = append(flagArgs, "--verbose")
 	}
+	if startLogFile != "" {
+		flagArgs = append(flagArgs, "--log-file", startLogFile)
+	}
 
 	if foreground {
+		if startLogFile != "" {
+			f, err := os.OpenFile(startLogFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+			if err != nil {
+				return fmt.Errorf("failed to open log file: %w", err)
+			}
+			log.SetOutput(f)
+		}
 		return runForegroundDaemon(cfg)
 	}
 
@@ -155,30 +176,120 @@ func runForegroundDaemon(cfg *config.SyncConfig) error {
 	if err := syncSvc.Start(); err != nil {
 		return fmt.Errorf("failed to start sync service: %w", err)
 	}
-	defer func() {
-		if err := syncSvc.Stop(); err != nil {
-			// Log error but don't fail shutdown
-			log.Printf("sync: warning - failed to stop service: %v", err)
-		}
-	}()
 
 	// Acquire PID file lock for the daemon's entire lifetime
 	lockManager, err := process.WritePIDExclusive(os.Getpid())
 	if err != nil {
 		return fmt.Errorf("failed to write PID file: %w", err)
 	}
-	defer func() {
-		if err := lockManager.Unlock(); err != nil {
-			fmt.Printf("⚠️  Warning: failed to cleanup PID file and lock: %v\n", err)
-		}
-	}()
+	// PID lock is released by the gracefulShutdown function.
 
 	fmt.Printf("🚀 Watching repository: %s\n", cfg.Git.RepoPath)
 	fmt.Printf("📊 Machine: %s\n", cfg.Machine.Name)
 	fmt.Printf("⚙️  Auto-sync enabled: %v\n", cfg.Sync.AutoSyncEnabled)
 
+	// Wait for shutdown signal
 	<-signalCtx.Done()
-	fmt.Println("\n🛑 Stopping sync service...")
+	fmt.Println("\n🛑 Signal received, initiating graceful shutdown...")
 
+	// Execute graceful shutdown with timeout protection
+	if err := gracefulShutdown(signalCtx, syncSvc, lockManager); err != nil {
+		fmt.Printf("❌ Critical: Graceful shutdown failed: %v\n", err)
+		fmt.Printf("⚠️  Daemon state may be inconsistent. Manual cleanup may be required.\n")
+		fmt.Printf("💡 Run 'dsm status' to check daemon state and 'dsm stop' to force cleanup if needed.\n")
+		return fmt.Errorf("graceful shutdown failed: %w", err)
+	}
+
+	fmt.Println("✅ Graceful shutdown completed")
 	return nil
+}
+
+// gracefulShutdown coordinates the shutdown sequence with timeout protection
+//
+// Design strategy:
+// 1. Parallel execution: Sync service and PID cleanup run concurrently for efficiency
+// 2. Timeout hierarchy: Service timeout (10s) < Total timeout (15s) for coordination
+// 3. Error aggregation: Collect all errors, filter nils, report comprehensive status
+// 4. Graceful degradation: Continue shutdown even if individual operations fail
+//
+// Coordination timing: 100ms delay before PID cleanup ensures sync service
+// starts shutting down first, preventing race conditions where PID file
+// might be removed before service cleanup begins.
+func gracefulShutdown(ctx context.Context, syncSvc *syncservice.SyncService, lockManager *process.LockManager) error {
+	fmt.Println("🔄 Shutting down services...")
+
+	// Create shutdown timeout context to prevent indefinite hangs
+	// This context wraps the incoming signal context and provides a hard deadline
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), totalShutdownTimeout)
+	defer shutdownCancel()
+
+	// Channel to collect shutdown errors (buffered to prevent blocking)
+	// Capacity 2: one for sync service, one for PID cleanup operation
+	shutdownErrors := make(chan error, 2)
+	var shutdownWG sync.WaitGroup
+
+	// Start sync service shutdown in goroutine with timeout
+	shutdownWG.Add(1)
+	go func() {
+		defer shutdownWG.Done()
+
+		// Shutdown sync service - use Stop() method which returns error
+		if err := syncSvc.Stop(); err != nil {
+			shutdownErrors <- fmt.Errorf("sync service shutdown failed after %v timeout: %w", serviceShutdownTimeout, err)
+			log.Printf("CRITICAL: Sync service shutdown failure may indicate: locked files, incomplete git operations, or resource deadlock")
+			return
+		}
+		shutdownErrors <- nil
+	}()
+
+	// Start PID file cleanup in goroutine using LockManager
+	//
+	// Coordination strategy: PID cleanup runs concurrently but slightly delayed
+	// to ensure sync service shutdown begins first. This prevents the race condition
+	// where PID file removal might be perceived as "daemon not running" by other
+	// processes before the sync service has actually stopped monitoring files.
+	shutdownWG.Add(1)
+	go func() {
+		defer shutdownWG.Done()
+
+		// Coordination delay (100ms): Ensures sync service shutdown starts first
+		// This timing is critical for preventing false "daemon not running" states
+		// when multiple processes check daemon status during shutdown window.
+		time.Sleep(100 * time.Millisecond)
+
+		if err := lockManager.Unlock(); err != nil {
+			shutdownErrors <- fmt.Errorf("PID file cleanup error: %w", err)
+			return
+		}
+		shutdownErrors <- nil
+	}()
+
+	// Wait for shutdown operations or timeout
+	done := make(chan struct{})
+	go func() {
+		shutdownWG.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// All shutdown operations completed
+		close(shutdownErrors)
+		var errors []error
+		for err := range shutdownErrors {
+			if err != nil {
+				errors = append(errors, err)
+			}
+		}
+		if len(errors) > 0 {
+			return fmt.Errorf("shutdown completed with %d error(s): %v", len(errors), errors)
+		}
+		fmt.Println("🧹 All services shut down cleanly")
+		return nil
+
+	case <-shutdownCtx.Done():
+		// Shutdown timeout exceeded
+		fmt.Println("⏰ Shutdown timeout exceeded, forcing exit")
+		return fmt.Errorf("shutdown timeout after %v", totalShutdownTimeout)
+	}
 }

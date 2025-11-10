@@ -2,6 +2,7 @@ package process_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,6 +23,46 @@ func TestDaemonLifecycleIntegration(t *testing.T) {
 	// Create a temporary home directory
 	tempHome := t.TempDir()
 	t.Setenv("HOME", tempHome)
+
+	// Create a minimal git repository for testing
+	dotfilesDir := filepath.Join(tempHome, "dotfiles")
+	if err := os.MkdirAll(dotfilesDir, 0755); err != nil {
+		t.Fatalf("failed to create dotfiles directory: %v", err)
+	}
+
+	// Create a minimal configuration file for testing
+	configPath := filepath.Join(dotfilesDir, ".sync-config.json")
+	minimalConfig := `{
+		"version": "1.0",
+		"machine": {
+			"name": "test-machine"
+		},
+		"git": {
+			"repo_path": "` + tempHome + `/dotfiles",
+			"remote_url": "",
+			"auth_type": "none"
+		},
+		"sync": {
+			"auto_sync_enabled": false,
+			"debounce_seconds": 1
+		}
+	}`
+	if err := os.WriteFile(configPath, []byte(minimalConfig), 0644); err != nil {
+		t.Fatalf("failed to create test config: %v", err)
+	}
+
+	// Initialize git repository
+	if err := exec.Command("git", "init", dotfilesDir).Run(); err != nil {
+		t.Fatalf("failed to initialize git repository: %v", err)
+	}
+
+	// Configure git user for the test repo
+	if err := exec.Command("git", "-C", dotfilesDir, "config", "user.name", "Test User").Run(); err != nil {
+		t.Fatalf("failed to configure git user: %v", err)
+	}
+	if err := exec.Command("git", "-C", dotfilesDir, "config", "user.email", "test@example.com").Run(); err != nil {
+		t.Fatalf("failed to configure git email: %v", err)
+	}
 
 	// Build the test binary in the project directory
 	cwd, err := os.Getwd()
@@ -57,9 +98,12 @@ func TestDaemonLifecycleIntegration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	startCmd := exec.CommandContext(ctx, binPath, "start")
-	if err := startCmd.Run(); err != nil {
-		t.Fatalf("failed to start daemon: %v", err)
+	logFilePath := filepath.Join(tempHome, "daemon.log")
+	startCmd := exec.CommandContext(ctx, binPath, "start", "--log-file", logFilePath)
+	output, err := startCmd.CombinedOutput()
+	if err != nil {
+		logContent, _ := os.ReadFile(logFilePath)
+		t.Fatalf("failed to start daemon: %v\nOutput:\n%s\nLog:\n%s", err, string(output), string(logContent))
 	}
 
 	// Poll for daemon to start (more reliable than fixed sleep)
@@ -188,10 +232,17 @@ func TestConcurrentDaemonStart(t *testing.T) {
 	defer cancel()
 
 	for i := 0; i < numGoroutines; i++ {
-		go func() {
-			startCmd := exec.CommandContext(ctx, binPath, "start")
-			results <- startCmd.Run()
-		}()
+		go func(i int) {
+			logFilePath := filepath.Join(tempHome, fmt.Sprintf("daemon-%d.log", i))
+			startCmd := exec.CommandContext(ctx, binPath, "start", "--log-file", logFilePath)
+			output, err := startCmd.CombinedOutput()
+			if err != nil {
+				logContent, _ := os.ReadFile(logFilePath)
+				results <- fmt.Errorf("error: %w, output: %s, log: %s", err, string(output), string(logContent))
+			} else {
+				results <- nil
+			}
+		}(i)
 	}
 
 	// Wait for all results
@@ -200,6 +251,7 @@ func TestConcurrentDaemonStart(t *testing.T) {
 	for i := 0; i < numGoroutines; i++ {
 		if err := <-results; err != nil {
 			errorCount++
+			t.Logf("Concurrent start failed as expected: %v", err)
 		} else {
 			successCount++
 		}
@@ -309,14 +361,11 @@ func TestCrossPlatformCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected success when writing after stale PID cleanup, got error: %v", err)
 	}
-	defer func() {
-		if err := lockManager2.Unlock(); err != nil {
-			t.Fatalf("failed to cleanup second lock manager: %v", err)
-		}
-	}()
-
 	// Verify cleanup
+	if err := lockManager2.Unlock(); err != nil {
+		t.Fatalf("failed to cleanup second lock manager: %v", err)
+	}
 	if _, err := os.Stat(pidPath); !os.IsNotExist(err) {
-		t.Fatal("PID file should be removed")
+		t.Fatal("PID file should be removed after unlock")
 	}
 }

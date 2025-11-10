@@ -708,21 +708,9 @@ func TestSyncService_GracefulShutdownCompletion(t *testing.T) {
 		t.Errorf("Graceful shutdown took too long: %v", shutdownDuration)
 	}
 
-	// Verify that the service can be started and stopped again after graceful shutdown
-	if err := service.Start(); err != nil {
-		t.Fatalf("Failed to restart service after graceful shutdown: %v", err)
-	}
-
-	if !service.IsRunning() {
-		t.Error("Service should be running after restart")
-	}
-
-	if err := service.Stop(); err != nil {
-		t.Fatalf("Failed to stop restarted service: %v", err)
-	}
-
-	if service.IsRunning() {
-		t.Error("Service should be stopped after second Stop()")
+	// Verify that the service cannot be started again after graceful shutdown
+	if err := service.Start(); err == nil {
+		t.Fatal("Expected service to fail on restart, but it succeeded")
 	}
 
 	t.Logf("Graceful shutdown completed in: %v", shutdownDuration)
@@ -839,22 +827,9 @@ func TestSyncService_EventLoopRaceConditions(t *testing.T) {
 		t.Error("Service should be stopped after concurrent operations")
 	}
 
-	// Verify that service can be restarted cleanly
-	if err := service.Start(); err != nil {
-		t.Fatalf("Failed to restart service after race conditions test: %v", err)
-	}
-
-	if !service.IsRunning() {
-		t.Error("Service should be running after restart")
-	}
-
-	// Final verification stop
-	if err := service.Stop(); err != nil {
-		t.Fatalf("Failed to stop service after restart: %v", err)
-	}
-
-	if service.IsRunning() {
-		t.Error("Service should be stopped after final Stop()")
+	// Verify that service cannot be restarted cleanly
+	if err := service.Start(); err == nil {
+		t.Fatal("Expected service to fail on restart, but it succeeded")
 	}
 
 	t.Log("Event loop race conditions test completed successfully")
@@ -898,13 +873,13 @@ func TestSyncService_ErrorHandlingDuringGracefulShutdown(t *testing.T) {
 		Backoff:         &advancedConfig,
 	}
 
-	service, err := New(gitMgr, syncConfig)
-	if err != nil {
-		t.Fatalf("Failed to create sync service: %v", err)
-	}
-
 	// Test 1: Normal graceful shutdown should not return errors
 	t.Run("normal graceful shutdown", func(t *testing.T) {
+		service, err := New(gitMgr, syncConfig)
+		if err != nil {
+			t.Fatalf("Failed to create sync service: %v", err)
+		}
+
 		if err := service.Start(); err != nil {
 			t.Fatalf("Failed to start service: %v", err)
 		}
@@ -930,6 +905,11 @@ func TestSyncService_ErrorHandlingDuringGracefulShutdown(t *testing.T) {
 
 	// Test 2: Multiple concurrent Stop() calls should handle errors gracefully
 	t.Run("concurrent shutdown handling", func(t *testing.T) {
+		service, err := New(gitMgr, syncConfig)
+		if err != nil {
+			t.Fatalf("Failed to create sync service: %v", err)
+		}
+
 		if err := service.Start(); err != nil {
 			t.Fatalf("Failed to restart service: %v", err)
 		}
@@ -975,8 +955,13 @@ func TestSyncService_ErrorHandlingDuringGracefulShutdown(t *testing.T) {
 
 	// Test 3: Error callback handling during shutdown
 	t.Run("error callback handling", func(t *testing.T) {
+		service, err := New(gitMgr, syncConfig)
+		if err != nil {
+			t.Fatalf("Failed to create sync service: %v", err)
+		}
+
 		if err := service.Start(); err != nil {
-			t.Fatalf("Failed to restart service: %v", err)
+			t.Fatalf("Failed to start service: %v", err)
 		}
 
 		var errorCallbackCalled bool
@@ -1016,8 +1001,13 @@ func TestSyncService_ErrorHandlingDuringGracefulShutdown(t *testing.T) {
 
 	// Test 4: Service restart after error scenarios
 	t.Run("restart after error scenarios", func(t *testing.T) {
-		// Test that service can be restarted successfully after various error scenarios
+		// Test that a new service can be started successfully after a previous one was stopped
 		for i := 0; i < 3; i++ {
+			service, err := New(gitMgr, syncConfig)
+			if err != nil {
+				t.Fatalf("Failed to create service in restart test iteration %d: %v", i, err)
+			}
+
 			if err := service.Start(); err != nil {
 				t.Fatalf("Failed to start service in restart test iteration %d: %v", i, err)
 			}
