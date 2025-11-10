@@ -15,9 +15,9 @@ func TestConfigCmd_Sanity(t *testing.T) {
 	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
 
 	// Set the global configFile variable so getConfig() uses the test config file
-	oldConfigFile := configFile
-	configFile = testConfig.ConfigPath
-	t.Cleanup(func() { configFile = oldConfigFile })
+	oldConfigFile := getConfigFile()
+	setConfigFile(testConfig.ConfigPath)
+	t.Cleanup(func() { setConfigFile(oldConfigFile) })
 
 	tests := []struct {
 		name        string
@@ -67,9 +67,9 @@ func TestRunConfigGet(t *testing.T) {
 	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
 
 	// Set the global configFile variable so getConfig() uses the test config file
-	oldConfigFile := configFile
-	configFile = testConfig.ConfigPath
-	t.Cleanup(func() { configFile = oldConfigFile })
+	oldConfigFile := getConfigFile()
+	setConfigFile(testConfig.ConfigPath)
+	t.Cleanup(func() { setConfigFile(oldConfigFile) })
 
 	tests := []struct {
 		name        string
@@ -119,9 +119,9 @@ func TestRunConfigSet(t *testing.T) {
 	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
 
 	// Set the global configFile variable so getConfig() uses the test config file
-	oldConfigFile := configFile
-	configFile = testConfig.ConfigPath
-	t.Cleanup(func() { configFile = oldConfigFile })
+	oldConfigFile := getConfigFile()
+	setConfigFile(testConfig.ConfigPath)
+	t.Cleanup(func() { setConfigFile(oldConfigFile) })
 
 	tests := []struct {
 		name        string
@@ -195,9 +195,9 @@ func TestRunConfigEdit(t *testing.T) {
 	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
 
 	// Set the global configFile variable so getConfig() uses the test config file
-	oldConfigFile := configFile
-	configFile = testConfig.ConfigPath
-	t.Cleanup(func() { configFile = oldConfigFile })
+	oldConfigFile := getConfigFile()
+	setConfigFile(testConfig.ConfigPath)
+	t.Cleanup(func() { setConfigFile(oldConfigFile) })
 
 	tests := []struct {
 		name        string
@@ -240,34 +240,34 @@ func TestGetNestedValue(t *testing.T) {
 	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
 
 	tests := []struct {
-		name         string
-		key          string
+		name          string
+		key           string
 		expectedValue interface{}
-		expectError  bool
+		expectError   bool
 	}{
 		{
-			name:         "machine.name",
-			key:          "machine.name",
+			name:          "machine.name",
+			key:           "machine.name",
 			expectedValue: testMachineName,
 		},
 		{
-			name:         "git.user_name",
-			key:          "git.user_name",
+			name:          "git.user_name",
+			key:           "git.user_name",
 			expectedValue: testAuthorName,
 		},
 		{
-			name:         "sync.auto_sync_enabled",
-			key:          "sync.auto_sync_enabled",
+			name:          "sync.auto_sync_enabled",
+			key:           "sync.auto_sync_enabled",
 			expectedValue: true, // Default value
 		},
 		{
-			name:         "non-existent nested key",
-			key:          "machine.nonexistent",
+			name:          "non-existent nested key",
+			key:           "machine.nonexistent",
 			expectedValue: nil,
 		},
 		{
-			name:         "invalid key format",
-			key:          "invalid",
+			name:          "invalid key format",
+			key:           "invalid",
 			expectedValue: nil,
 		},
 	}
@@ -443,9 +443,9 @@ func TestConfigCmd_Integration(t *testing.T) {
 	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
 
 	// Set the global configFile variable so getConfig() uses the test config file
-	oldConfigFile := configFile
-	configFile = testConfig.ConfigPath
-	t.Cleanup(func() { configFile = oldConfigFile })
+	oldConfigFile := getConfigFile()
+	setConfigFile(testConfig.ConfigPath)
+	t.Cleanup(func() { setConfigFile(oldConfigFile) })
 
 	// Test full workflow: get -> set -> get -> verify
 	cmd := &cobra.Command{Use: "config"}
@@ -489,9 +489,9 @@ func TestConfigCmd_InvalidConfig(t *testing.T) {
 	}
 
 	// Temporarily set config file to invalid config
-	originalConfigFile := configFile
-	configFile = invalidConfigPath
-	defer func() { configFile = originalConfigFile }()
+	originalConfigFile := getConfigFile()
+	setConfigFile(invalidConfigPath)
+	defer func() { setConfigFile(originalConfigFile) }()
 
 	// Test get with invalid config
 	cmd := &cobra.Command{Use: "config"}
@@ -506,9 +506,9 @@ func TestConfigCmd_Permissions(t *testing.T) {
 	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
 
 	// Set the global configFile variable so getConfig() uses the test config file
-	oldConfigFile := configFile
-	configFile = testConfig.ConfigPath
-	t.Cleanup(func() { configFile = oldConfigFile })
+	oldConfigFile := getConfigFile()
+	setConfigFile(testConfig.ConfigPath)
+	t.Cleanup(func() { setConfigFile(oldConfigFile) })
 
 	// Set restrictive permissions on config file
 	err := os.Chmod(testConfig.ConfigPath, restrictiveConfigFilePerms)
@@ -526,10 +526,10 @@ func TestConfigCmd_Permissions(t *testing.T) {
 
 func TestParseConfigKey(t *testing.T) {
 	tests := []struct {
-		name           string
-		key            string
-		expectedParts  []string
-		expectError    bool
+		name          string
+		key           string
+		expectedParts []string
+		expectError   bool
 	}{
 		{
 			name:          "simple key",
@@ -628,9 +628,9 @@ func TestConfigSet_ConcurrentAccess(t *testing.T) {
 	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
 
 	// Set the global configFile variable so getConfig() uses the test config file
-	oldConfigFile := configFile
-	configFile = testConfig.ConfigPath
-	t.Cleanup(func() { configFile = oldConfigFile })
+	oldConfigFile := getConfigFile()
+	setConfigFile(testConfig.ConfigPath)
+	t.Cleanup(func() { setConfigFile(oldConfigFile) })
 
 	// Test concurrent config modifications
 	numGoroutines := 10
@@ -688,9 +688,9 @@ func TestConfigSet_FileLockingIntegration(t *testing.T) {
 	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
 
 	// Set the global configFile variable so getConfig() uses the test config file
-	oldConfigFile := configFile
-	configFile = testConfig.ConfigPath
-	t.Cleanup(func() { configFile = oldConfigFile })
+	oldConfigFile := getConfigFile()
+	setConfigFile(testConfig.ConfigPath)
+	t.Cleanup(func() { setConfigFile(oldConfigFile) })
 
 	// Test basic config set with file locking
 	cmd := &cobra.Command{Use: "config set"}

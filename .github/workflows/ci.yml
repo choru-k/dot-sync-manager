@@ -64,14 +64,14 @@ jobs:
       uses: actions/cache@v4
       with:
         path: /tmp/.buildx-cache
-        key: ${{ runner.os }}-buildx-${{ hashFiles('test/e2e/Dockerfile.test', 'go.mod', 'go.sum') }}
+        key: ${{ runner.os }}-buildx-${{ hashFiles('test/Dockerfile.test', 'go.mod', 'go.sum') }}
         restore-keys: |
           ${{ runner.os }}-buildx-
 
     - name: Make scripts executable
       run: |
         chmod +x test/scripts/*.sh
-        chmod +x test/e2e/fixtures/ssh_keys/*.sh
+        chmod +x test/fixtures/ssh_keys/*.sh
 
     - name: Run E2E tests
       run: |

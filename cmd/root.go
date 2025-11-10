@@ -7,12 +7,13 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"syscall"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
 	"github.com/choru-k/dot-sync-manager/internal/process"
-	"github.com/choru-k/dot-sync-manager/internal/sync"
+	syncservice "github.com/choru-k/dot-sync-manager/internal/sync"
 	"github.com/choru-k/dot-sync-manager/internal/util"
 	"github.com/spf13/cobra"
 )
@@ -21,8 +22,9 @@ var (
 	configFile string
 	verbose    bool
 	noEmoji    bool
-)
 
+	configFileMu sync.RWMutex
+)
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -58,22 +60,22 @@ func getConfig() (*config.SyncConfig, error) {
 	var cfg *config.SyncConfig
 	var err error
 
-	if configFile != "" {
+	if cfgPath := getConfigFile(); cfgPath != "" {
 		// Expand path for tilde and other user path shortcuts
-		expandedPath, err := util.ExpandPath(configFile)
+		expandedPath, err := util.ExpandPath(cfgPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to expand config path %s: %w", configFile, err)
+			return nil, fmt.Errorf("failed to expand config path %s: %w", cfgPath, err)
 		}
-		configFile = expandedPath
+		setConfigFile(expandedPath)
 
 		// When an explicit config file is given, it must exist
-		if _, err := os.Stat(configFile); os.IsNotExist(err) {
-			return nil, fmt.Errorf("configuration file not found at %s", configFile)
+		if _, err := os.Stat(expandedPath); os.IsNotExist(err) {
+			return nil, fmt.Errorf("configuration file not found at %s", expandedPath)
 		}
 
-		cfg, err = config.LoadFromFile(configFile)
+		cfg, err = config.LoadFromFile(expandedPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to load configuration from %s: %w\nHint: Check that the file is valid JSON", configFile, err)
+			return nil, fmt.Errorf("failed to load configuration from %s: %w\nHint: Check that the file is valid JSON", expandedPath, err)
 		}
 	} else {
 		cfg, err = config.LoadFromDefaultLocation()
@@ -111,6 +113,18 @@ func isDaemonRunning() bool {
 	return process.IsDaemonRunning()
 }
 
+func getConfigFile() string {
+	configFileMu.RLock()
+	defer configFileMu.RUnlock()
+	return configFile
+}
+
+func setConfigFile(path string) {
+	configFileMu.Lock()
+	defer configFileMu.Unlock()
+	configFile = path
+}
+
 // getDaemonPID finds the PID of the running daemon.
 func getDaemonPID() (int, error) {
 	return process.GetDaemonPID()
@@ -140,7 +154,7 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	}
 
 	syncCfg := cfg.ToSyncConfig()
-	service, err := sync.New(gitMgr, syncCfg)
+	service, err := syncservice.New(gitMgr, syncCfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize sync service: %w", err)
 	}

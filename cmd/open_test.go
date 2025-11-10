@@ -20,9 +20,9 @@ func TestOpenCmd_Sanity(t *testing.T) {
 	defer cleanupTestEnvironment(testConfig)
 
 	// Temporarily set config file for this test
-	originalConfigFile := configFile
-	configFile = testConfig.ConfigPath
-	defer func() { configFile = originalConfigFile }()
+	originalConfigFile := getConfigFile()
+	setConfigFile(testConfig.ConfigPath)
+	defer func() { setConfigFile(originalConfigFile) }()
 
 	tests := []struct {
 		name        string
@@ -347,28 +347,28 @@ func TestOpenCmd_FileTypeDetection(t *testing.T) {
 
 	// Test opening different file types
 	testFiles := []struct {
-		name     string
-		path     string
-		content  string
-		editor   bool
+		name    string
+		path    string
+		content string
+		editor  bool
 	}{
 		{
-			name:   "text file",
-			path:   "test.txt",
+			name:    "text file",
+			path:    "test.txt",
 			content: "plain text content",
-			editor: false,
+			editor:  false,
 		},
 		{
-			name:   "markdown file",
-			path:   "README.md",
+			name:    "markdown file",
+			path:    "README.md",
 			content: "# README",
-			editor: true,
+			editor:  true,
 		},
 		{
-			name:   "config file",
-			path:   "config.json",
+			name:    "config file",
+			path:    "config.json",
 			content: `{"key": "value"}`,
-			editor: true,
+			editor:  true,
 		},
 	}
 

@@ -35,7 +35,15 @@
       "Bash(TEST_ID=test-123 go test -v ./test/scenarios/ -run TestBasicSyncWorkflow)",
       "Bash(TEST_ID=test-123 go test -v ./test/scenarios/ -run TestConflictResolution)",
       "Bash(TEST_ID=test-123 go test -v ./test/scenarios/ -run TestCrossPlatformCompatibility)",
-      "mcp__zen__thinkdeep"
+      "mcp__zen__thinkdeep",
+      "Bash(go vet:*)",
+      "Read(//Users/cheol/Desktop/**)",
+      "Bash(./scripts/run-e2e.sh:*)",
+      "Bash(timeout:*)",
+      "Bash(for:*)",
+      "Bash(done)",
+      "Bash(golangci-lint:*)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []
