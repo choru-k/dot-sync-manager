@@ -1,0 +1,50 @@
+{
+  "machine": {
+    "name": "test-machine-crossplatform",
+    "description": "E2E Test Machine for Cross Platform Compatibility"
+  },
+  "git": {
+    "repo_path": "/app/test-data/dotfiles-test-crossplatform",
+    "remote_url": "",
+    "auth_type": "none",
+    "ssh_key_path": "",
+    "known_hosts_path": "",
+    "branch": "main"
+  },
+  "sync": {
+    "auto_sync_enabled": true,
+    "debounce_seconds": 1,
+    "conflict_resolution": {
+      "strategy": "stash",
+      "backup_dir": "/app/test-data/dotfiles-test-crossplatform/.backup"
+    },
+    "max_retries": 3
+  },
+  "notifications": {
+    "enabled": false,
+    "webhook_url": "",
+    "email_enabled": false
+  },
+  "mappings": {
+    "/app/test-data/source_dotfiles/.simpleconfig": "/app/test-data/dotfiles-test-crossplatform/.simpleconfig",
+    "/app/test-data/source_dotfiles/config.json": "/app/test-data/dotfiles-test-crossplatform/config.json",
+    "/app/test-data/source_dotfiles/nested/deep/config.conf": "/app/test-data/dotfiles-test-crossplatform/nested/deep/config.conf",
+    "/app/test-data/source_dotfiles/file-with-dashes": "/app/test-data/dotfiles-test-crossplatform/file-with-dashes",
+    "/app/test-data/source_dotfiles/file_with_underscores": "/app/test-data/dotfiles-test-crossplatform/file_with_underscores",
+    "/app/test-data/source_dotfiles/file.with.dots": "/app/test-data/dotfiles-test-crossplatform/file.with.dots"
+  },
+  "ignore_patterns": [
+    "*.tmp",
+    "*.log",
+    ".DS_Store",
+    "node_modules/",
+    ".cache/"
+  ],
+  "backoff": {
+    "enabled": true,
+    "initial_delay": 1,
+    "max_delay": 10,
+    "multiplier": 2,
+    "jitter": 0.1
+  }
+}
