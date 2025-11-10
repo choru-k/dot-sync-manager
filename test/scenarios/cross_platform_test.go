@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,14 +22,14 @@ func TestCrossPlatformCompatibility(t *testing.T) {
 	t.Logf("Running on platform: %s, architecture: %s", runtime.GOOS, runtime.GOARCH)
 
 	// Setup test environment
-	testDataDir := "/app/test-data"
+	// Create test directories
 	sourceDir := filepath.Join(testDataDir, "source_dotfiles")
 	targetDir := filepath.Join(testDataDir, "dotfiles-test-crossplatform")
 
-	err := os.MkdirAll(sourceDir, 0755)
+	err := os.MkdirAll(sourceDir, dirPermissions)
 	require.NoError(t, err)
 
-	err = os.MkdirAll(targetDir, 0755)
+	err = os.MkdirAll(targetDir, dirPermissions)
 	require.NoError(t, err)
 
 	// Initialize DSM
@@ -56,7 +55,7 @@ func TestCrossPlatformCompatibility(t *testing.T) {
 				sourceFile := filepath.Join(sourceDir, tc.filename)
 				sourceDirOfFile := filepath.Dir(sourceFile)
 
-				err := os.MkdirAll(sourceDirOfFile, 0755)
+				err := os.MkdirAll(sourceDirOfFile, dirPermissions)
 				require.NoError(t, err)
 
 				// Create test file
@@ -70,7 +69,7 @@ PATH_SEPARATOR=%s
 				separator := string(filepath.Separator)
 				formattedContent := fmt.Sprintf(content, tc.description, runtime.GOOS, runtime.GOARCH, separator)
 
-				writeErr := os.WriteFile(sourceFile, []byte(formattedContent), 0644)
+				writeErr := os.WriteFile(sourceFile, []byte(formattedContent), filePermissions)
 				require.NoError(t, writeErr)
 
 				// Add file to DSM
@@ -107,7 +106,7 @@ PLATFORM=%s
 `
 		formattedContent := fmt.Sprintf(sourceContent, runtime.GOOS)
 
-		err := os.WriteFile(sourceFile, []byte(formattedContent), 0644)
+		err := os.WriteFile(sourceFile, []byte(formattedContent), filePermissions)
 		require.NoError(t, err)
 
 		// Create a symlink
@@ -172,7 +171,7 @@ PLATFORM=%s
 `
 				formattedContent := fmt.Sprintf(content, tc.filename, tc.description, runtime.GOOS)
 
-				err := os.WriteFile(sourceFile, []byte(formattedContent), 0644)
+				err := os.WriteFile(sourceFile, []byte(formattedContent), filePermissions)
 				require.NoError(t, err)
 
 				// Add file to DSM
@@ -196,7 +195,7 @@ PLATFORM=%s
 		longFileName := strings.Repeat("very_long_file_name_", 3) + ".conf"
 
 		sourceDirPath := filepath.Join(sourceDir, longDirName)
-		err := os.MkdirAll(sourceDirPath, 0755)
+		err := os.MkdirAll(sourceDirPath, dirPermissions)
 		require.NoError(t, err)
 
 		sourceFile := filepath.Join(sourceDirPath, longFileName)
@@ -244,7 +243,7 @@ PLATFORM=%s
 				sourceFile := filepath.Join(sourceDir, pathInfo.path)
 				sourceDirOfFile := filepath.Dir(sourceFile)
 
-				err := os.MkdirAll(sourceDirOfFile, 0755)
+				err := os.MkdirAll(sourceDirOfFile, dirPermissions)
 				require.NoError(t, err)
 
 				content := `# Platform-specific path test
@@ -281,7 +280,7 @@ func setupDSMForCrossPlatformTest(t *testing.T, sourceDir string) {
 	targetDir := "/app/test-data/dotfiles-test-crossplatform"
 
 	// Initialize git repository in target directory before DSM init (like basic_sync test)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
 	defer cancel()
 
 	// Initialize bare git repository

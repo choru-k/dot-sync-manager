@@ -21,14 +21,14 @@ func TestConflictResolution(t *testing.T) {
 	t.Logf("Running conflict resolution test with ID: %s", testID)
 
 	// Setup test environment
-	testDataDir := "/app/test-data"
+	// Create test directories
 	sourceDir := filepath.Join(testDataDir, "source_dotfiles")
 	targetDir := filepath.Join(testDataDir, "dotfiles-test-conflict")
 
-	err := os.MkdirAll(sourceDir, 0755)
+	err := os.MkdirAll(sourceDir, dirPermissions)
 	require.NoError(t, err)
 
-	err = os.MkdirAll(targetDir, 0755)
+	err = os.MkdirAll(targetDir, dirPermissions)
 	require.NoError(t, err)
 
 	// Initialize DSM
@@ -42,7 +42,7 @@ VERSION=1.0
 MODE=test
 `
 
-		err := os.WriteFile(testFile, []byte(initialContent), 0644)
+		err := os.WriteFile(testFile, []byte(initialContent), filePermissions)
 		require.NoError(t, err)
 
 		// Add and sync the file
@@ -64,7 +64,7 @@ MODE=production
 REMOTE_SETTING=true
 `
 
-		err := os.WriteFile(targetFile, []byte(remoteContent), 0644)
+		err := os.WriteFile(targetFile, []byte(remoteContent), filePermissions)
 		require.NoError(t, err)
 
 		// Commit the remote change
@@ -82,7 +82,7 @@ MODE=development
 LOCAL_SETTING=true
 `
 
-		err := os.WriteFile(testFile, []byte(localContent), 0644)
+		err := os.WriteFile(testFile, []byte(localContent), filePermissions)
 		require.NoError(t, err)
 
 		t.Logf("Created local change: %s", localContent)
@@ -153,7 +153,7 @@ MODE=local-test
 DETECTION_TEST=true
 `
 
-		err := os.WriteFile(testFile, []byte(newLocalContent), 0644)
+		err := os.WriteFile(testFile, []byte(newLocalContent), filePermissions)
 		require.NoError(t, err)
 
 		// Simulate remote change again
@@ -191,7 +191,7 @@ func setupDSMForConflictTest(t *testing.T, sourceDir string) {
 
 	// Since DSM init requires interactive confirmation for existing directories,
 	// we'll verify DSM can read configuration correctly instead
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
 	defer cancel()
 
 	cmd := execCommandContextWithConfig(ctx, configPath, "dsm", "--config", configPath, "status")
@@ -202,7 +202,7 @@ func setupDSMForConflictTest(t *testing.T, sourceDir string) {
 
 // addAndSyncFile adds a file to DSM and syncs it
 func addAndSyncFile(t *testing.T, filepath string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
 	defer cancel()
 
 	// Add file
@@ -212,7 +212,7 @@ func addAndSyncFile(t *testing.T, filepath string) {
 	t.Logf("Add file output: %s", string(output))
 
 	// Sync file
-	ctx2, cancel2 := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx2, cancel2 := context.WithTimeout(context.Background(), defaultCommandTimeout)
 	defer cancel2()
 
 	cmd2 := execCommandContext(ctx2, "dsm", "sync")
@@ -223,7 +223,7 @@ func addAndSyncFile(t *testing.T, filepath string) {
 
 // commitGitChanges commits changes in a git repository
 func commitGitChanges(t *testing.T, repoDir, message string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
 	defer cancel()
 
 	// Set git environment
@@ -254,7 +254,7 @@ func commitGitChanges(t *testing.T, repoDir, message string) {
 
 // addAndSyncFileWithConfig adds a file to DSM and syncs it with custom config
 func addAndSyncFileWithConfig(t *testing.T, configPath, filepath string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
 	defer cancel()
 
 	// Add file
@@ -264,7 +264,7 @@ func addAndSyncFileWithConfig(t *testing.T, configPath, filepath string) {
 	t.Logf("Add file output: %s", string(output))
 
 	// Sync file
-	ctx2, cancel2 := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx2, cancel2 := context.WithTimeout(context.Background(), defaultCommandTimeout)
 	defer cancel2()
 
 	cmd2 := execCommandContextWithConfig(ctx2, configPath, "dsm", "--config", configPath, "sync")

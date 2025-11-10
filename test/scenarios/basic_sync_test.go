@@ -21,14 +21,13 @@ func TestBasicSyncWorkflow(t *testing.T) {
 	t.Logf("Running basic sync workflow test with ID: %s", testID)
 
 	// Create test directories
-	testDataDir := "/app/test-data"
 	sourceDir := filepath.Join(testDataDir, "source_dotfiles")
 	targetDir := filepath.Join(testDataDir, "dotfiles-test")
 
-	err := os.MkdirAll(sourceDir, 0755)
+	err := os.MkdirAll(sourceDir, dirPermissions)
 	require.NoError(t, err)
 
-	err = os.MkdirAll(targetDir, 0755)
+	err = os.MkdirAll(targetDir, dirPermissions)
 	require.NoError(t, err)
 
 	// Copy sample dotfiles to source directory
@@ -36,7 +35,7 @@ func TestBasicSyncWorkflow(t *testing.T) {
 
 	// Initialize git repository in target directory before DSM init
 	t.Run("InitializeGitRepo", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
 		defer cancel()
 
 		// Initialize bare git repository
@@ -69,7 +68,7 @@ func TestBasicSyncWorkflow(t *testing.T) {
 		// confirmation when directories exist, which doesn't work well in automated tests.
 
 		// Verify DSM can read configuration correctly (this confirms DSM is properly initialized)
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
 		defer cancel()
 
 		cmd := execCommandContext(ctx, "dsm", "--config", configPath, "status")
@@ -111,7 +110,7 @@ func TestBasicSyncWorkflow(t *testing.T) {
 		}
 
 		// Stage and commit the files manually to test the rest of the workflow
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
 		defer cancel()
 
 		cmd := execCommandContext(ctx, "git", "-C", targetDir, "add", ".")
@@ -135,7 +134,7 @@ func TestBasicSyncWorkflow(t *testing.T) {
 
 	// Test Step 3: List dotfiles
 	t.Run("ListDotfiles", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
 		defer cancel()
 
 		cmd := execCommandContext(ctx, "dsm", "list", "--config", "/app/test/fixtures/test_configs/basic_config.json")
@@ -153,7 +152,7 @@ func TestBasicSyncWorkflow(t *testing.T) {
 
 	// Test Step 4: Status check
 	t.Run("CheckStatus", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
 		defer cancel()
 
 		cmd := execCommandContext(ctx, "dsm", "status", "--config", "/app/test/fixtures/test_configs/basic_config.json")

@@ -20,14 +20,14 @@ func TestFileSystemWatching(t *testing.T) {
 	t.Logf("Running file watching test with ID: %s", testID)
 
 	// Setup test environment
-	testDataDir := "/app/test-data"
+	// Create test directories
 	sourceDir := filepath.Join(testDataDir, "source_dotfiles")
 	targetDir := filepath.Join(testDataDir, "dotfiles-test-watch")
 
-	err := os.MkdirAll(sourceDir, 0755)
+	err := os.MkdirAll(sourceDir, dirPermissions)
 	require.NoError(t, err)
 
-	err = os.MkdirAll(targetDir, 0755)
+	err = os.MkdirAll(targetDir, dirPermissions)
 	require.NoError(t, err)
 
 	// Initialize DSM for watching test
@@ -59,7 +59,7 @@ TIMESTAMP=$(date +%s)
 MODE=watch-test
 `
 
-		err := os.WriteFile(testFile, []byte(initialContent), 0644)
+		err := os.WriteFile(testFile, []byte(initialContent), filePermissions)
 		require.NoError(t, err)
 
 		// Add the file to DSM
@@ -83,7 +83,7 @@ MODE=modified
 CHANGE_TYPE=modification
 `
 
-		err := os.WriteFile(testFile, []byte(modifiedContent), 0644)
+		err := os.WriteFile(testFile, []byte(modifiedContent), filePermissions)
 		require.NoError(t, err)
 
 		// Wait for debouncing
@@ -139,7 +139,7 @@ MODE=multi-test
 			formattedContent := fmt.Sprintf(content, i+1, i+1)
 
 			filePath := filepath.Join(sourceDir, filename)
-			err := os.WriteFile(filePath, []byte(formattedContent), 0644)
+			err := os.WriteFile(filePath, []byte(formattedContent), filePermissions)
 			require.NoError(t, err)
 
 			// Add to DSM
@@ -182,7 +182,7 @@ MODE=debounce-test
 `
 			formattedContent := fmt.Sprintf(content, i, i)
 
-			err := os.WriteFile(testFile, []byte(formattedContent), 0644)
+			err := os.WriteFile(testFile, []byte(formattedContent), filePermissions)
 			require.NoError(t, err)
 
 			// Very short delay between changes
@@ -222,7 +222,7 @@ FILENAME=%s
 TIMESTAMP=$(date +%%s)
 `, filename)
 
-			err := os.WriteFile(filePath, []byte(content), 0644)
+			err := os.WriteFile(filePath, []byte(content), filePermissions)
 			require.NoError(t, err)
 		}
 
@@ -248,7 +248,7 @@ func setupDSMForWatchingTest(t *testing.T, sourceDir string) {
 	targetDir := "/app/test-data/dotfiles-test-watch"
 
 	// Initialize git repository in target directory before DSM init (like basic_sync test)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
 	defer cancel()
 
 	// Initialize bare git repository
