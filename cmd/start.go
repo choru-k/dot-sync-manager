@@ -224,11 +224,7 @@ func gracefulShutdown(ctx context.Context, syncSvc *syncservice.SyncService, loc
 	go func() {
 		defer shutdownWG.Done()
 
-		// Create per-service timeout context
-		serviceCtx, serviceCancel := context.WithTimeout(shutdownCtx, serviceShutdownTimeout)
-		defer serviceCancel()
-
-		// Shutdown sync service with timeout - use Stop() method which returns error
+		// Shutdown sync service - use Stop() method which returns error
 		if err := syncSvc.Stop(); err != nil {
 			shutdownErrors <- fmt.Errorf("sync service shutdown failed after %v timeout: %w", serviceShutdownTimeout, err)
 			log.Printf("CRITICAL: Sync service shutdown failure may indicate: locked files, incomplete git operations, or resource deadlock")

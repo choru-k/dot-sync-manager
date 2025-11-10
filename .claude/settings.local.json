@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git fetch:*)",
+      "mcp__zen__clink",
+      "Bash(git checkout:*)",
+      "Bash(git pull:*)",
+      "Bash(git branch:*)",
+      "Bash(EDITOR=echo git rebase -i main)",
+      "Bash(git rebase:*)",
+      "Bash(EDITOR=\"cp /tmp/rebase_plan.txt\" git rebase -i main)",
+      "Bash(git add:*)",
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Bash(git push:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
