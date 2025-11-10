@@ -43,10 +43,13 @@ Examples:
 }
 
 var foreground bool
+var startLogFile string
 
 func init() {
 	rootCmd.AddCommand(startCmd)
 	startCmd.Flags().BoolVar(&foreground, "foreground", false, "Run in foreground instead of daemonizing")
+	startCmd.Flags().StringVar(&startLogFile, "log-file", "", "Redirect daemon output to a log file")
+	startCmd.Flags().MarkHidden("log-file")
 }
 
 func runStart(cmd *cobra.Command, args []string) error {
@@ -64,8 +67,18 @@ func runStart(cmd *cobra.Command, args []string) error {
 	if verbose {
 		flagArgs = append(flagArgs, "--verbose")
 	}
+	if startLogFile != "" {
+		flagArgs = append(flagArgs, "--log-file", startLogFile)
+	}
 
 	if foreground {
+		if startLogFile != "" {
+			f, err := os.OpenFile(startLogFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+			if err != nil {
+				return fmt.Errorf("failed to open log file: %w", err)
+			}
+			log.SetOutput(f)
+		}
 		return runForegroundDaemon(cfg)
 	}
 
@@ -169,11 +182,7 @@ func runForegroundDaemon(cfg *config.SyncConfig) error {
 	if err != nil {
 		return fmt.Errorf("failed to write PID file: %w", err)
 	}
-	defer func() {
-		if err := lockManager.Unlock(); err != nil {
-			fmt.Printf("⚠️  Warning: failed to cleanup PID file and lock: %v\n", err)
-		}
-	}()
+	// PID lock is released by the gracefulShutdown function.
 
 	fmt.Printf("🚀 Watching repository: %s\n", cfg.Git.RepoPath)
 	fmt.Printf("📊 Machine: %s\n", cfg.Machine.Name)
@@ -211,7 +220,7 @@ func gracefulShutdown(ctx context.Context, syncSvc *syncservice.SyncService, loc
 
 	// Create shutdown timeout context to prevent indefinite hangs
 	// This context wraps the incoming signal context and provides a hard deadline
-	shutdownCtx, shutdownCancel := context.WithTimeout(ctx, totalShutdownTimeout)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), totalShutdownTimeout)
 	defer shutdownCancel()
 
 	// Channel to collect shutdown errors (buffered to prevent blocking)

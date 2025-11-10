@@ -5,6 +5,7 @@ package process
 import (
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"runtime"
@@ -47,6 +48,14 @@ func verifyProcessName(pid int, expectedName string) bool {
 	output, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "args=").Output()
 	if err == nil {
 		args := strings.TrimSpace(string(output))
+		log.Printf("verifyProcessName: ps output for pid %d: %s", pid, args)
+
+		// Skip defunct processes - they are no longer running and should be ignored
+		if strings.Contains(args, "<defunct>") {
+			log.Printf("verifyProcessName: skipping defunct process %d", pid)
+			return false
+		}
+
 		// Extract the first word (command) from args for exact matching
 		parts := strings.Fields(args)
 		if len(parts) > 0 {
@@ -116,7 +125,10 @@ func findProcessByName(name string) (int, error) {
 		for _, pidStr := range pids {
 			pid, convErr := strconv.Atoi(strings.TrimSpace(pidStr))
 			if convErr == nil && pid != os.Getpid() {
-				return pid, nil
+				// Verify the process is not defunct before returning it
+				if verifyProcessName(pid, normalized) {
+					return pid, nil
+				}
 			}
 		}
 	}
@@ -146,6 +158,11 @@ func findProcessByName(name string) (int, error) {
 			continue
 		}
 		if pid == os.Getpid() {
+			continue
+		}
+
+		// Skip defunct processes - they are no longer running and should be ignored
+		if strings.Contains(command, "<defunct>") {
 			continue
 		}
 
