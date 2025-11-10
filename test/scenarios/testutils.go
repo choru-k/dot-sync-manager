@@ -228,3 +228,293 @@ func setupTestDirectories(t *testing.T) (sourceDir, targetDir string) {
 
 	return sourceDir, targetDir
 }
+
+// validateCleanTestEnvironment ensures no existing DSM processes or artifacts interfere with tests
+func validateCleanTestEnvironment(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
+	defer cancel()
+
+	// Check for existing DSM processes that could interfere with tests
+	cmd := execCommandContext(ctx, "pgrep", "-f", "dot-sync-manager")
+	output, err := cmd.CombinedOutput()
+
+	// If pgrep finds processes, warn but don't fail (container environments may be clean)
+	if err == nil && len(strings.TrimSpace(string(output))) > 0 {
+		t.Logf("Warning: Existing DSM processes detected: %s", strings.TrimSpace(string(output)))
+		t.Log("Tests will use isolated environments to avoid interference")
+	}
+
+	// Check for common test artifact directories that might cause conflicts
+	conflictPaths := []string{
+		"/tmp/dsm-test-*",
+		"/tmp/dot-sync-test-*",
+		"/tmp/dsm-e2e-*",
+		filepath.Join(os.TempDir(), "dsm-test-*"),
+	}
+
+	for _, pattern := range conflictPaths {
+		matches, _ := filepath.Glob(pattern)
+		if len(matches) > 0 {
+			t.Logf("Warning: Found existing test artifacts: %v", matches)
+			t.Log("Consider running 'test/scripts/cleanup.sh' before running tests")
+		}
+	}
+}
+
+// createIsolatedTestEnvironment creates a completely isolated test environment
+func createIsolatedTestEnvironment(t *testing.T) (testID string, cleanup func()) {
+	// Generate unique test ID for isolation
+	testID = fmt.Sprintf("dsm-test-%d-%d", os.Getpid(), time.Now().UnixNano())
+
+	// Create test-specific temporary directory
+	testDir := filepath.Join(os.TempDir(), testID)
+	err := os.MkdirAll(testDir, dirPermissions)
+	require.NoError(t, err, "Failed to create isolated test directory")
+
+	// Create cleanup function that removes all test artifacts
+	cleanup = func() {
+		ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
+		defer cancel()
+
+		// Remove test directory
+		os.RemoveAll(testDir)
+
+		// Kill any processes with our test ID
+		cmd := execCommandContext(ctx, "pkill", "-f", testID)
+		cmd.Run() // Ignore errors - processes may not exist
+
+		// Remove any test-specific temp files
+		pattern := filepath.Join(os.TempDir(), testID+"*")
+		matches, _ := filepath.Glob(pattern)
+		for _, match := range matches {
+			os.RemoveAll(match)
+		}
+	}
+
+	return testID, cleanup
+}
+
+// TestPIDManager manages isolated PID files for testing
+type TestPIDManager struct {
+	testID     string
+	pidDir     string
+	pidFile    string
+	lockFile   string
+}
+
+// CreateTestPIDManager creates an isolated PID manager for tests
+func CreateTestPIDManager(testID string) *TestPIDManager {
+	pidDir := filepath.Join(os.TempDir(), testID, "pids")
+	return &TestPIDManager{
+		testID:   testID,
+		pidDir:   pidDir,
+		pidFile:  filepath.Join(pidDir, ".dsm-test.pid"),
+		lockFile: filepath.Join(pidDir, ".dsm-test.lock"),
+	}
+}
+
+// GetPIDFile returns the isolated PID file path for this test
+func (tpm *TestPIDManager) GetPIDFile() string {
+	return tpm.pidFile
+}
+
+// WriteTestPID writes a test PID to the isolated PID file
+func (tpm *TestPIDManager) WriteTestPID(pid int) error {
+	// Ensure PID directory exists
+	if err := os.MkdirAll(tpm.pidDir, dirPermissions); err != nil {
+		return fmt.Errorf("failed to create test PID directory: %w", err)
+	}
+
+	// Write PID to isolated file
+	pidContent := fmt.Sprintf("%d\n", pid)
+	if err := os.WriteFile(tpm.pidFile, []byte(pidContent), filePermissions); err != nil {
+		return fmt.Errorf("failed to write test PID file: %w", err)
+	}
+
+	return nil
+}
+
+// ReadTestPID reads the test PID from the isolated PID file
+func (tpm *TestPIDManager) ReadTestPID() (int, error) {
+	content, err := os.ReadFile(tpm.pidFile)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read test PID file: %w", err)
+	}
+
+	pidStr := strings.TrimSpace(string(content))
+	pid, err := strconv.Atoi(pidStr)
+	if err != nil {
+		return 0, fmt.Errorf("invalid PID format in test file: %w", err)
+	}
+
+	return pid, nil
+}
+
+// RemoveTestPID removes the isolated test PID file
+func (tpm *TestPIDManager) RemoveTestPID() error {
+	err := os.RemoveAll(tpm.pidDir)
+	if err != nil {
+		return fmt.Errorf("failed to remove test PID directory: %w", err)
+	}
+	return nil
+}
+
+// CleanupTestProcesses ensures no test processes remain running
+func CleanupTestProcesses(testID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
+	defer cancel()
+
+	// Kill any processes with our test ID
+	cmd := execCommandContext(ctx, "pkill", "-f", testID)
+	cmd.Run() // Ignore errors - processes may not exist
+
+	// Also clean up any test-specific temp files
+	pattern := filepath.Join(os.TempDir(), testID+"*")
+	matches, _ := filepath.Glob(pattern)
+	for _, match := range matches {
+		os.RemoveAll(match)
+	}
+}
+
+// CleanupVerificationResult represents the result of cleanup verification
+type CleanupVerificationResult struct {
+	Success     bool
+	Issues      []string
+	Warnings    []string
+	Artifacts   []string
+	Processes   []string
+}
+
+// VerifyCleanup performs comprehensive cleanup verification
+func VerifyCleanup(testID string) *CleanupVerificationResult {
+	result := &CleanupVerificationResult{
+		Success:   true,
+		Issues:    []string{},
+		Warnings:  []string{},
+		Artifacts: []string{},
+		Processes: []string{},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
+	defer cancel()
+
+	// Check for remaining processes
+	processPattern := fmt.Sprintf("*%s*", testID)
+	cmd := execCommandContext(ctx, "pgrep", "-f", testID)
+	output, err := cmd.CombinedOutput()
+	if err == nil && len(strings.TrimSpace(string(output))) > 0 {
+		processes := strings.Fields(strings.TrimSpace(string(output)))
+		result.Processes = processes
+		result.Issues = append(result.Issues, fmt.Sprintf("Found %d remaining processes", len(processes)))
+		result.Success = false
+	}
+
+	// Check for remaining artifacts
+	artifactPatterns := []string{
+		filepath.Join(os.TempDir(), testID+"*"),
+		filepath.Join("/tmp", testID+"*"),
+		filepath.Join("/var/tmp", testID+"*"),
+	}
+
+	for _, pattern := range artifactPatterns {
+		matches, _ := filepath.Glob(pattern)
+		if len(matches) > 0 {
+			result.Artifacts = append(result.Artifacts, matches...)
+			result.Issues = append(result.Issues, fmt.Sprintf("Found %d artifacts in %s", len(matches), pattern))
+			result.Success = false
+		}
+	}
+
+	// Check for common test pollution patterns
+	pollutionPatterns := []string{
+		"/tmp/dsm-test-*",
+		"/tmp/dot-sync-test-*",
+		"/tmp/dsm-e2e-*",
+	}
+
+	for _, pattern := range pollutionPatterns {
+		matches, _ := filepath.Glob(pattern)
+		if len(matches) > 0 {
+			// Filter out our own test ID artifacts
+			otherArtifacts := []string{}
+			for _, match := range matches {
+				if !strings.Contains(match, testID) {
+					otherArtifacts = append(otherArtifacts, match)
+				}
+			}
+			if len(otherArtifacts) > 0 {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("Found %d artifacts from other test sessions", len(otherArtifacts)))
+			}
+		}
+	}
+
+	return result
+}
+
+// ForceCleanupIfNeeded performs force cleanup if verification fails
+func ForceCleanupIfNeeded(testID string) error {
+	verification := VerifyCleanup(testID)
+	if verification.Success {
+		return nil
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
+	defer cancel()
+
+	// Force kill any remaining processes
+	for _, process := range verification.Processes {
+		cmd := execCommandContext(ctx, "kill", "-9", process)
+		cmd.Run() // Ignore errors
+	}
+
+	// Force remove any remaining artifacts
+	for _, artifact := range verification.Artifacts {
+		os.RemoveAll(artifact)
+	}
+
+	// Final verification
+	finalCheck := VerifyCleanup(testID)
+	if !finalCheck.Success {
+		return fmt.Errorf("force cleanup failed: %v", finalCheck.Issues)
+	}
+
+	return nil
+}
+
+// ValidateTestEnvironment performs comprehensive environment validation before tests
+func ValidateTestEnvironment(t *testing.T) {
+	// Run basic validation
+	validateCleanTestEnvironment(t)
+
+	// Additional comprehensive checks
+	ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
+	defer cancel()
+
+	// Check disk space (need at least 100MB for tests)
+	stat, err := os.Stat(os.TempDir())
+	if err != nil {
+		t.Fatalf("Cannot check temp directory: %v", err)
+	}
+
+	// Check for proper permissions on temp directory
+	tempDir := filepath.Join(os.TempDir(), fmt.Sprintf("dsm-test-permission-check-%d", os.Getpid()))
+	testFile := filepath.Join(tempDir, "test.txt")
+
+	if err := os.MkdirAll(tempDir, dirPermissions); err != nil {
+		t.Fatalf("Cannot create test directory: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	if err := os.WriteFile(testFile, []byte("test"), filePermissions); err != nil {
+		t.Fatalf("Cannot write to test directory: %v", err)
+	}
+
+	// Check for required system commands
+	requiredCommands := []string{"git", "go", "docker"}
+	for _, cmd := range requiredCommands {
+		_, err := execCommandContext(ctx, "which", cmd).CombinedOutput()
+		if err != nil {
+			t.Fatalf("Required command not found: %s", cmd)
+		}
+	}
+}

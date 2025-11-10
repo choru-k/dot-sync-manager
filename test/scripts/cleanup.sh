@@ -7,7 +7,7 @@ set -euo pipefail
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-COMPOSE_FILE="$PROJECT_ROOT/e2e/docker-compose.test.yml"
+COMPOSE_FILE="$PROJECT_ROOT/test/docker-compose.test.yml"
 PROJECT_NAME="dot-sync-manager"
 
 # Colors for output

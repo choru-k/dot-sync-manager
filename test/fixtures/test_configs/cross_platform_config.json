@@ -1,29 +1,50 @@
 {
-  "machine": {
-    "name": "test-machine-crossplatform",
-    "description": "E2E Test Machine for Cross Platform Compatibility"
-  },
+  "version": "1.0",
+  "machine": "test-machine-crossplatform",
   "git": {
     "repo_path": "/app/test-data/dotfiles-test-crossplatform",
     "remote_url": "",
-    "auth_type": "none",
-    "ssh_key_path": "",
-    "known_hosts_path": "",
-    "branch": "main"
+    "branch": "main",
+    "auth_type": "none"
   },
   "sync": {
     "auto_sync_enabled": true,
     "debounce_seconds": 1,
-    "conflict_resolution": {
-      "strategy": "stash",
-      "backup_dir": "/app/test-data/dotfiles-test-crossplatform/.backup"
-    },
-    "max_retries": 3
+    "auto_commit": true,
+    "auto_push": true,
+    "auto_pull": false,
+    "backoff": {
+      "enabled": true,
+      "max_delay_seconds": 10,
+      "multiplier": 2,
+      "churn_threshold": 5,
+      "churn_window_seconds": 30,
+      "decay_reset_seconds": 60,
+      "manual_sync_timeout_seconds": 120
+    }
   },
   "notifications": {
     "enabled": false,
-    "webhook_url": "",
-    "email_enabled": false
+    "show_success": false,
+    "show_pulls": false,
+    "play_sound_on_conflict": false
+  },
+  "conflict_resolution": {
+    "strategy": "stash",
+    "backup_dir": "/app/test-data/dotfiles-test-crossplatform/.backup",
+    "auto_resolve": false
+  },
+  "ui": {
+    "theme": "default",
+    "show_progress": true,
+    "compact_mode": false
+  },
+  "advanced": {
+    "log_level": "debug",
+    "max_log_size_mb": 10,
+    "keep_backups_days": 7,
+    "enable_metrics": false,
+    "performance_mode": false
   },
   "mappings": {
     "/app/test-data/source_dotfiles/.simpleconfig": "/app/test-data/dotfiles-test-crossplatform/.simpleconfig",
@@ -32,19 +53,5 @@
     "/app/test-data/source_dotfiles/file-with-dashes": "/app/test-data/dotfiles-test-crossplatform/file-with-dashes",
     "/app/test-data/source_dotfiles/file_with_underscores": "/app/test-data/dotfiles-test-crossplatform/file_with_underscores",
     "/app/test-data/source_dotfiles/file.with.dots": "/app/test-data/dotfiles-test-crossplatform/file.with.dots"
-  },
-  "ignore_patterns": [
-    "*.tmp",
-    "*.log",
-    ".DS_Store",
-    "node_modules/",
-    ".cache/"
-  ],
-  "backoff": {
-    "enabled": true,
-    "initial_delay": 1,
-    "max_delay": 10,
-    "multiplier": 2,
-    "jitter": 0.1
   }
 }
