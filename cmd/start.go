@@ -77,10 +77,11 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	if foreground {
 		if startLogFile != "" {
-			f, err := os.OpenFile(startLogFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+			f, err := os.OpenFile(startLogFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
 			if err != nil {
 				return fmt.Errorf("failed to open log file: %w", err)
 			}
+			defer f.Close()
 			log.SetOutput(f)
 		}
 		return runForegroundDaemon(cfg)
