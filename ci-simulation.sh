@@ -1,29 +1,29 @@
 #!/bin/bash
 set -e
 
-echo "=== CI Environment Simulation ==="
+echo "=== CI Environment Simulation (using Makefile) ==="
 echo "Go version:"
 go version
 echo ""
 
-echo "=== Step 1: Download dependencies ==="
-go mod download
+echo "=== Step 1: Install dependencies ==="
+make deps
 echo ""
 
 echo "=== Step 2: Verify dependencies ==="
-go mod verify
+make verify
 echo ""
 
-echo "=== Step 3: Run go vet ==="
-go vet ./...
+echo "=== Step 3: Run code quality checks ==="
+make lint
 echo ""
 
 echo "=== Step 4: Run tests with coverage ==="
-go test -v -coverprofile=coverage.out ./...
+make test-coverage
 echo ""
 
 echo "=== Step 5: Build ==="
-go build -v -o bin/dsm .
+make build
 echo ""
 
 echo "=== Step 6: Verify binary ==="
@@ -31,16 +31,15 @@ ls -la bin/dsm
 echo ""
 
 echo "=== CI Test Results Summary ==="
-echo "Checking for any failing tests..."
-if go test ./... 2>&1 | grep -q "FAIL"; then
-    echo "❌ Some tests failed!"
-    go test ./... 2>&1 | grep "FAIL" -A 3 -B 1
-    exit 1
-else
+echo "Checking test status via make..."
+if make test-quick > /dev/null 2>&1; then
     echo "✅ All tests passed!"
     echo ""
     echo "Coverage report:"
     go tool cover -func=coverage.out
+else
+    echo "❌ Some tests failed!"
+    exit 1
 fi
 echo ""
 echo "✅ CI Simulation Completed Successfully!"
