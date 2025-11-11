@@ -635,10 +635,8 @@ func TestConfigValidationEnhanced(t *testing.T) {
 			config: func() *SyncConfig {
 				c := mustDefaultConfig(t)
 				// Use absolute paths (as they would be after expandPaths())
-				homeDir, err := os.UserHomeDir()
-				if err != nil {
-					t.Fatalf("could not get user home dir: %v", err)
-				}
+				homeDir := t.TempDir()
+				t.Setenv("HOME", homeDir)
 				c.Mappings = map[string]string{
 					"bashrc": filepath.Join(homeDir, ".bashrc"),
 					"config": filepath.Join(homeDir, ".config"),
@@ -950,7 +948,7 @@ func TestExpandPath(t *testing.T) {
 func TestSyncConfigMarshalPRDFormat(t *testing.T) {
 	// Create a full config with all fields populated
 	config := mustDefaultConfig(t)
-	
+
 	// Set additional fields to ensure comprehensive testing
 	config.Git.RemoteURL = "https://github.com/example/dotfiles.git"
 	config.Git.Username = "testuser"

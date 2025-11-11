@@ -1,0 +1,53 @@
+{
+  "version": "1.0",
+  "machine": "{{ .MachineName }}",
+  "git": {
+    "repo_path": "{{ .TargetDir }}",
+    "remote_url": "",
+    "branch": "main",
+    "auth_type": "none"
+  },
+  "sync": {
+    "auto_sync_enabled": true,
+    "debounce_seconds": 1,
+    "auto_commit": true,
+    "auto_push": true,
+    "auto_pull": false,
+    "backoff": {
+      "enabled": true,
+      "max_delay_seconds": 10,
+      "multiplier": 2,
+      "churn_threshold": 5,
+      "churn_window_seconds": 30,
+      "decay_reset_seconds": 60,
+      "manual_sync_timeout_seconds": 120
+    }
+  },
+  "notifications": {
+    "enabled": false,
+    "show_success": false,
+    "show_pulls": false,
+    "play_sound_on_conflict": false
+  },
+  "conflict_resolution": {
+    "strategy": "manual",
+    "backup_dir": "{{ .TargetDir }}/.backup"
+  },
+  "ui": {
+    "theme": "auto",
+    "show_progress": true,
+    "compact_mode": false
+  },
+  "advanced": {
+    "log_level": "debug",
+    "max_log_size_mb": 10,
+    "keep_backups_days": 7,
+    "enable_metrics": false,
+    "performance_mode": false
+  },
+  "mappings": {
+    "{{ .SourceDir }}/.bashrc": "{{ .TargetDir }}/.bashrc",
+    "{{ .SourceDir }}/.vimrc": "{{ .TargetDir }}/.vimrc",
+    "{{ .SourceDir }}/.gitconfig": "{{ .TargetDir }}/.gitconfig"
+  }
+}

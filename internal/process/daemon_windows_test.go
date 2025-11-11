@@ -91,13 +91,13 @@ func TestFindProcessByNameWindows(t *testing.T) {
 	// Test finding a process that definitely exists on Windows
 	// We'll try to find "svchost" or "explorer" which are system processes
 	testProcesses := []string{"svchost", "explorer"}
-	
+
 	foundAtLeastOne := false
 	for _, procName := range testProcesses {
 		pid, err := findProcessByName(procName)
 		if err == nil && pid > 0 {
 			foundAtLeastOne = true
-			
+
 			// Verify the process exists using processExists
 			if !processExists(pid) {
 				t.Errorf("findProcessByName returned PID %d for %s, but processExists returned false", pid, procName)
@@ -105,7 +105,7 @@ func TestFindProcessByNameWindows(t *testing.T) {
 			break
 		}
 	}
-	
+
 	if !foundAtLeastOne {
 		t.Logf("Warning: Could not find any test system processes. This test may be unreliable.")
 	}

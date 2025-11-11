@@ -10,12 +10,12 @@ import (
 
 const (
 	// Test timing constants
-	testSmallDelay      = 10 * time.Millisecond
-	testExecutionDelay  = 1 * time.Millisecond
-	testRaceDelay       = 1 * time.Millisecond
-	testDebounceWait    = 200 * time.Millisecond
-	testManualSyncWait  = 100 * time.Millisecond
-	testBackoffWait     = 300 * time.Millisecond
+	testSmallDelay     = 10 * time.Millisecond
+	testExecutionDelay = 1 * time.Millisecond
+	testRaceDelay      = 1 * time.Millisecond
+	testDebounceWait   = 200 * time.Millisecond
+	testManualSyncWait = 100 * time.Millisecond
+	testBackoffWait    = 300 * time.Millisecond
 )
 
 func TestAdvancedDebouncer_New(t *testing.T) {

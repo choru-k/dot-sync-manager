@@ -14,11 +14,11 @@ import (
 )
 
 const (
-	pidFileName        = ".dotfile-sync-manager.pid"
-	pidFilePerms       = 0o600 // owner read/write only to protect daemon PID information
-	exeExtension       = ".exe" // Windows executable extension
-	lockTimeout        = 5 * time.Second
-	lockRetryInterval  = 100 * time.Millisecond
+	pidFileName       = ".dotfile-sync-manager.pid"
+	pidFilePerms      = 0o600  // owner read/write only to protect daemon PID information
+	exeExtension      = ".exe" // Windows executable extension
+	lockTimeout       = 5 * time.Second
+	lockRetryInterval = 100 * time.Millisecond
 )
 
 // pidFilePath returns the absolute path to the PID file in the user's home directory.
@@ -34,8 +34,8 @@ func pidFilePath() (string, error) {
 
 // LockManager manages the lifecycle of a PID file lock for daemon exclusivity.
 type LockManager struct {
-	lock    *flock.Flock
-	pidPath string
+	lock     *flock.Flock
+	pidPath  string
 	lockPath string
 }
 
@@ -101,8 +101,8 @@ func WritePIDExclusive(pid int) (*LockManager, error) {
 
 	// Create and return LockManager
 	lockManager := &LockManager{
-		lock:    fileLock,
-		pidPath: path,
+		lock:     fileLock,
+		pidPath:  path,
 		lockPath: lockPath,
 	}
 
@@ -234,15 +234,15 @@ func WritePID(pid int) error {
 	if pid <= 0 {
 		return fmt.Errorf("process: write pid: invalid pid %d", pid)
 	}
-	
+
 	// Get the current executable name for reliable daemon detection
 	exeName := DefaultProcessName()
-	
+
 	path, err := pidFilePath()
 	if err != nil {
 		return fmt.Errorf("process: write pid: failed to get path: %w", err)
 	}
-	
+
 	// Store both PID and executable name in format: "PID:exe_name"
 	content := fmt.Sprintf("%d:%s", pid, exeName)
 	return os.WriteFile(path, []byte(content), pidFilePerms)
@@ -280,7 +280,7 @@ func RemovePID() error {
 
 // pidInfo stores both the PID and executable name from the PID file.
 type pidInfo struct {
-	pid      int
+	pid     int
 	exeName string
 }
 
@@ -306,6 +306,33 @@ func cleanupPIDFile(reason string) {
 	if err := RemovePID(); err != nil {
 		log.Printf("process: warning - failed to remove %s: %v", reason, err)
 	}
+}
+
+// IsDaemonRunningPIDOnly returns true only when the PID file currently points to
+// a live daemon process. Unlike IsDaemonRunning, this helper never falls back to
+// process enumeration, which avoids false positives when multiple CLI invocations
+// share the same binary name but no daemon has fully initialized yet.
+func IsDaemonRunningPIDOnly() bool {
+	pidInfo, err := readPID()
+	if err != nil {
+		return false
+	}
+
+	expectedName := pidInfo.exeName
+	if expectedName == "" {
+		expectedName = DefaultProcessName()
+	}
+
+	switch {
+	case pidInfo.pid == os.Getpid():
+		cleanupPIDFile("self PID file")
+	case processExists(pidInfo.pid) && verifyProcessName(pidInfo.pid, expectedName):
+		return true
+	default:
+		cleanupPIDFile("stale PID file")
+	}
+
+	return false
 }
 
 // IsDaemonRunning checks if the daemon associated with the stored PID is running.

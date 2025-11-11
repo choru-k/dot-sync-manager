@@ -23,9 +23,9 @@ func TestCheckCmd_Sanity(t *testing.T) {
 	}
 
 	// Temporarily set config file for this test
-	originalConfigFile := configFile
-	configFile = testConfig.ConfigPath
-	defer func() { configFile = originalConfigFile }()
+	originalConfigFile := getConfigFile()
+	setConfigFile(testConfig.ConfigPath)
+	defer func() { setConfigFile(originalConfigFile) }()
 
 	tests := []struct {
 		name        string
@@ -71,8 +71,8 @@ func TestCheckConfig(t *testing.T) {
 			config: &config.SyncConfig{
 				Machine: config.MachineConfig{Name: "test-machine"},
 				Git: config.GitConfig{
-					RepoPath:   "/tmp/test-repo",
-					AuthorName: "Test User",
+					RepoPath:    "/tmp/test-repo",
+					AuthorName:  "Test User",
 					AuthorEmail: "test@example.com",
 				},
 			},
@@ -92,7 +92,7 @@ func TestCheckConfig(t *testing.T) {
 			name: "invalid config - missing repo path",
 			config: &config.SyncConfig{
 				Machine: config.MachineConfig{Name: "test-machine"},
-				Git: config.GitConfig{},
+				Git:     config.GitConfig{},
 			},
 			expectError: true,
 		},
@@ -213,9 +213,9 @@ func TestCheckCmd_Integration(t *testing.T) {
 	}
 
 	// Temporarily set config file for this test
-	originalConfigFile := configFile
-	configFile = testConfig.ConfigPath
-	defer func() { configFile = originalConfigFile }()
+	originalConfigFile := getConfigFile()
+	setConfigFile(testConfig.ConfigPath)
+	defer func() { setConfigFile(originalConfigFile) }()
 
 	// Test check command
 	cmd := &cobra.Command{Use: "check"}
@@ -279,9 +279,9 @@ func TestCheckCmd_WithConflicts(t *testing.T) {
 	createTestFile(t, filepath.Join(conflictsDir, "bashrc.conflict"), "conflict content")
 
 	// Temporarily set config file for this test
-	originalConfigFile := configFile
-	configFile = testConfig.ConfigPath
-	defer func() { configFile = originalConfigFile }()
+	originalConfigFile := getConfigFile()
+	setConfigFile(testConfig.ConfigPath)
+	defer func() { setConfigFile(originalConfigFile) }()
 
 	// Test check command - should detect conflicts and return an error
 	cmd := &cobra.Command{Use: "check"}
@@ -359,7 +359,6 @@ func checkRepository(repoPath string) error {
 	return nil
 }
 
-
 func validateSystemRequirements() error {
 	// Check if we're running on a supported platform
 	switch runtime.GOOS {
@@ -385,9 +384,9 @@ func checkConnectivity(remoteURL string) error {
 // Tests for the production helper functions extracted from runCheck
 func TestCheckArguments(t *testing.T) {
 	tests := []struct {
-		name     string
-		args     []string
-		wantErr  bool
+		name    string
+		args    []string
+		wantErr bool
 	}{
 		{
 			name:    "no arguments should work",
@@ -437,13 +436,13 @@ func TestCheckRemoteConfiguration(t *testing.T) {
 				Git: config.GitConfig{RemoteURL: ""},
 			},
 			expectedIssues: 0,
-			expectedWarns: 1,
+			expectedWarns:  1,
 		},
 		{
-			name: "nil config",
-			cfg: nil,
+			name:           "nil config",
+			cfg:            nil,
 			expectedIssues: 0,
-			expectedWarns: 0, // Should handle nil gracefully
+			expectedWarns:  0, // Should handle nil gracefully
 		},
 	}
 
@@ -473,7 +472,7 @@ func TestCheckSyncConfiguration(t *testing.T) {
 				Sync: config.SyncSettings{AutoSyncEnabled: true},
 			},
 			expectedIssues: 0,
-			expectedWarns: 0,
+			expectedWarns:  0,
 		},
 		{
 			name: "config with auto-sync disabled",
@@ -481,13 +480,13 @@ func TestCheckSyncConfiguration(t *testing.T) {
 				Sync: config.SyncSettings{AutoSyncEnabled: false},
 			},
 			expectedIssues: 0,
-			expectedWarns: 1,
+			expectedWarns:  1,
 		},
 		{
-			name: "nil config",
-			cfg: nil,
+			name:           "nil config",
+			cfg:            nil,
 			expectedIssues: 0,
-			expectedWarns: 0, // Should handle nil gracefully
+			expectedWarns:  0, // Should handle nil gracefully
 		},
 	}
 
@@ -520,7 +519,7 @@ func TestCheckFileMappings(t *testing.T) {
 				},
 			},
 			expectedIssues: 0,
-			expectedWarns: 0,
+			expectedWarns:  0,
 		},
 		{
 			name: "config without mappings",
@@ -528,7 +527,7 @@ func TestCheckFileMappings(t *testing.T) {
 				Mappings: map[string]string{},
 			},
 			expectedIssues: 0,
-			expectedWarns: 1,
+			expectedWarns:  1,
 		},
 		{
 			name: "config with nil mappings",
@@ -536,13 +535,13 @@ func TestCheckFileMappings(t *testing.T) {
 				Mappings: nil,
 			},
 			expectedIssues: 0,
-			expectedWarns: 1,
+			expectedWarns:  1,
 		},
 		{
-			name: "nil config",
-			cfg: nil,
+			name:           "nil config",
+			cfg:            nil,
 			expectedIssues: 0,
-			expectedWarns: 0, // Should handle nil gracefully
+			expectedWarns:  0, // Should handle nil gracefully
 		},
 	}
 

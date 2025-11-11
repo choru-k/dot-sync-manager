@@ -502,7 +502,6 @@ func TestRemovePIDCleansUpLockFile(t *testing.T) {
 	}
 }
 
-
 func TestPIDFileFormatCompatibility(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)
@@ -510,11 +509,11 @@ func TestPIDFileFormatCompatibility(t *testing.T) {
 	path := filepath.Join(homeDir, ".dotfile-sync-manager.pid")
 
 	tests := []struct {
-		name           string
-		content        string
-		expectedPID    int
-		expectedExe    string
-		shouldWork     bool
+		name        string
+		content     string
+		expectedPID int
+		expectedExe string
+		shouldWork  bool
 	}{
 		{
 			name:        "new format with exe name",
@@ -575,4 +574,3 @@ func TestPIDFileFormatCompatibility(t *testing.T) {
 		})
 	}
 }
-

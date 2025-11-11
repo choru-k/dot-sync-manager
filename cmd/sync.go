@@ -56,7 +56,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	gitMgr, err := gitmanager.NewGitManager(ctx, gmCfg)
 	if err != nil {
-		return fmt.Errorf("failed to prepare git repository: %w", err)
+		return fmt.Errorf("failed to prepare git repository: %w\nHint: Check that the repository path exists and is a valid git repository\nRun 'dsm validate-config' to verify your configuration", err)
 	}
 
 	if dryRun {

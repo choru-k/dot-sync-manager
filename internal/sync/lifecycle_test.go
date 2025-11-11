@@ -190,7 +190,7 @@ func TestSyncService_StopFromCallback(t *testing.T) {
 		RepoPath:    tmpDir,
 		RemoteURL:   "https://github.com/test/test.git",
 		RemoteName:  "origin",
-	AuthorName:  "Test User",
+		AuthorName:  "Test User",
 		AuthorEmail: "test@example.com",
 		AuthType:    gitmanager.AuthStrategyNone,
 	}
@@ -203,7 +203,7 @@ func TestSyncService_StopFromCallback(t *testing.T) {
 	syncConfig := &Config{
 		RepoPath:        tmpDir,
 		DebounceDelay:   50 * time.Millisecond,
-	AutoSyncEnabled: true,
+		AutoSyncEnabled: true,
 		IgnoreFile:      ".syncignore",
 	}
 

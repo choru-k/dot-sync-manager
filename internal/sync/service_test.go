@@ -21,7 +21,7 @@ const testDebounceDelay = 100 * time.Millisecond
 
 // Test timing constants for consistent test behavior
 const (
-	testTickInterval     = 10 * time.Millisecond  // Small delay for event processing
+	testTickInterval    = 10 * time.Millisecond  // Small delay for event processing
 	testProcessingDelay = 50 * time.Millisecond  // Delay for file system events
 	testShutdownDelay   = 200 * time.Millisecond // Delay for shutdown verification
 	testCleanupDelay    = 100 * time.Millisecond // Delay for final cleanup
@@ -315,7 +315,7 @@ func TestSyncService_DynamicDirectoryWatching(t *testing.T) {
 	if err := service.Start(); err != nil {
 		t.Fatalf("Failed to start service: %v", err)
 	}
-t.Cleanup(func() {
+	t.Cleanup(func() {
 		if err := service.Stop(); err != nil {
 			t.Errorf("Failed to stop service: %v", err)
 		}

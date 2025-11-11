@@ -146,9 +146,9 @@ func TestRemoveCmd_KeepRepoFlag(t *testing.T) {
 	createTestSymlink(t, repoFile, homeFile)
 
 	// Set the global configFile variable
-	originalConfigFile := configFile
-	configFile = testConfig.ConfigPath
-	defer func() { configFile = originalConfigFile }()
+	originalConfigFile := getConfigFile()
+	setConfigFile(testConfig.ConfigPath)
+	defer func() { setConfigFile(originalConfigFile) }()
 
 	// Update config
 	testConfig.Config.Mappings[".bashrc"] = "bashrc"
@@ -186,9 +186,9 @@ func TestRemoveCmd_DeleteAllFlag(t *testing.T) {
 	createTestSymlink(t, repoFile, homeFile)
 
 	// Set the global configFile variable
-	originalConfigFile := configFile
-	configFile = testConfig.ConfigPath
-	defer func() { configFile = originalConfigFile }()
+	originalConfigFile := getConfigFile()
+	setConfigFile(testConfig.ConfigPath)
+	defer func() { setConfigFile(originalConfigFile) }()
 
 	// Update config
 	testConfig.Config.Mappings[".bashrc"] = "bashrc"
@@ -228,11 +228,11 @@ func TestRemoveCmd_ConflictingFlags(t *testing.T) {
 	cmd.Flags().Bool("keep-repo", false, "Keep file in repository (default behavior)")
 	cmd.Flags().Bool("delete-all", false, "Delete file from both home and repository")
 	if err := cmd.Flags().Set("keep-repo", "true"); err != nil {
-					t.Fatalf("failed to set keep-repo flag: %v", err)
-				}
+		t.Fatalf("failed to set keep-repo flag: %v", err)
+	}
 	if err := cmd.Flags().Set("delete-all", "true"); err != nil {
-					t.Fatalf("failed to set delete-all flag: %v", err)
-				}
+		t.Fatalf("failed to set delete-all flag: %v", err)
+	}
 
 	err := runRemove(cmd, []string{homeFile})
 	if err == nil {

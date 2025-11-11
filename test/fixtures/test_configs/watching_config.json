@@ -1,0 +1,59 @@
+{
+  "version": "1.0",
+  "machine": "test-machine-watching",
+  "git": {
+    "repo_path": "/app/test-data/dotfiles-test-watch",
+    "remote_url": "",
+    "remote": "origin",
+    "branch": "main",
+    "user_name": "Dotfile Sync User",
+    "user_email": "user@83c81fa3cda7",
+    "auth_type": "none"
+  },
+  "sync": {
+    "auto_sync_enabled": true,
+    "pull_interval_seconds": 300,
+    "debounce_seconds": 1,
+    "auto_commit": true,
+    "auto_push": true,
+    "auto_pull": false,
+    "backoff": {
+      "enabled": true,
+      "max_delay_seconds": 10,
+      "multiplier": 2,
+      "churn_threshold": 5,
+      "churn_window_seconds": 30,
+      "decay_reset_seconds": 60,
+      "manual_sync_timeout_seconds": 120
+    }
+  },
+  "notifications": {
+    "enabled": false,
+    "show_success": false,
+    "show_pulls": false,
+    "play_sound_on_conflict": false
+  },
+  "conflict_resolution": {
+    "strategy": "manual",
+    "backup_dir": "/app/test-data/dotfiles-test-watch/.backup",
+    "keep_backups_days": 7
+  },
+  "mappings": {
+    "/app/test-data/source_dotfiles/.debouncetest": "/app/test-data/dotfiles-test-watch/.debouncetest",
+    "/app/test-data/source_dotfiles/.multitest1": "/app/test-data/dotfiles-test-watch/.multitest1",
+    "/app/test-data/source_dotfiles/.multitest2": "/app/test-data/dotfiles-test-watch/.multitest2",
+    "/app/test-data/source_dotfiles/.multitest3": "/app/test-data/dotfiles-test-watch/.multitest3",
+    "/app/test-data/source_dotfiles/.watchtest": "/app/test-data/dotfiles-test-watch/.watchtest",
+    "app/test-data/source_dotfiles/.watchtest": "/app/test-data/source_dotfiles/.watchtest"
+  },
+  "ui": {
+    "start_at_boot": true,
+    "minimize_to_tray": true,
+    "theme": "auto"
+  },
+  "advanced": {
+    "debug_logging": false,
+    "log_file": "/home/testuser/.dotfile-sync.log",
+    "max_log_size_mb": 10
+  }
+}

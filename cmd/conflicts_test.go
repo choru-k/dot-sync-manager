@@ -39,9 +39,9 @@ func TestConflictsCmd_Sanity(t *testing.T) {
 
 func TestDetectConflicts(t *testing.T) {
 	tests := []struct {
-		name          string
-		setupRepo     func(t *testing.T) string
-		expectError   bool
+		name            string
+		setupRepo       func(t *testing.T) string
+		expectError     bool
 		expectConflicts bool
 	}{
 		{
@@ -49,7 +49,7 @@ func TestDetectConflicts(t *testing.T) {
 			setupRepo: func(t *testing.T) string {
 				return "/tmp/non-existent-repo"
 			},
-			expectError:    true,
+			expectError:     true,
 			expectConflicts: false,
 		},
 		{
@@ -62,7 +62,7 @@ func TestDetectConflicts(t *testing.T) {
 				}
 				return repoPath
 			},
-			expectError:    false,
+			expectError:     false,
 			expectConflicts: false,
 		},
 		{
@@ -81,7 +81,7 @@ func TestDetectConflicts(t *testing.T) {
 				createTestFile(t, filepath.Join(conflictsDir, "bashrc.conflict"), "conflict content")
 				return repoPath
 			},
-			expectError:    false,
+			expectError:     false,
 			expectConflicts: true,
 		},
 	}
@@ -219,8 +219,8 @@ func TestConflictsCmd_Integration(t *testing.T) {
 	// Create conflicts directory with conflict files
 	conflictsDir := filepath.Join(testConfig.RepoPath, ".dsm", "conflicts")
 	if err := os.MkdirAll(conflictsDir, testDirPerms); err != nil {
-					t.Fatalf("failed to create conflicts directory: %v", err)
-				}
+		t.Fatalf("failed to create conflicts directory: %v", err)
+	}
 
 	conflictContent := `<<<<<<< HEAD
 export PATH="$PATH:/usr/local/bin"
@@ -260,9 +260,9 @@ func TestConflictsCmd_MissingRepo(t *testing.T) {
 	defer cleanupTestEnvironment(testConfig)
 
 	// Temporarily set config file for this test
-	originalConfigFile := configFile
-	configFile = testConfig.ConfigPath
-	defer func() { configFile = originalConfigFile }()
+	originalConfigFile := getConfigFile()
+	setConfigFile(testConfig.ConfigPath)
+	defer func() { setConfigFile(originalConfigFile) }()
 
 	// Don't create repo structure - test should handle missing repo gracefully
 	cmd := &cobra.Command{Use: "conflicts"}
@@ -297,8 +297,8 @@ Remote content
 			expectSections: 2,
 		},
 		{
-			name: "file without conflict markers",
-			content: "Just regular content\nwith no conflicts",
+			name:           "file without conflict markers",
+			content:        "Just regular content\nwith no conflicts",
 			expectError:    false,
 			expectSections: 0,
 		},
@@ -334,7 +334,7 @@ func TestGetConflictStatus(t *testing.T) {
 			expectedStatus: "No conflicts detected",
 		},
 		{
-			name:         "empty conflicts directory",
+			name: "empty conflicts directory",
 			conflictsDir: func() string {
 				dir := filepath.Join(t.TempDir(), "conflicts")
 				if err := os.MkdirAll(dir, testDirPerms); err != nil {
@@ -345,7 +345,7 @@ func TestGetConflictStatus(t *testing.T) {
 			expectedStatus: "No conflicts detected",
 		},
 		{
-			name:         "conflicts exist",
+			name: "conflicts exist",
 			conflictsDir: func() string {
 				dir := filepath.Join(t.TempDir(), "conflicts")
 				if err := os.MkdirAll(dir, testDirPerms); err != nil {

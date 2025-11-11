@@ -40,10 +40,10 @@ func TestGetConfig(t *testing.T) {
 
 	t.Run("loads config from explicit file", func(t *testing.T) {
 		// Set the global configFile variable
-		oldConfigFile := configFile
-		configFile = configPath
+		oldConfigFile := getConfigFile()
+		setConfigFile(configPath)
 		t.Cleanup(func() {
-			configFile = oldConfigFile
+			setConfigFile(oldConfigFile)
 		})
 
 		cfg, err := getConfig()
@@ -60,10 +60,10 @@ func TestGetConfig(t *testing.T) {
 	})
 
 	t.Run("returns error for nonexistent explicit config file", func(t *testing.T) {
-		oldConfigFile := configFile
-		configFile = filepath.Join(tmpDir, "nonexistent.json")
+		oldConfigFile := getConfigFile()
+		setConfigFile(filepath.Join(tmpDir, "nonexistent.json"))
 		t.Cleanup(func() {
-			configFile = oldConfigFile
+			setConfigFile(oldConfigFile)
 		})
 
 		cfg, err := getConfig()
@@ -100,10 +100,10 @@ func TestGetConfig(t *testing.T) {
 			t.Fatalf("Failed to create default config: %v", err)
 		}
 
-		oldConfigFile := configFile
-		configFile = ""
+		oldConfigFile := getConfigFile()
+		setConfigFile("")
 		t.Cleanup(func() {
-			configFile = oldConfigFile
+			setConfigFile(oldConfigFile)
 		})
 
 		cfg, err := getConfig()
@@ -124,10 +124,10 @@ func TestGetConfigWithInvalidJSON(t *testing.T) {
 		t.Fatalf("Failed to create invalid config: %v", err)
 	}
 
-	oldConfigFile := configFile
-	configFile = invalidConfigPath
+	oldConfigFile := getConfigFile()
+	setConfigFile(invalidConfigPath)
 	t.Cleanup(func() {
-		configFile = oldConfigFile
+		setConfigFile(oldConfigFile)
 	})
 
 	_, err := getConfig()
@@ -135,7 +135,6 @@ func TestGetConfigWithInvalidJSON(t *testing.T) {
 		t.Error("Expected error for invalid JSON, got nil")
 	}
 }
-
 
 func TestGetDaemonPID(t *testing.T) {
 	// Test stub function

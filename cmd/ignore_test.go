@@ -14,9 +14,9 @@ func TestIgnoreCmd_Sanity(t *testing.T) {
 	t.Cleanup(func() { cleanupTestEnvironment(testConfig) })
 
 	// Set the global configFile variable so getConfig() uses the test config file
-	oldConfigFile := configFile
-	configFile = testConfig.ConfigPath
-	t.Cleanup(func() { configFile = oldConfigFile })
+	oldConfigFile := getConfigFile()
+	setConfigFile(testConfig.ConfigPath)
+	t.Cleanup(func() { setConfigFile(oldConfigFile) })
 
 	tests := []struct {
 		name        string
@@ -316,9 +316,9 @@ func TestIgnoreCmd_Permissions(t *testing.T) {
 
 func TestIgnoreFileValidation(t *testing.T) {
 	tests := []struct {
-		name        string
-		content     string
-		shouldPass  bool
+		name       string
+		content    string
+		shouldPass bool
 	}{
 		{
 			name:       "valid patterns",
@@ -437,28 +437,28 @@ func TestIgnoreFileBackup(t *testing.T) {
 
 func TestParseIgnorePatterns(t *testing.T) {
 	tests := []struct {
-		name           string
-		content        string
-		expectedCount  int
+		name             string
+		content          string
+		expectedCount    int
 		expectedNonEmpty int
 	}{
 		{
-			name:              "mixed content",
-			content:           "# Comment\n*.tmp\n\n*.log\n  \n!important.txt",
-			expectedCount:     5,
-			expectedNonEmpty:  3,
+			name:             "mixed content",
+			content:          "# Comment\n*.tmp\n\n*.log\n  \n!important.txt",
+			expectedCount:    5,
+			expectedNonEmpty: 3,
 		},
 		{
-			name:              "only comments",
-			content:           "# Comment 1\n# Comment 2\n   # Comment 3",
-			expectedCount:     3,
-			expectedNonEmpty:  0,
+			name:             "only comments",
+			content:          "# Comment 1\n# Comment 2\n   # Comment 3",
+			expectedCount:    3,
+			expectedNonEmpty: 0,
 		},
 		{
-			name:              "empty content",
-			content:           "",
-			expectedCount:     0,
-			expectedNonEmpty:  0,
+			name:             "empty content",
+			content:          "",
+			expectedCount:    0,
+			expectedNonEmpty: 0,
 		},
 	}
 

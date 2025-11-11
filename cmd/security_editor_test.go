@@ -17,28 +17,28 @@ func TestValidateEditorCommand(t *testing.T) {
 	}{
 		// Safe editors from allowlist
 		{
-			name:     "safe editor - nano",
-			editor:   "nano",
+			name:        "safe editor - nano",
+			editor:      "nano",
 			expectError: false,
 		},
 		{
-			name:     "safe editor - code",
-			editor:   "code",
+			name:        "safe editor - code",
+			editor:      "code",
 			expectError: false,
 		},
 		{
-			name:     "safe editor - vim",
-			editor:   "vim",
+			name:        "safe editor - vim",
+			editor:      "vim",
 			expectError: false,
 		},
 		{
-			name:     "safe editor - notepad",
-			editor:   "notepad",
+			name:        "safe editor - notepad",
+			editor:      "notepad",
 			expectError: false,
 		},
 		{
-			name:     "safe editor - macOS TextEdit",
-			editor:   "open -a TextEdit",
+			name:        "safe editor - macOS TextEdit",
+			editor:      "open -a TextEdit",
 			expectError: false,
 		},
 
@@ -128,13 +128,13 @@ func TestValidateEditorCommand(t *testing.T) {
 
 		// Known safe editors (should pass - they are in the allowlist)
 		{
-			name:     "known safe editor - gedit",
-			editor:   "gedit",
+			name:        "known safe editor - gedit",
+			editor:      "gedit",
 			expectError: false, // gedit is in the safeEditors map
 		},
 		{
-			name:     "known safe editor - atom",
-			editor:   "atom",
+			name:        "known safe editor - atom",
+			editor:      "atom",
 			expectError: false, // atom is in the safeEditors map
 		},
 
@@ -246,7 +246,7 @@ func TestValidateEditorCommand(t *testing.T) {
 func containsString(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) &&
 		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
-		 indexOfSubstring(s, substr) >= 0))
+			indexOfSubstring(s, substr) >= 0))
 }
 
 func indexOfSubstring(s, substr string) int {

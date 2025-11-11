@@ -10,15 +10,13 @@ const (
 	// defaultLogLines is the default number of log lines to show
 	defaultLogLines = 50
 
-	
 	// dirPerms grants owner-level write access while keeping directories traversable by other users, matching standard 0755 expectations.
 	dirPerms = 0755 // rwxr-xr-x so users can traverse synced directories
 
-	)
+)
 
 // Time function variable for testability
 var timeNow = time.Now
-
 
 // Configuration file name constants
 const (

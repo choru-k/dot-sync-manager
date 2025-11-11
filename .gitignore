@@ -53,4 +53,9 @@ config.json
 .env.local
 .env.development.local
 .env.test.local
-.env.production.local
+.env.production.localdot-sync-manager
+test-binary
+
+# E2E test artifacts - temporary test data directories
+test-data/
+

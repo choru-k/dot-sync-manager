@@ -1,0 +1,64 @@
+# Docker Compose configuration for stateless E2E testing
+# Provides completely isolated test environment for each test run
+
+services:
+  # Main test runner container - stateless for each test
+  dsm-test:
+    build:
+      context: ..
+      dockerfile: test/Dockerfile.test
+    container_name: dsm-test-runner
+    volumes:
+      # Mount entire project directory with go.mod accessible
+      # Use parent directory as project root to ensure go.mod is available
+      - ..:/app:rw
+      # Temporary volumes for test execution (disposable)
+      - test-data:/app/test-data
+      - test-reports:/app/test-reports
+      - ssh-keys:/app/ssh-keys
+    environment:
+      - TEST_ENV=container
+      - TEST_MODE=e2e
+      - GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /app/ssh-keys/test_key
+      - DSM_CONFIG_PATH=/app/test-data/config.json
+      - DSM_LOG_LEVEL=debug
+      - DSM_BIN=/usr/local/bin/dsm
+    networks:
+      - test-network
+    # Security hardening
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:exec,nosuid,size=200m
+      - /var/tmp:noexec,nosuid,size=100m
+      - /home/testuser/.cache/go-build:exec,nosuid,size=300m
+      - /home/testuser/go:exec,nosuid,size=200m
+      - /home/testuser:exec,nosuid,size=400m
+    cap_drop:
+      - ALL
+    user: "1000:1000"
+    working_dir: /app
+    command: ["sleep", "infinity"]  # Keep running for test execution
+    restart: unless-stopped
+
+  
+  
+# Disposable volumes - created fresh for each test run
+volumes:
+  test-data:
+    driver: local
+  test-reports:
+    driver: local
+  ssh-keys:
+    driver: local
+  # postgres-data:
+  #   driver: local
+
+# Isolated network for test communication
+networks:
+  test-network:
+    driver: bridge
+    internal: false  # Allow external access for debugging
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

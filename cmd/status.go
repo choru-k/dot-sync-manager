@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/choru-k/dot-sync-manager/internal/config"
 	git "github.com/go-git/go-git/v5"
 	"github.com/spf13/cobra"
 )
@@ -67,7 +68,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	// Show git status (simplified)
 	fmt.Printf("\n📂 Repository Status:\n")
-	showGitStatus(cfg.Git.RepoPath)
+	showGitStatus(cfg.Git.RepoPath, checkVerbose)
 
 	// Show mappings if any
 	if len(cfg.Mappings) > 0 {
@@ -83,10 +84,15 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Show verbose information
+	if verbose {
+		showVerboseStatus(cfg)
+	}
+
 	return nil
 }
 
-func showGitStatus(repoPath string) {
+func showGitStatus(repoPath string, verbose bool) {
 	r, err := git.PlainOpen(repoPath)
 	if err != nil {
 		if strings.Contains(err.Error(), "repository not found") {
@@ -113,5 +119,62 @@ func showGitStatus(repoPath string) {
 		fmt.Println("✅ Repository is clean")
 	} else {
 		fmt.Printf("📝 %d files have changes\n", len(status))
+
+		// Show detailed file status in verbose mode
+		if verbose {
+			for filepath, fileStatus := range status {
+				var statusSymbol string
+				switch fileStatus.Worktree {
+				case git.Modified:
+					statusSymbol = "📝 Modified"
+				case git.Added:
+					statusSymbol = "➕ Added"
+				case git.Deleted:
+					statusSymbol = "❌ Deleted"
+				case git.Renamed:
+					statusSymbol = "🔄 Renamed"
+				case git.Copied:
+					statusSymbol = "📋 Copied"
+				case git.Untracked:
+					statusSymbol = "❓ Untracked"
+				default:
+					statusSymbol = "📍 Changed"
+				}
+				fmt.Printf("   %s: %s\n", statusSymbol, filepath)
+			}
+		}
+	}
+}
+
+func showVerboseStatus(cfg *config.SyncConfig) {
+	fmt.Printf("\n🔍 Detailed Information:\n")
+
+	// Configuration file location
+	fmt.Printf("📄 Config file: %s\n", cfg.GetConfigPath())
+
+	// Authentication details
+	fmt.Printf("🔐 Authentication: %s", cfg.Git.AuthType)
+	if cfg.Git.AuthType == "ssh" {
+		if cfg.Git.SSHKeyPath != "" {
+			fmt.Printf(" (key: %s)", cfg.Git.SSHKeyPath)
+		} else {
+			fmt.Printf(" (using SSH agent)")
+		}
+	}
+	fmt.Println()
+
+	// Extended sync settings
+	fmt.Printf("⚙️  Extended Sync Settings:\n")
+	fmt.Printf("   Auto-commit: %v\n", cfg.Sync.AutoCommit)
+	fmt.Printf("   Auto-push: %v\n", cfg.Sync.AutoPush)
+	fmt.Printf("   Auto-pull: %v\n", cfg.Sync.AutoPull)
+
+	// Backoff settings if configured
+	if cfg.Sync.Backoff != nil {
+		fmt.Printf("⏱️  Backoff Settings:\n")
+		fmt.Printf("   Max delay: %ds\n", cfg.Sync.Backoff.MaxDelaySeconds)
+		fmt.Printf("   Churn threshold: %d changes\n", cfg.Sync.Backoff.ChurnThreshold)
+		fmt.Printf("   Churn window: %ds\n", cfg.Sync.Backoff.ChurnWindowSeconds)
+		fmt.Printf("   Decay reset: %ds\n", cfg.Sync.Backoff.DecayResetSeconds)
 	}
 }

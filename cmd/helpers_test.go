@@ -67,11 +67,11 @@ func TestCheckDirectoryExists(t *testing.T) {
 
 func TestParseCommand(t *testing.T) {
 	tests := []struct {
-		name           string
-		command        string
-		expectedCmd    string
-		expectedArgs   []string
-		description    string
+		name         string
+		command      string
+		expectedCmd  string
+		expectedArgs []string
+		description  string
 	}{
 		{
 			name:         "simple_command",

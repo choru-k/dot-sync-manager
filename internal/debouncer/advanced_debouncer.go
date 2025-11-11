@@ -26,13 +26,13 @@ const (
 
 	// Error IDs for monitoring and debugging - local to debouncer package
 	// These IDs help track specific error types in monitoring systems like Sentry
-	ErrIDDebouncerCallbackPanic       = "DEBOUNCER_CALLBACK_PANIC"
-	ErrIDDebouncerImmediatePanic      = "DEBOUNCER_IMMEDIATE_PANIC"
-	ErrIDDebouncerManualSyncPanic     = "DEBOUNCER_MANUAL_SYNC_PANIC"
-	ErrIDDebouncerChannelPanic        = "DEBOUNCER_CHANNEL_PANIC"
-	ErrIDDebouncerQueuePanic          = "DEBOUNCER_QUEUE_PANIC"
-	ErrIDDebouncerTimerNotStopped     = "DEBOUNCER_TIMER_NOT_STOPPED"
-	ErrIDDebouncerTimerCancelFailed   = "DEBOUNCER_TIMER_CANCEL_FAILED"
+	ErrIDDebouncerCallbackPanic     = "DEBOUNCER_CALLBACK_PANIC"
+	ErrIDDebouncerImmediatePanic    = "DEBOUNCER_IMMEDIATE_PANIC"
+	ErrIDDebouncerManualSyncPanic   = "DEBOUNCER_MANUAL_SYNC_PANIC"
+	ErrIDDebouncerChannelPanic      = "DEBOUNCER_CHANNEL_PANIC"
+	ErrIDDebouncerQueuePanic        = "DEBOUNCER_QUEUE_PANIC"
+	ErrIDDebouncerTimerNotStopped   = "DEBOUNCER_TIMER_NOT_STOPPED"
+	ErrIDDebouncerTimerCancelFailed = "DEBOUNCER_TIMER_CANCEL_FAILED"
 )
 
 // AdvancedDebouncer provides configurable debounce with exponential backoff
@@ -93,8 +93,8 @@ type AdvancedDebouncer struct {
 	onError func(error)
 
 	// Start/stop state management
-	started int32 // atomic.Bool replacement: 1 = started, 0 = not started
-	startMu sync.Mutex
+	started  int32 // atomic.Bool replacement: 1 = started, 0 = not started
+	startMu  sync.Mutex
 	stopOnce sync.Once // Ensures Stop() is only called once
 }
 
@@ -363,9 +363,9 @@ func (d *AdvancedDebouncer) TriggerManualSync(key string, fn func()) error {
 	if !sent {
 		// Execute directly since queue was full
 		go d.handleManualSync(manualSyncRequest{
-			fn:        fn,
-			key:       key,
-						result:    result,
+			fn:     fn,
+			key:    key,
+			result: result,
 		})
 	}
 
@@ -606,9 +606,9 @@ func (d *AdvancedDebouncer) TriggerManualSyncWithContext(ctx context.Context, ke
 	if !sent {
 		// Execute directly since queue was full or context cancelled
 		go d.handleManualSync(manualSyncRequest{
-			fn:        fn,
-			key:       key,
-						result:    result,
+			fn:     fn,
+			key:    key,
+			result: result,
 		})
 	}
 
@@ -685,49 +685,49 @@ func (d *AdvancedDebouncer) Stop() error {
 		d.stopped = true
 		d.manualSyncMu.Unlock()
 
-	// Cancel all pending timers and operations with error collection
+		// Cancel all pending timers and operations with error collection
 		if errs := d.cancelAllTimers(); len(errs) > 0 {
 			shutdownErrors = append(shutdownErrors, fmt.Errorf("errors cancelling timers during shutdown [%s]: %w", ErrIDDebouncerTimerCancelFailed, errors.Join(errs...)))
 		}
 
-	// Cancel the context to stop any pending callbacks
-	d.cancel()
+		// Cancel the context to stop any pending callbacks
+		d.cancel()
 
-	// Reset started flag to allow restart if needed
+		// Reset started flag to allow restart if needed
 		atomic.StoreInt32(&d.started, 0)
 
-	// Signal shutdown to queue processor
-	safeCloseChannel(d.done, "done", &shutdownErrors)
+		// Signal shutdown to queue processor
+		safeCloseChannel(d.done, "done", &shutdownErrors)
 
-	// Drain the queue to process any pending manual sync requests before shutdown
-	// This prevents dropping pending work during shutdown
-	drainQueue := func() {
-		for {
-			select {
-			case request, ok := <-d.manualSyncQueue:
-				if !ok {
-					// Queue already closed
+		// Drain the queue to process any pending manual sync requests before shutdown
+		// This prevents dropping pending work during shutdown
+		drainQueue := func() {
+			for {
+				select {
+				case request, ok := <-d.manualSyncQueue:
+					if !ok {
+						// Queue already closed
+						return
+					}
+					// Process the pending request
+					d.handleManualSync(request)
+				default:
+					// Queue is empty, safe to close
 					return
 				}
-				// Process the pending request
-				d.handleManualSync(request)
-			default:
-				// Queue is empty, safe to close
-				return
 			}
 		}
-	}
-	drainQueue()
+		drainQueue()
 
-	// Close the queue to prevent new requests
-	safeCloseManualSyncQueue(d.manualSyncQueue, "manual sync", &shutdownErrors)
+		// Close the queue to prevent new requests
+		safeCloseManualSyncQueue(d.manualSyncQueue, "manual sync", &shutdownErrors)
 
-	// Wait for the goroutine to finish processing
-	// This ensures clean shutdown without relying on arbitrary timeouts
-	d.shutdownWG.Wait()
+		// Wait for the goroutine to finish processing
+		// This ensures clean shutdown without relying on arbitrary timeouts
+		d.shutdownWG.Wait()
 
-	// The actual goroutine should exit quickly due to the done signal and queue closure
-	// Any remaining operations will naturally complete or timeout
+		// The actual goroutine should exit quickly due to the done signal and queue closure
+		// Any remaining operations will naturally complete or timeout
 	})
 
 	if len(shutdownErrors) > 0 {

@@ -10,7 +10,7 @@ import (
 
 // Advanced debouncer test timing constants for easier tuning and consistency
 const (
-	advTestDebounceDelay   = 100 * time.Millisecond
+	advTestDebounceDelay  = 100 * time.Millisecond
 	advTestBaseDelay      = 100 * time.Millisecond
 	advTestMaxDelay       = 1 * time.Second
 	advTestChurnWindow    = 200 * time.Millisecond

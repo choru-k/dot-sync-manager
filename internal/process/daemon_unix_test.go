@@ -77,7 +77,7 @@ func TestIsValidProcessNameRejectsInjection(t *testing.T) {
 		{"valid.process", true},
 		{"valid123", true},
 		{"", false}, // Empty name
-		
+
 		// Command injection attempts (should be rejected)
 		{"process; rm -rf /", false},
 		{"process && cat /etc/passwd", false},
@@ -87,7 +87,7 @@ func TestIsValidProcessNameRejectsInjection(t *testing.T) {
 		{"process|nc -l 4444", false},
 		{"process> /etc/shadow", false},
 		{"process< /dev/zero", false},
-		
+
 		// Shell metacharacters (should be rejected)
 		{"process;", false},
 		{"process&", false},
@@ -105,18 +105,18 @@ func TestIsValidProcessNameRejectsInjection(t *testing.T) {
 		{"process}", false},
 		{"process(", false},
 		{"process)", false},
-		{"process ", false}, // Space
-		{" process", false}, // Leading space
-		{"process ", false}, // Trailing space
+		{"process ", false},  // Space
+		{" process", false},  // Leading space
+		{"process ", false},  // Trailing space
 		{"process\t", false}, // Tab
 		{"process\n", false}, // Newline
 		{"process\r", false}, // Carriage return
-		
+
 		// Path traversal attempts (should be rejected due to slash)
 		{"../../../bin/sh", false},
 		{"/bin/sh", false},
 		{"..\\..\\..\\windows\\system32\\cmd.exe", false},
-		
+
 		// Quotes and escapes
 		{"\"process\"", false},
 		{"'process'", false},

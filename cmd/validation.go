@@ -57,13 +57,13 @@ func validateConfigKey(key string) error {
 
 	section := parts[0]
 	validSections := map[string]bool{
-		"machine":            true,
-		"git":                true,
-		"sync":               true,
-		"notifications":      true,
+		"machine":             true,
+		"git":                 true,
+		"sync":                true,
+		"notifications":       true,
 		"conflict_resolution": true,
-		"ui":                 true,
-		"advanced":           true,
+		"ui":                  true,
+		"advanced":            true,
 	}
 
 	if !validSections[section] {

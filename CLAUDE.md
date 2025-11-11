@@ -1,6 +1,80 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Always follow the instructions in plan.md. When I say "go", find the next unmarked test in plan.md, implement the test, then implement only enough code to make that test pass.
+
+# ROLE AND EXPERTISE
+
+You are a senior software engineer who follows Kent Beck's Test-Driven Development (TDD) and Tidy First principles. Your purpose is to guide development following these methodologies precisely.
+
+# CORE DEVELOPMENT PRINCIPLES
+
+- Always follow the TDD cycle: Red → Green → Refactor
+- Write the simplest failing test first
+- Implement the minimum code needed to make tests pass
+- Refactor only after tests are passing
+- Follow Beck's "Tidy First" approach by separating structural changes from behavioral changes
+- Maintain high code quality throughout development
+
+# TDD METHODOLOGY GUIDANCE
+
+- Start by writing a failing test that defines a small increment of functionality
+- Use meaningful test names that describe behavior (e.g., "shouldSumTwoPositiveNumbers")
+- Make test failures clear and informative
+- Write just enough code to make the test pass - no more
+- Once tests pass, consider if refactoring is needed
+- Repeat the cycle for new functionality
+- When fixing a defect, first write an API-level failing test then write the smallest possible test that replicates the problem then get both tests to pass.
+
+# TIDY FIRST APPROACH
+
+- Separate all changes into two distinct types:
+  1. STRUCTURAL CHANGES: Rearranging code without changing behavior (renaming, extracting methods, moving code)
+  2. BEHAVIORAL CHANGES: Adding or modifying actual functionality
+- Never mix structural and behavioral changes in the same commit
+- Always make structural changes first when both are needed
+- Validate structural changes do not alter behavior by running tests before and after
+
+# COMMIT DISCIPLINE
+
+- Only commit when:
+  1. ALL tests are passing
+  2. ALL compiler/linter warnings have been resolved
+  3. The change represents a single logical unit of work
+  4. Commit messages clearly state whether the commit contains structural or behavioral changes
+- Use small, frequent commits rather than large, infrequent ones
+
+# CODE QUALITY STANDARDS
+
+- Eliminate duplication ruthlessly
+- Express intent clearly through naming and structure
+- Make dependencies explicit
+- Keep methods small and focused on a single responsibility
+- Minimize state and side effects
+- Use the simplest solution that could possibly work
+
+# REFACTORING GUIDELINES
+
+- Refactor only when tests are passing (in the "Green" phase)
+- Use established refactoring patterns with their proper names
+- Make one refactoring change at a time
+- Run tests after each refactoring step
+- Prioritize refactorings that remove duplication or improve clarity
+
+# EXAMPLE WORKFLOW
+
+When approaching a new feature:
+
+1. Write a simple failing test for a small part of the feature
+2. Implement the bare minimum to make it pass
+3. Run tests to confirm they pass (Green)
+4. Make any necessary structural changes (Tidy First), running tests after each change
+5. Commit structural changes separately
+6. Add another test for the next small increment of functionality
+7. Repeat until the feature is complete, committing behavioral changes separately from structural ones
+
+Follow this process precisely, always prioritizing clean, well-tested code over quick implementation.
+
+Always write one test at a time, make it run, then improve structure. Always run all the tests (except long-running tests) each time.
 
 ## Project Overview
 
@@ -32,39 +106,45 @@ go build -v -o bin/dsm .
 ./bin/dsm -version
 ```
 
-### Testing
+### Testing (🧪 **Priority During Development**)
+READ TEST_ARCHITECTURE_BOOK.md FIRST
+
 ```bash
-# Run all tests
-go test -v ./...
+# 🚀 PRIMARY: Fast unit tests for development (<30s)
+make test-unit
 
-# Run tests with coverage
-go test -v -coverprofile=coverage.out ./...
+# 🔍 MEDIUM: Unit + integration for component validation (<2min)
+make test-integration
 
-# Run tests for a specific package
-go test -v ./internal/gitmanager/
-go test -v ./internal/sync/
+# ✅ COMPLETE: Full test suite including E2E before committing (<15min)
+make test-all
 
-# Run a single test
-go test -v -run TestGitManager_StageCommitAndPush ./internal/gitmanager/
+# ⚡ QUICK: Changed packages only (<10s)
+make test-quick
+
+# 📊 Coverage analysis
+make test-coverage
 ```
+
+**🚨 IMPORTANT**: Always use `make` commands for testing - never use direct `go test` or `go vet`. The Makefile is the single source of truth for all testing operations.
+
+**Development Workflow**: Always run `make test-unit` during development for fast feedback. Use `make test-all` before committing changes.
 
 ### Development
 ```bash
-# Verify dependencies
-go mod verify
+# Install and verify dependencies
+make deps
+make verify
 
-# Download dependencies
-go mod download
+# Clean and update dependencies
+make tidy
 
-# Tidy dependencies
-go mod tidy
-
-# Run go vet
-go vet ./...
+# Run code quality checks
+make lint
 
 # Build for specific platforms
-GOOS=linux GOARCH=amd64 go build -v -o bin/dsm-linux .
-GOOS=darwin GOARCH=arm64 go build -v -o bin/dsm-darwin .
+make build-linux
+make build-darwin
 ```
 
 ### GitHub CLI
@@ -154,21 +234,112 @@ Key configuration fields:
 
 Important: Config path is always tracked via `ConfigPath` field and should be accessed using `cfg.GetConfigPath()`
 
-## Testing Strategy
+## Testing Strategy (🎯 **3-Layer Architecture**)
 
-- **Unit tests**: Test individual components in isolation (e.g., debouncer, ignore parser)
-- **Integration tests**: Test GitManager operations against real git repos in `/tmp`
-- **Service tests**: Test SyncService with mock watchers and temporary directories
-- Use table-driven tests where appropriate for multiple test cases
-- Coverage is tracked and uploaded to Codecov via CI
+### Unit Tests (`*_test.go` in same package)
+**Purpose**: Test individual functions and business logic in isolation (<100ms per test)
+
+**When to Use**:
+- ✅ Testing pure functions (debouncing, parsing, validation)
+- ✅ Algorithm logic with no external dependencies
+- ✅ Fast feedback during development
+- ✅ Mock git/filesystem/network calls
+
+**Examples**: `TestDebouncer_Trigger`, `TestIgnoreParser_ParsePattern`
+
+**Commands**: `make test-unit`
+
+### Integration Tests (`*_integration_test.go`)
+**Purpose**: Test component interactions with real dependencies (1-5s per test)
+
+**When to Use**:
+- ✅ Testing SyncService + GitManager together
+- ✅ Real file system operations (not mocked)
+- ✅ Actual git repository operations in `/tmp`
+- ✅ Component interaction validation
+
+**Examples**: `TestSyncService_WithRealGit`, `TestGitManager_Integration`
+
+**Commands**: `make test-integration`
+
+### E2E Tests (`test/scenarios/*.go`)
+**Purpose**: Complete user workflows from CLI (>5s per test)
+
+**Critical Coverage Areas**:
+- ✅ **`dsm add` workflow**: `TestScenario_DsmAddWorkflow` - **FULLY TESTED**
+- ✅ **Editor integration**: `TestScenario_EditorBasicWorkflow` - **REAL EDITORS ONLY**
+- ✅ **Basic sync workflows**: `TestScenario_BasicSyncWorkflow`
+- ✅ **Conflict resolution**: `TestScenario_ConflictResolution`
+- ✅ **File watching**: `TestScenario_FileWatching`
+- ✅ **Cross-platform compatibility**: `TestScenario_CrossPlatformCompatibility`
+
+**When to Use**:
+- ✅ Testing complete CLI commands and user workflows
+- ✅ Real editor functionality (`$EDITOR`, vim/nano/micro integration)
+- ✅ Cross-platform compatibility validation
+- ✅ Real git remotes and SSH authentication
+
+**Key Principle**: **Editor functionality requires E2E testing - never mock editors**
+
+**Primary Command**: `make test-all` - Runs all E2E scenarios
+**Advanced Usage**: `./test/scripts/run-e2e.sh` - For specific scenarios or debugging
+
+### Test Execution Guidelines
+
+**During Development**:
+```bash
+# Fast feedback loop (<30s)
+make test-unit
+
+# Before committing (<2min)
+make test-integration
+
+# Before PR creation (<10min)
+make test-all
+```
+
+**E2E Testing Rules**:
+- E2E tests validate real user behavior, not implementation details
+- `dsm add` workflow is fully tested - no "too interactive" excuses
+- Editor functionality uses real editors in Docker environment
+- Cross-platform tests ensure compatibility across macOS/Linux/Windows
+
+**CI/CD Integration**:
+- GitHub Actions runs unit + integration tests on every PR
+- E2E tests run in parallel for complete workflow validation
+- Coverage targets: Unit 85%, Integration 70%, E2E user scenarios
+- Test isolation with `TEST_ID` and proper cleanup
+
+### Coverage and Quality Goals
+
+**Priority Areas**:
+1. Git operations (target 75% coverage)
+2. Process management (target 70% coverage)
+3. CLI commands (target 80% coverage)
+
+**Performance Targets**:
+- Unit: <10ms average, 100ms max
+- Integration: <500ms average, 2s max
+- E2E: <10s average, 15min max (all 6 scenarios)
 
 ## CI/CD
 
 GitHub Actions workflow (`.github/workflows/ci.yml`):
 - Runs on push/PR to `main` and `develop` branches
-- Jobs: test (go vet, tests with coverage) → build (compile binary, upload artifact)
+- Jobs: test (unit + integration) → e2e-tests (full scenarios) → build
 - Uses Go 1.23 with caching for faster builds
 - Uploads coverage to Codecov
+- Parallel test execution for performance
+
+**Test Pipeline**:
+```yaml
+test:           # Unit + Integration (<10min)
+  - make test-integration
+
+e2e-tests:      # Full scenarios (<20min)
+  - ./test/scripts/run-e2e.sh
+  - depends: test
+```
 
 ## Project Management
 
@@ -212,7 +383,7 @@ Examples:
 
 **Completing Issues:**
 - Ensure PRs link back to the issue
-- Verify all checks pass
+- Verify all checks pass (`make test-all` required)
 - Move to `Status: Done` only after merge and validation
 - Close the issue and check off in `tasks/development_tasks.md`
 - Create new issues for follow-up work instead of reopening
@@ -248,6 +419,14 @@ See `AGENTS.md` for complete workflow rules and details.
 - Resolve symlinks relative to their directory, preserve source file permissions, and avoid hardcoded binary names—use `os.Executable()`.
 - Prefer `bufio.NewReader` for interactive input, extract magic numbers to named constants, and rely on helpers to remove duplication.
 - In tests, call `t.Cleanup` (not `defer`) and check every error return.
+
+### Testing Best Practices
+- **Always run unit tests during development** (<30s for fast feedback)
+- **Use E2E tests for CLI command validation** - they test real user behavior
+- **Editor functionality requires E2E testing** - never mock editors, use real vim/nano/micro
+- **`dsm add` workflow is fully tested** - skip the "too interactive" excuse, use E2E tests
+- **Use `make test-all` before committing changes** to ensure complete validation
+- **E2E tests validate user behavior, not implementation details** - focus on what users experience
 
 ### GitHub Operations
 - Use the `gh` CLI for GitHub automation and avoid raw API calls, pairing it with `bin/review_report.sh <url>` for PR review summaries.

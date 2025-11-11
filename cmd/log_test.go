@@ -345,8 +345,12 @@ func TestValidateLogFile(t *testing.T) {
 			expectError: true,
 		},
 		{
-			name:        "existing file",
-			logFile:     func() string { file := filepath.Join(t.TempDir(), "test.log"); createTestFile(t, file, "test"); return file }(),
+			name: "existing file",
+			logFile: func() string {
+				file := filepath.Join(t.TempDir(), "test.log")
+				createTestFile(t, file, "test")
+				return file
+			}(),
 			expectError: false,
 		},
 		{
@@ -386,4 +390,3 @@ func min(a, b int) int {
 	}
 	return b
 }
-

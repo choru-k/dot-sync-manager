@@ -205,7 +205,7 @@ func TestVersionOutputFormatting(t *testing.T) {
 		{
 			name:    "release candidate",
 			version: "v2.0.0-rc1",
-			commit: "def456",
+			commit:  "def456",
 			date:    "2024-02-20",
 		},
 	}
@@ -291,4 +291,3 @@ func TestVersionCommandFlags(t *testing.T) {
 		})
 	}
 }
-

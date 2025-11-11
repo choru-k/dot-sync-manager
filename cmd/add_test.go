@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-
 func writeTestConfig(t *testing.T, homeDir string) (configPath, repoPath string) {
 	t.Helper()
 
@@ -50,8 +49,8 @@ func TestRunAddHappyPath(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	configPath, repoPath := writeTestConfig(t, home)
-	configFile = configPath
-	t.Cleanup(func() { configFile = "" })
+	setConfigFile(configPath)
+	t.Cleanup(func() { setConfigFile("") })
 
 	source := filepath.Join(home, ".vimrc")
 	if err := os.WriteFile(source, []byte("set nu\n"), filePerms); err != nil {
@@ -110,8 +109,8 @@ func TestRunAddSensitiveFileWithConfirmation(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	configPath, repoPath := writeTestConfig(t, home)
-	configFile = configPath
-	t.Cleanup(func() { configFile = "" })
+	setConfigFile(configPath)
+	t.Cleanup(func() { setConfigFile("") })
 
 	sensitiveDir := filepath.Join(home, ".ssh")
 	if err := os.MkdirAll(sensitiveDir, testDirPerms); err != nil {
@@ -170,8 +169,8 @@ func TestRunAddSensitiveFileCancellation(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	configPath, repoPath := writeTestConfig(t, home)
-	configFile = configPath
-	t.Cleanup(func() { configFile = "" })
+	setConfigFile(configPath)
+	t.Cleanup(func() { setConfigFile("") })
 
 	sensitiveDir := filepath.Join(home, ".ssh")
 	if err := os.MkdirAll(sensitiveDir, testDirPerms); err != nil {
@@ -229,8 +228,8 @@ func TestRunAddCopyFailureRetainsBackup(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	configPath, repoPath := writeTestConfig(t, home)
-	configFile = configPath
-	t.Cleanup(func() { configFile = "" })
+	setConfigFile(configPath)
+	t.Cleanup(func() { setConfigFile("") })
 
 	source := filepath.Join(home, ".bashrc")
 	if err := os.WriteFile(source, []byte("export TEST=1\n"), filePerms); err != nil {
@@ -286,8 +285,8 @@ func TestRunAddRemoveOriginalFailureRollsBack(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	configPath, repoPath := writeTestConfig(t, home)
-	configFile = configPath
-	t.Cleanup(func() { configFile = "" })
+	setConfigFile(configPath)
+	t.Cleanup(func() { setConfigFile("") })
 
 	source := filepath.Join(home, ".gitconfig")
 	if err := os.WriteFile(source, []byte("[user]\n\tname = Test\n"), filePerms); err != nil {
@@ -341,8 +340,8 @@ func TestRunAddSymlinkFailureRestoresFile(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	configPath, repoPath := writeTestConfig(t, home)
-	configFile = configPath
-	t.Cleanup(func() { configFile = "" })
+	setConfigFile(configPath)
+	t.Cleanup(func() { setConfigFile("") })
 
 	source := filepath.Join(home, ".vimrc")
 	if err := os.WriteFile(source, []byte("set number\n"), filePerms); err != nil {
@@ -395,8 +394,8 @@ func TestRunAddConfigSaveFailureRollsBack(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	configPath, repoPath := writeTestConfig(t, home)
-	configFile = configPath
-	t.Cleanup(func() { configFile = "" })
+	setConfigFile(configPath)
+	t.Cleanup(func() { setConfigFile("") })
 
 	source := filepath.Join(home, ".zshrc")
 	if err := os.WriteFile(source, []byte("PROMPT='%# '\n"), filePerms); err != nil {

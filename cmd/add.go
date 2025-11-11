@@ -46,11 +46,11 @@ const (
 )
 
 var (
-	mkdirAllFunc  = os.MkdirAll
-	removeFunc    = os.Remove
-	symlinkFunc   = os.Symlink
-	renameFunc    = os.Rename
-	readFileFunc  = os.ReadFile
+	mkdirAllFunc = os.MkdirAll
+	removeFunc   = os.Remove
+	symlinkFunc  = os.Symlink
+	renameFunc   = os.Rename
+	readFileFunc = os.ReadFile
 
 	copyFileFunc = copyFile
 	saveConfigFn = func(cfg *config.SyncConfig, path string) error {
