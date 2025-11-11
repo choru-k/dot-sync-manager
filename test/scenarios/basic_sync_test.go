@@ -15,23 +15,12 @@ import (
 // TestBasicSyncWorkflow tests the fundamental DSM workflow: init → add → sync → verify
 func TestBasicSyncWorkflow(t *testing.T) {
 	// Test setup
-	testID := os.Getenv("TEST_ID")
-	require.NotEmpty(t, testID, "TEST_ID environment variable is required")
+	testID := RequireTestID(t)
 
 	t.Logf("Running basic sync workflow test with ID: %s", testID)
 
-	// Create test directories
-	sourceDir := filepath.Join(testDataDir, "source_dotfiles")
-	targetDir := filepath.Join(testDataDir, "dotfiles-test")
-
-	err := os.MkdirAll(sourceDir, dirPermissions)
-	require.NoError(t, err)
-
-	err = os.MkdirAll(targetDir, dirPermissions)
-	require.NoError(t, err)
-
-	// Copy sample dotfiles to source directory
-	copySampleDotfiles(t, sourceDir)
+	// Create test environment with dynamic paths
+	sourceDir, targetDir := CreateTestEnvironment(t, testID)
 
 	// Initialize git repository in target directory before DSM init
 	t.Run("InitializeGitRepo", func(t *testing.T) {
@@ -61,7 +50,7 @@ func TestBasicSyncWorkflow(t *testing.T) {
 
 	// Test Step 1: Initialize DSM
 	t.Run("InitializeDSM", func(t *testing.T) {
-		configPath := "/app/test/fixtures/test_configs/basic_config.json"
+		configPath := getBasicConfigPath(t)
 
 		// Since we already have a git repository and DSM config works with status/list commands,
 		// we can consider DSM "initialized" for this test. The init command requires interactive
@@ -80,7 +69,7 @@ func TestBasicSyncWorkflow(t *testing.T) {
 		}
 
 		require.NoError(t, err, "DSM should be able to read configuration")
-		assert.Contains(t, string(output), "Repository: /app/test-data/dotfiles-test")
+		assert.Contains(t, string(output), "Repository: "+filepath.Join(GetTestDataDir(), "dotfiles-test"))
 
 		t.Log("✅ DSM initialization verified through successful status command")
 	})
@@ -137,7 +126,8 @@ func TestBasicSyncWorkflow(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
 		defer cancel()
 
-		cmd := execCommandContext(ctx, "dsm", "list", "--config", "/app/test/fixtures/test_configs/basic_config.json")
+		configPath := getBasicConfigPath(t)
+		cmd := execCommandContextWithConfig(ctx, configPath, "dsm", "--config", configPath, "list")
 		output, err := cmd.CombinedOutput()
 
 		require.NoError(t, err, "Listing dotfiles should succeed")
@@ -155,7 +145,8 @@ func TestBasicSyncWorkflow(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
 		defer cancel()
 
-		cmd := execCommandContext(ctx, "dsm", "status", "--config", "/app/test/fixtures/test_configs/basic_config.json")
+		configPath := getBasicConfigPath(t)
+		cmd := execCommandContextWithConfig(ctx, configPath, "dsm", "--config", configPath, "status")
 		output, err := cmd.CombinedOutput()
 
 		require.NoError(t, err, "Status check should succeed")
@@ -168,7 +159,8 @@ func TestBasicSyncWorkflow(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 
-		cmd := execCommandContext(ctx, "dsm", "sync", "--config", "/app/test/fixtures/test_configs/basic_config.json")
+		configPath := getBasicConfigPath(t)
+		cmd := execCommandContextWithConfig(ctx, configPath, "dsm", "--config", configPath, "sync")
 		output, err := cmd.CombinedOutput()
 
 		if err != nil {
@@ -205,24 +197,8 @@ func TestBasicSyncWorkflow(t *testing.T) {
 	t.Log("✅ Basic sync workflow test completed successfully")
 }
 
-// copySampleDotfiles copies sample dotfiles to the test source directory
+// This function has been replaced by fixtures.go:CopySampleDotfiles
+// Keeping as a wrapper for backward compatibility
 func copySampleDotfiles(t *testing.T, sourceDir string) {
-	sampleFiles := []string{".bashrc", ".vimrc", ".gitconfig"}
-	fixturesDir := "/app/test/fixtures/sample_dotfiles"
-
-	for _, filename := range sampleFiles {
-		srcPath := filepath.Join(fixturesDir, filename)
-		dstPath := filepath.Join(sourceDir, filename)
-
-		// Read source file
-		content, err := os.ReadFile(srcPath)
-		require.NoError(t, err, "Should be able to read sample file %s", filename)
-
-		// Write destination file
-		err = os.WriteFile(dstPath, content, 0644)
-		require.NoError(t, err, "Should be able to write test file %s", filename)
-
-		t.Logf("Copied sample file: %s -> %s", srcPath, dstPath)
-	}
+	CopySampleDotfiles(t, sourceDir)
 }
-

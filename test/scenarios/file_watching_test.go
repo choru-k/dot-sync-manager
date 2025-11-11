@@ -14,31 +14,25 @@ import (
 
 // TestFileSystemWatching tests DSM's file system watching and debouncing capabilities
 func TestFileSystemWatching(t *testing.T) {
-	testID := os.Getenv("TEST_ID")
-	require.NotEmpty(t, testID, "TEST_ID environment variable is required")
+	testID := RequireTestID(t)
 
 	t.Logf("Running file watching test with ID: %s", testID)
 
-	// Setup test environment
-	// Create test directories
-	sourceDir := filepath.Join(testDataDir, "source_dotfiles")
-	targetDir := filepath.Join(testDataDir, "dotfiles-test-watch")
+	// Setup test environment with dynamic paths
+	sourceDir, targetDir := CreateTestEnvironment(t, testID+"_watch")
 
-	err := os.MkdirAll(sourceDir, dirPermissions)
-	require.NoError(t, err)
+	// Initialize DSM for watching test with dynamic config
+	watchingConfigPath := setupDSMForWatchingTest(t, sourceDir, targetDir)
 
-	err = os.MkdirAll(targetDir, dirPermissions)
-	require.NoError(t, err)
-
-	// Initialize DSM for watching test
-	setupDSMForWatchingTest(t, sourceDir)
+	// Make sourceDir available to test functions
+	testSourceDir := sourceDir
 
 	t.Run("StartFileWatching", func(t *testing.T) {
 		// Start DSM in watch mode
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		cmd := execCommandContextWithConfig(ctx, "/app/test/fixtures/test_configs/watching_config.json", "dsm", "--config", "/app/test/fixtures/test_configs/watching_config.json", "start", "--foreground")
+		cmd := execCommandContextWithConfig(ctx, watchingConfigPath, "dsm", "--config", watchingConfigPath, "start", "--foreground")
 		output, err := cmd.CombinedOutput()
 
 		if err != nil {
@@ -53,7 +47,7 @@ func TestFileSystemWatching(t *testing.T) {
 
 	t.Run("TestFileChangeDetection", func(t *testing.T) {
 		// Create a test file
-		testFile := filepath.Join(sourceDir, ".watchtest")
+		testFile := filepath.Join(testSourceDir, ".watchtest")
 		initialContent := `# Watch test file
 TIMESTAMP=$(date +%s)
 MODE=watch-test
@@ -63,18 +57,18 @@ MODE=watch-test
 		require.NoError(t, err)
 
 		// Add the file to DSM
-		addFileToDSMWithConfig(t, "/app/test/fixtures/test_configs/watching_config.json", testFile)
+		addFileToDSMWithConfig(t, watchingConfigPath, testFile)
 
 		// Wait a moment for file watching to detect the change
 		time.Sleep(2 * time.Second)
 
 		// Verify the file was synced
-		targetFile := filepath.Join(targetDir, ".watchtest")
+		targetFile := filepath.Join(targetDir, "watchtest")
 		assert.FileExists(t, targetFile, "File should be synced after creation")
 	})
 
 	t.Run("TestFileModification", func(t *testing.T) {
-		testFile := filepath.Join(sourceDir, ".watchtest")
+		testFile := filepath.Join(testSourceDir, ".watchtest")
 
 		// Modify the file
 		modifiedContent := `# Modified watch test file
@@ -90,10 +84,10 @@ CHANGE_TYPE=modification
 		time.Sleep(3 * time.Second)
 
 		// Trigger a sync to simulate file watching behavior
-		syncChangesWithConfig(t, "/app/test/fixtures/test_configs/watching_config.json")
+		syncChangesWithConfig(t, watchingConfigPath)
 
 		// Verify the modification was detected
-		targetFile := filepath.Join(targetDir, ".watchtest")
+		targetFile := filepath.Join(targetDir, "watchtest")
 		content, err := os.ReadFile(targetFile)
 		require.NoError(t, err)
 
@@ -105,7 +99,7 @@ CHANGE_TYPE=modification
 	})
 
 	t.Run("TestFileDeletion", func(t *testing.T) {
-		testFile := filepath.Join(sourceDir, ".watchtest")
+		testFile := filepath.Join(testSourceDir, ".watchtest")
 
 		// Delete the file
 		err := os.Remove(testFile)
@@ -115,7 +109,7 @@ CHANGE_TYPE=modification
 		time.Sleep(3 * time.Second)
 
 		// Sync changes
-		syncChanges(t)
+		syncChangesWithConfig(t, watchingConfigPath)
 
 		// Note: File deletion behavior may vary based on DSM implementation
 		// We'll verify that DSM handles the deletion gracefully
@@ -125,9 +119,9 @@ CHANGE_TYPE=modification
 	t.Run("TestMultipleFileChanges", func(t *testing.T) {
 		// Create multiple files rapidly
 		testFiles := []string{
-			".multitest1",
-			".multitest2",
-			".multitest3",
+			"multitest1",
+			"multitest2",
+			"multitest3",
 		}
 
 		for i, filename := range testFiles {
@@ -138,12 +132,12 @@ MODE=multi-test
 `
 			formattedContent := fmt.Sprintf(content, i+1, i+1)
 
-			filePath := filepath.Join(sourceDir, filename)
+			filePath := filepath.Join(testSourceDir, filename)
 			err := os.WriteFile(filePath, []byte(formattedContent), filePermissions)
 			require.NoError(t, err)
 
 			// Add to DSM
-			addFileToDSM(t, filePath)
+			addFileToDSMWithConfig(t, watchingConfigPath, filePath)
 
 			// Small delay between files
 			time.Sleep(500 * time.Millisecond)
@@ -153,7 +147,7 @@ MODE=multi-test
 		time.Sleep(5 * time.Second)
 
 		// Sync all changes
-		syncChanges(t)
+		syncChangesWithConfig(t, watchingConfigPath)
 
 		// Verify all files were processed
 		for _, filename := range testFiles {
@@ -171,7 +165,7 @@ MODE=multi-test
 
 	t.Run("TestDebouncingBehavior", func(t *testing.T) {
 		// Test rapid file changes to verify debouncing
-		testFile := filepath.Join(sourceDir, ".debouncetest")
+		testFile := filepath.Join(testSourceDir, ".debouncetest")
 
 		// Make rapid changes
 		for i := 0; i < 10; i++ {
@@ -193,7 +187,7 @@ MODE=debounce-test
 		time.Sleep(5 * time.Second)
 
 		// Sync once to trigger the debounced sync
-		syncChanges(t)
+		syncChangesWithConfig(t, watchingConfigPath)
 
 		// Verify final state
 		targetFile := filepath.Join(targetDir, ".debouncetest")
@@ -216,7 +210,7 @@ MODE=debounce-test
 		}
 
 		for _, filename := range ignoredFiles {
-			filePath := filepath.Join(sourceDir, filename)
+			filePath := filepath.Join(testSourceDir, filename)
 			content := fmt.Sprintf(`# This file should be ignored
 FILENAME=%s
 TIMESTAMP=$(date +%%s)
@@ -228,7 +222,7 @@ TIMESTAMP=$(date +%%s)
 
 		// Wait and sync
 		time.Sleep(2 * time.Second)
-		syncChanges(t)
+		syncChangesWithConfig(t, watchingConfigPath)
 
 		// Verify ignored files are not in target directory
 		for _, filename := range ignoredFiles {
@@ -243,9 +237,11 @@ TIMESTAMP=$(date +%%s)
 }
 
 // setupDSMForWatchingTest initializes DSM for file watching tests
-func setupDSMForWatchingTest(t *testing.T, sourceDir string) {
-	configPath := "/app/test/fixtures/test_configs/watching_config.json"
-	targetDir := "/app/test-data/dotfiles-test-watch"
+func setupDSMForWatchingTest(t *testing.T, sourceDir, targetDir string) string {
+	configPath := writeConfigFromTemplate(t, "watching", map[string]interface{}{
+		"SourceDir": sourceDir,
+		"TargetDir": targetDir,
+	})
 
 	// Initialize git repository in target directory before DSM init (like basic_sync test)
 	ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
@@ -280,6 +276,5 @@ func setupDSMForWatchingTest(t *testing.T, sourceDir string) {
 	assert.Contains(t, string(output), "Repository: "+targetDir)
 
 	t.Log("✅ DSM initialization verified through successful status command")
+	return configPath
 }
-
-

@@ -30,12 +30,11 @@
     "play_sound_on_conflict": false
   },
   "conflict_resolution": {
-    "strategy": "stash",
-    "backup_dir": "/app/test-data/dotfiles-test-conflict/.backup",
-    "auto_resolve": false
+    "strategy": "manual",
+    "backup_dir": "/app/test-data/dotfiles-test-conflict/.backup"
   },
   "ui": {
-    "theme": "default",
+    "theme": "auto",
     "show_progress": true,
     "compact_mode": false
   },

@@ -142,13 +142,13 @@ run_test_scenarios() {
     local scenarios=()
     case "$TEST_SCENARIOS" in
         "all")
-            scenarios=("basic_sync" "conflict_resolution" "file_watching" "cross_platform")
+            scenarios=("basic_sync" "conflict_resolution" "file_watching" "cross_platform" "editor" "dsm_add")
             ;;
         "basic")
             scenarios=("basic_sync")
             ;;
         "advanced")
-            scenarios=("conflict_resolution" "file_watching")
+            scenarios=("conflict_resolution" "file_watching" "editor" "dsm_add")
             ;;
         *)
             IFS=',' read -ra scenarios <<< "$TEST_SCENARIOS"
