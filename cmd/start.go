@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -18,7 +19,7 @@ import (
 )
 
 const (
-	daemonStartupTimeout      = 5 * time.Second
+	daemonStartupTimeout      = 15 * time.Second
 	daemonStartupPollInterval = 100 * time.Millisecond
 
 	// Graceful shutdown timeouts
@@ -26,7 +27,7 @@ const (
 	// serviceShutdownTimeout (10s): Individual service timeout based on typical sync operation times
 	// totalShutdownTimeout (15s): Overall timeout including coordination overhead
 	serviceShutdownTimeout = 10 * time.Second
-	totalShutdownTimeout  = 15 * time.Second
+	totalShutdownTimeout   = 15 * time.Second
 )
 
 // startCmd represents the start command
@@ -49,7 +50,10 @@ func init() {
 	rootCmd.AddCommand(startCmd)
 	startCmd.Flags().BoolVar(&foreground, "foreground", false, "Run in foreground instead of daemonizing")
 	startCmd.Flags().StringVar(&startLogFile, "log-file", "", "Redirect daemon output to a log file")
-	startCmd.Flags().MarkHidden("log-file")
+	if err := startCmd.Flags().MarkHidden("log-file"); err != nil {
+		// Log warning but don't fail startup - log-file flag is optional
+		log.Printf("warning: failed to hide log-file flag: %v", err)
+	}
 }
 
 func runStart(cmd *cobra.Command, args []string) error {
@@ -61,7 +65,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	// Prepare command arguments
 	flagArgs := []string{}
-	if configFile != "" {
+	if getConfigFile() != "" {
 		flagArgs = append(flagArgs, "--config", cfg.GetConfigPath())
 	}
 	if verbose {
@@ -73,18 +77,32 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	if foreground {
 		if startLogFile != "" {
-			f, err := os.OpenFile(startLogFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+			f, err := os.OpenFile(startLogFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0600)
 			if err != nil {
 				return fmt.Errorf("failed to open log file: %w", err)
 			}
+			defer f.Close()
 			log.SetOutput(f)
 		}
 		return runForegroundDaemon(cfg)
 	}
 
+	startLock, err := process.AcquireCommandLock("start")
+	if err != nil {
+		if errors.Is(err, process.ErrCommandLockHeld) {
+			return fmt.Errorf("dotfile sync daemon start already in progress")
+		}
+		return fmt.Errorf("failed to lock start command: %w", err)
+	}
+	defer func() {
+		if releaseErr := startLock.Release(); releaseErr != nil {
+			log.Printf("warning: failed to release start lock: %v", releaseErr)
+		}
+	}()
+
 	// Check if daemon is already running (only for non-foreground mode)
 	// Foreground mode is spawned by the parent process, so we skip this check
-	if isDaemonRunning() {
+	if process.IsDaemonRunningPIDOnly() {
 		return fmt.Errorf("dotfile sync daemon is already running")
 	}
 
@@ -142,8 +160,8 @@ func waitForDaemonStartup(timeout time.Duration) error {
 	defer ticker.Stop()
 
 	for timeNow().Before(deadline) {
-		// Check if daemon is running by checking PID file and process existence
-		if isDaemonRunning() {
+		// Check if daemon is running by verifying the PID file state
+		if process.IsDaemonRunningPIDOnly() {
 			return nil
 		}
 		<-ticker.C
