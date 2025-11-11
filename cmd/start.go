@@ -124,7 +124,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 
 	// Start daemon
 	if err := daemonCmd.Start(); err != nil {
-		return fmt.Errorf("failed to start daemon: %w", err)
+		return fmt.Errorf("failed to start daemon: %w\nHint: Check if another dsm daemon is already running with 'dsm status'\nEnsure the dotfiles repository exists and is accessible", err)
 	}
 
 	// Wait for daemon to fully initialize by checking for PID file
@@ -182,7 +182,7 @@ func runForegroundDaemon(cfg *config.SyncConfig) error {
 	// Use signal context for git manager so it can be cancelled on shutdown
 	gitMgr, err := gitmanager.NewGitManager(signalCtx, gmCfg)
 	if err != nil {
-		return fmt.Errorf("failed to initialize git manager: %w", err)
+		return fmt.Errorf("failed to initialize git manager: %w\nHint: Run 'dsm validate-config' to check for common configuration issues", err)
 	}
 
 	syncSvc, err := syncservice.New(gitMgr, cfg.ToSyncConfig())

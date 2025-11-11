@@ -15,25 +15,16 @@ import (
 
 // TestCrossPlatformCompatibility tests DSM across different platforms and path handling
 func TestCrossPlatformCompatibility(t *testing.T) {
-	testID := os.Getenv("TEST_ID")
-	require.NotEmpty(t, testID, "TEST_ID environment variable is required")
+	testID := RequireTestID(t)
 
 	t.Logf("Running cross-platform compatibility test with ID: %s", testID)
 	t.Logf("Running on platform: %s, architecture: %s", runtime.GOOS, runtime.GOARCH)
 
-	// Setup test environment
-	// Create test directories
-	sourceDir := filepath.Join(testDataDir, "source_dotfiles")
-	targetDir := filepath.Join(testDataDir, "dotfiles-test-crossplatform")
+	// Setup test environment with dynamic paths
+	sourceDir, targetDir := CreateTestEnvironment(t, testID+"_crossplatform")
 
-	err := os.MkdirAll(sourceDir, dirPermissions)
-	require.NoError(t, err)
-
-	err = os.MkdirAll(targetDir, dirPermissions)
-	require.NoError(t, err)
-
-	// Initialize DSM
-	setupDSMForCrossPlatformTest(t, sourceDir)
+	// Initialize DSM with dynamic config
+	crossPlatformConfigPath := setupDSMForCrossPlatformTest(t, sourceDir, targetDir)
 
 	t.Run("TestPathHandling", func(t *testing.T) {
 		// Test different path formats and separators
@@ -73,18 +64,21 @@ PATH_SEPARATOR=%s
 				require.NoError(t, writeErr)
 
 				// Add file to DSM
-				addFileToDSMWithConfig(t, "/app/test/fixtures/test_configs/cross_platform_config.json", sourceFile)
+				addFileToDSMWithConfig(t, crossPlatformConfigPath, sourceFile)
 
 				// Sync the file
-				syncChangesWithConfig(t, "/app/test/fixtures/test_configs/cross_platform_config.json")
+				syncChangesWithConfig(t, crossPlatformConfigPath)
 
 				// Verify file exists in target with correct path
-				targetFile := filepath.Join(targetDir, tc.filename)
-				assert.FileExists(t, targetFile, "File should exist in target: %s", tc.filename)
+				// DSM normalizes filenames by stripping leading '.' from files in home directory
+				// With our fix, DSM now preserves nested path structure instead of flattening to basename
+				expectedTargetName := strings.TrimPrefix(tc.filename, ".") // Remove leading dot but keep path structure
+				targetFile := filepath.Join(targetDir, expectedTargetName)
+				assert.FileExists(t, targetFile, "File should exist in target with path: %s", expectedTargetName)
 
 				// Verify content
 				targetContent, err := os.ReadFile(targetFile)
-				require.NoError(t, err, "Should be able to read target file: %s", tc.filename)
+				require.NoError(t, err, "Should be able to read target file: %s", expectedTargetName)
 
 				contentStr := string(targetContent)
 				assert.Contains(t, contentStr, tc.description, "Content should match description")
@@ -121,10 +115,10 @@ PLATFORM=%s
 		}
 
 		// Add symlink to DSM
-		addFileToDSMWithConfig(t, "/app/test/fixtures/test_configs/cross_platform_config.json", symlinkPath)
+		addFileToDSMWithConfig(t, crossPlatformConfigPath, ".symlink-target")
 
 		// Sync changes
-		syncChangesWithConfig(t, "/app/test/fixtures/test_configs/cross_platform_config.json")
+		syncChangesWithConfig(t, crossPlatformConfigPath)
 
 		// Verify behavior (either symlink is preserved or resolved to target)
 		targetSymlink := filepath.Join(targetDir, ".symlink-target")
@@ -175,10 +169,10 @@ PLATFORM=%s
 				require.NoError(t, err)
 
 				// Add file to DSM
-				addFileToDSMWithConfig(t, "/app/test/fixtures/test_configs/cross_platform_config.json", sourceFile)
+				addFileToDSMWithConfig(t, crossPlatformConfigPath, tc.filename)
 
 				// Sync changes
-				syncChangesWithConfig(t, "/app/test/fixtures/test_configs/cross_platform_config.json")
+				syncChangesWithConfig(t, crossPlatformConfigPath)
 
 				// Verify file exists
 				targetFile := filepath.Join(targetDir, tc.filename)
@@ -217,10 +211,11 @@ PLATFORM=%s
 		require.NoError(t, err)
 
 		// Add to DSM
-		addFileToDSMWithConfig(t, "/app/test/fixtures/test_configs/cross_platform_config.json", sourceFile)
+		relativeFilePath := filepath.Join(longDirName, longFileName)
+		addFileToDSMWithConfig(t, crossPlatformConfigPath, relativeFilePath)
 
 		// Sync changes
-		syncChangesWithConfig(t, "/app/test/fixtures/test_configs/cross_platform_config.json")
+		syncChangesWithConfig(t, crossPlatformConfigPath)
 
 		// Verify file exists
 		targetFile := filepath.Join(targetDir, longDirName, longFileName)
@@ -257,10 +252,10 @@ DESCRIPTION=%s
 				require.NoError(t, err)
 
 				// Add to DSM
-				addFileToDSMWithConfig(t, "/app/test/fixtures/test_configs/cross_platform_config.json", sourceFile)
+				addFileToDSMWithConfig(t, crossPlatformConfigPath, pathInfo.path)
 
 				// Sync changes
-				syncChangesWithConfig(t, "/app/test/fixtures/test_configs/cross_platform_config.json")
+				syncChangesWithConfig(t, crossPlatformConfigPath)
 
 				// Verify file exists
 				targetFile := filepath.Join(targetDir, pathInfo.path)
@@ -275,9 +270,11 @@ DESCRIPTION=%s
 }
 
 // setupDSMForCrossPlatformTest initializes DSM for cross-platform tests
-func setupDSMForCrossPlatformTest(t *testing.T, sourceDir string) {
-	configPath := "/app/test/fixtures/test_configs/cross_platform_config.json"
-	targetDir := "/app/test-data/dotfiles-test-crossplatform"
+func setupDSMForCrossPlatformTest(t *testing.T, sourceDir, targetDir string) string {
+	configPath := writeConfigFromTemplate(t, "cross_platform", map[string]interface{}{
+		"SourceDir": sourceDir,
+		"TargetDir": targetDir,
+	})
 
 	// Initialize git repository in target directory before DSM init (like basic_sync test)
 	ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
@@ -312,9 +309,8 @@ func setupDSMForCrossPlatformTest(t *testing.T, sourceDir string) {
 	assert.Contains(t, string(output), "Repository: "+targetDir)
 
 	t.Log("✅ DSM initialization verified through successful status command")
+	return configPath
 }
-
-
 
 // fileExists checks if a file exists
 func fileExists(path string) bool {
@@ -384,4 +380,3 @@ func getPlatformSpecificPaths() []platformPathInfo {
 		},
 	}
 }
-

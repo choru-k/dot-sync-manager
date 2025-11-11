@@ -22,6 +22,7 @@ services:
       - GIT_SSH_COMMAND=ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i /app/ssh-keys/test_key
       - DSM_CONFIG_PATH=/app/test-data/config.json
       - DSM_LOG_LEVEL=debug
+      - DSM_BIN=/usr/local/bin/dsm
     networks:
       - test-network
     # Security hardening

@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"log"
+	"os"
 	"testing"
 	"time"
 
@@ -54,11 +55,11 @@ func TestGracefulShutdown_TimeoutContext(t *testing.T) {
 	}
 
 	// Create a mock lock manager by acquiring and immediately unlocking it
-	lockManager, err := process.WritePIDExclusive(999999) // Fake PID
+	testPID := os.Getpid() + 100000 // Use test PID with offset to avoid conflicts
+	lockManager, err := process.WritePIDExclusive(testPID)
 	if err != nil {
 		t.Fatalf("Failed to create lock manager: %v", err)
 	}
-	defer safeUnlock(lockManager) // Clean up
 
 	// Test that gracefulShutdown works even with cancelled signal context
 	// This verifies Bug Fix 1: Line 223 uses context.Background() instead of signalCtx
@@ -98,7 +99,8 @@ func TestGracefulShutdown_PIDLockRelease(t *testing.T) {
 	}
 
 	// Create lock manager
-	lockManager, err := process.WritePIDExclusive(999998) // Fake PID
+	testPID := os.Getpid() + 200000 // Different test PID to avoid conflicts
+	lockManager, err := process.WritePIDExclusive(testPID) // Test PID
 	if err != nil {
 		t.Fatalf("Failed to create lock manager: %v", err)
 	}
@@ -110,7 +112,8 @@ func TestGracefulShutdown_PIDLockRelease(t *testing.T) {
 	}
 
 	// Verify PID file and lock are cleaned up by checking if we can acquire a new lock
-	newLockManager, err := process.WritePIDExclusive(999997) // Different fake PID
+	testPID3 := os.Getpid() + 300000 // Third test PID to verify cleanup
+	newLockManager, err := process.WritePIDExclusive(testPID3) // Verification PID
 	if err != nil {
 		t.Errorf("Failed to acquire new lock after gracefulShutdown, PID may not be cleaned up: %v", err)
 	} else {

@@ -1,0 +1,68 @@
+{
+  "version": "1.0",
+  "machine": "{{ .MachineName }}",
+  "git": {
+    "repo_path": "{{ .TargetDir }}",
+    "remote_url": "",
+    "remote": "origin",
+    "branch": "main",
+    "user_name": "Dotfile Sync User",
+    "user_email": "user@83c81fa3cda7",
+    "auth_type": "none"
+  },
+  "sync": {
+    "auto_sync_enabled": true,
+    "pull_interval_seconds": 300,
+    "debounce_seconds": 1,
+    "auto_commit": true,
+    "auto_push": true,
+    "auto_pull": false,
+    "backoff": {
+      "enabled": true,
+      "max_delay_seconds": 10,
+      "multiplier": 2,
+      "churn_threshold": 5,
+      "churn_window_seconds": 30,
+      "decay_reset_seconds": 60,
+      "manual_sync_timeout_seconds": 120
+    }
+  },
+  "notifications": {
+    "enabled": false,
+    "show_success": false,
+    "show_pulls": false,
+    "play_sound_on_conflict": false
+  },
+  "conflict_resolution": {
+    "strategy": "manual",
+    "backup_dir": "{{ .TargetDir }}/.backup",
+    "keep_backups_days": 7
+  },
+  "mappings": {
+    "{{ .SourceDir }}/.simpleconfig": "{{ .TargetDir }}/.simpleconfig",
+    "{{ .SourceDir }}/config.json": "{{ .TargetDir }}/config.json",
+    "{{ .SourceDir }}/file-with-dashes": "{{ .TargetDir }}/file-with-dashes",
+    "{{ .SourceDir }}/file.with.dots": "{{ .TargetDir }}/file.with.dots",
+    "{{ .SourceDir }}/file_with_underscores": "{{ .TargetDir }}/file_with_underscores",
+    "{{ .SourceDir }}/nested/deep/config.conf": "{{ .TargetDir }}/nested/deep/config.conf",
+    "{{ .SourceDir }}/.cache/app/cache.tmp": "{{ .TargetDir }}/.cache/app/cache.tmp",
+    "{{ .SourceDir }}/.config/application/config.json": "{{ .TargetDir }}/.config/application/config.json",
+    "{{ .SourceDir }}/.config/wayland-app/config": "{{ .TargetDir }}/.config/wayland-app/config",
+    "{{ .SourceDir }}/.local/share/application/data.txt": "{{ .TargetDir }}/.local/share/application/data.txt",
+    "{{ .SourceDir }}/file with spaces.txt": "{{ .TargetDir }}/file with spaces.txt",
+    "{{ .SourceDir }}/file#hash.txt": "{{ .TargetDir }}/file#hash.txt",
+    "{{ .SourceDir }}/file'with'quotes.txt": "{{ .TargetDir }}/file'with'quotes.txt",
+    "{{ .SourceDir }}/file@at.txt": "{{ .TargetDir }}/file@at.txt",
+    "{{ .SourceDir }}/very_long_directory_name_very_long_directory_name_very_long_directory_name_very_long_directory_name_very_long_directory_name_/very_long_file_name_very_long_file_name_very_long_file_name_.conf": "{{ .TargetDir }}/very_long_directory_name_very_long_directory_name_very_long_directory_name_very_long_directory_name_very_long_directory_name_/very_long_file_name_very_long_file_name_very_long_file_name_.conf"
+  },
+  "ui": {
+    "start_at_boot": true,
+    "minimize_to_tray": true,
+    "theme": "auto"
+  },
+  "advanced": {
+    "debug_logging": false,
+    "log_file": "/home/testuser/.dotfile-sync.log",
+    "max_log_size_mb": 10
+  }
+}

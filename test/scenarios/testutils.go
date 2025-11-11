@@ -6,6 +6,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -38,26 +41,127 @@ const (
 	extendedCommandTimeout = 60 * time.Second
 )
 
-// Path constants for test environment
-const (
-	// dsmBinaryPath is the absolute path to DSM binary in container (from Dockerfile.test:47)
-	// Using absolute path avoids PATH dependency issues in containerized environments
-	dsmBinaryPath = "/usr/local/bin/dsm"
-
-	// testDataDir is the base directory for all test data
-	testDataDir = "/app/test-data"
-
-	// sshKeyPath is the path to the SSH key used for git operations
-	sshKeyPath = "/app/ssh-keys/test_key"
+// Global path variables that will be initialized dynamically
+var (
+	dsmBinaryPath string
+	testDataDir   string
+	sshKeyPath    string
+	fixturesDir   string
+	repoRoot      string
 )
 
+// initPathResolution initializes all path variables dynamically based on the current environment
+func initPathResolution() {
+	if repoRoot != "" {
+		return // Already initialized
+	}
+
+	// Detect repository root by walking up from current file until we find go.mod
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("Could not determine caller location")
+	}
+
+	currentDir := filepath.Dir(filename)
+	for {
+		goModPath := filepath.Join(currentDir, "go.mod")
+		if _, err := os.Stat(goModPath); err == nil {
+			repoRoot = currentDir
+			break
+		}
+
+		parent := filepath.Dir(currentDir)
+		if parent == currentDir {
+			panic("Could not find repository root (go.mod not found)")
+		}
+		currentDir = parent
+	}
+
+	// Set default paths based on repo root
+	testDataDir = getEnvOrDefault("DSM_E2E_TESTDATA", filepath.Join(repoRoot, "test-data"))
+	fixturesDir = getEnvOrDefault("DSM_E2E_FIXTURES", filepath.Join(repoRoot, "test", "fixtures"))
+	sshKeyPath = getEnvOrDefault("DSM_E2E_SSH_KEY", filepath.Join(fixturesDir, "ssh_keys", "test_key"))
+
+	// DSM binary path: check environment first, then common locations
+	dsmBinaryPath = getEnvOrDefault("DSM_BIN", "")
+	if dsmBinaryPath == "" {
+		// Try common locations
+		candidates := []string{
+			filepath.Join(repoRoot, "test-binary", "dsm"),
+			filepath.Join(repoRoot, "bin", "dsm"),
+			"dot-sync-manager", // from PATH
+			"dsm",              // from PATH
+		}
+
+		for _, candidate := range candidates {
+			if filepath.IsAbs(candidate) {
+				if _, err := os.Stat(candidate); err == nil {
+					dsmBinaryPath = candidate
+					break
+				}
+			} else {
+				// Check if command exists in PATH
+				if _, err := exec.LookPath(candidate); err == nil {
+					dsmBinaryPath = candidate
+					break
+				}
+			}
+		}
+
+		if dsmBinaryPath == "" {
+			dsmBinaryPath = "dsm" // Fallback to PATH
+		}
+	}
+}
+
+// getEnvOrDefault returns environment variable value or default if not set
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+// GetRepoRoot returns the detected repository root directory
+func GetRepoRoot() string {
+	initPathResolution()
+	return repoRoot
+}
+
+// GetTestDataDir returns the test data directory
+func GetTestDataDir() string {
+	initPathResolution()
+	return testDataDir
+}
+
+// GetFixturesDir returns the fixtures directory
+func GetFixturesDir() string {
+	initPathResolution()
+	return fixturesDir
+}
+
+// GetSSHKeyPath returns the SSH key path
+func GetSSHKeyPath() string {
+	initPathResolution()
+	return sshKeyPath
+}
+
+// GetDSMBinaryPath returns the DSM binary path
+func GetDSMBinaryPath() string {
+	initPathResolution()
+	return dsmBinaryPath
+}
+
 // execCommandContext creates an exec.Cmd with proper environment setup for DSM commands.
-// Uses absolute binary path to avoid PATH dependency issues in containerized test environments.
-// Configures SSH environment for git operations in test containers.
+// Uses dynamic path resolution to work in both local and containerized environments.
+// Configures SSH environment for git operations.
 func execCommandContext(ctx context.Context, name string, args ...string) *exec.Cmd {
+	// Initialize path resolution to ensure all paths are set
+	initPathResolution()
+
 	var cmd *exec.Cmd
 
-	// Use absolute path for DSM binary to avoid PATH dependency in containers
+	// Use resolved binary path for DSM commands
 	if name == "dsm" {
 		cmd = exec.CommandContext(ctx, dsmBinaryPath, args...)
 	} else {
@@ -76,9 +180,12 @@ func execCommandContext(ctx context.Context, name string, args ...string) *exec.
 // Extends execCommandContext by adding DSM_CONFIG_PATH environment variable for test isolation.
 // Ensures each test scenario can use its own configuration file without conflicts.
 func execCommandContextWithConfig(ctx context.Context, configPath string, name string, args ...string) *exec.Cmd {
+	// Initialize path resolution to ensure all paths are set
+	initPathResolution()
+
 	var cmd *exec.Cmd
 
-	// Use absolute path for DSM binary to avoid PATH dependency in containers
+	// Use resolved binary path for DSM commands
 	if name == "dsm" {
 		cmd = exec.CommandContext(ctx, dsmBinaryPath, args...)
 	} else {
@@ -114,14 +221,57 @@ func addFileToDSM(t *testing.T, filepath string) {
 // addFileToDSMWithConfig adds a file to DSM using a custom configuration file.
 // Ensures test isolation by using configuration-specific command execution.
 // Useful for testing different DSM configurations without interference.
-func addFileToDSMWithConfig(t *testing.T, configPath, filepath string) {
+func addFileToDSMWithConfig(t *testing.T, configPath, filePath string) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
 	defer cancel()
 
-	cmd := execCommandContextWithConfig(ctx, configPath, "dsm", "--config", configPath, "add", filepath)
+	// Default working directory and filename
+	workingDir := ""
+	filename := filePath
+
+	if len(filePath) > 0 && filePath[0] == '/' {
+		// For absolute paths, find the source root directory to preserve relative paths
+		// Look for source_dotfiles directory pattern
+		sourceDirPattern := "/source_dotfiles"
+		if idx := strings.Index(filePath, sourceDirPattern); idx != -1 {
+			// Found source directory pattern
+			afterSource := idx + len(sourceDirPattern)
+
+			// Check if there's a test ID suffix
+			slashOrEnd := afterSource
+			if nextSlash := strings.Index(filePath[afterSource:], "/"); nextSlash != -1 {
+				slashOrEnd = afterSource + nextSlash
+			} else {
+				slashOrEnd = len(filePath)
+			}
+
+			// Working directory is the source root (with test ID if present)
+			workingDir = filePath[:slashOrEnd]
+			// Filename is everything after the source root
+			if slashOrEnd < len(filePath) {
+				filename = filePath[slashOrEnd+1:] // Skip the slash
+			} else {
+				filename = filepath.Base(filePath)
+			}
+		} else {
+			// Fallback: use file's directory and basename
+			workingDir = filepath.Dir(filePath)
+			filename = filepath.Base(filePath)
+		}
+	}
+
+	cmd := execCommandContextWithConfig(ctx, configPath, "dsm", "--config", configPath, "add", filename)
+
+	// Set working directory if we have an absolute path
+	if workingDir != "" {
+		cmd.Dir = workingDir
+		// Override HOME to make DSM think files are in home directory
+		cmd.Env = append(cmd.Env, fmt.Sprintf("HOME=%s", workingDir))
+	}
+
 	output, err := cmd.CombinedOutput()
 	require.NoError(t, err, "Adding file should succeed")
-	t.Logf("Added file %s: %s", filepath, string(output))
+	t.Logf("Added file %s (as %s): %s", filePath, filename, string(output))
 }
 
 // syncChanges triggers a sync operation using the default DSM configuration.
@@ -296,10 +446,10 @@ func createIsolatedTestEnvironment(t *testing.T) (testID string, cleanup func())
 
 // TestPIDManager manages isolated PID files for testing
 type TestPIDManager struct {
-	testID     string
-	pidDir     string
-	pidFile    string
-	lockFile   string
+	testID   string
+	pidDir   string
+	pidFile  string
+	lockFile string
 }
 
 // CreateTestPIDManager creates an isolated PID manager for tests
@@ -378,11 +528,11 @@ func CleanupTestProcesses(testID string) {
 
 // CleanupVerificationResult represents the result of cleanup verification
 type CleanupVerificationResult struct {
-	Success     bool
-	Issues      []string
-	Warnings    []string
-	Artifacts   []string
-	Processes   []string
+	Success   bool
+	Issues    []string
+	Warnings  []string
+	Artifacts []string
+	Processes []string
 }
 
 // VerifyCleanup performs comprehensive cleanup verification
@@ -399,7 +549,6 @@ func VerifyCleanup(testID string) *CleanupVerificationResult {
 	defer cancel()
 
 	// Check for remaining processes
-	processPattern := fmt.Sprintf("*%s*", testID)
 	cmd := execCommandContext(ctx, "pgrep", "-f", testID)
 	output, err := cmd.CombinedOutput()
 	if err == nil && len(strings.TrimSpace(string(output))) > 0 {
@@ -491,7 +640,7 @@ func ValidateTestEnvironment(t *testing.T) {
 	defer cancel()
 
 	// Check disk space (need at least 100MB for tests)
-	stat, err := os.Stat(os.TempDir())
+	_, err := os.Stat(os.TempDir())
 	if err != nil {
 		t.Fatalf("Cannot check temp directory: %v", err)
 	}
@@ -516,5 +665,86 @@ func ValidateTestEnvironment(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Required command not found: %s", cmd)
 		}
+	}
+}
+
+// LinkMode represents the type of link created
+type LinkMode string
+
+const (
+	LinkModeSymlink LinkMode = "symlink"
+	LinkModeCopy    LinkMode = "copy"
+	LinkModeSkipped LinkMode = "skipped"
+)
+
+// createPortableSymlink creates a symlink or falls back to copying if symlinks aren't supported
+// Returns the mode that was actually used for adaptive assertions
+func createPortableSymlink(t *testing.T, target, linkPath string) LinkMode {
+	t.Helper()
+
+	// Ensure parent directory exists
+	parentDir := filepath.Dir(linkPath)
+	if err := os.MkdirAll(parentDir, dirPermissions); err != nil {
+		t.Fatalf("Failed to create parent directory for symlink: %v", err)
+	}
+
+	// Try to create symlink first
+	err := os.Symlink(target, linkPath)
+	if err == nil {
+		t.Logf("Created symlink: %s -> %s", linkPath, target)
+		return LinkModeSymlink
+	}
+
+	// Symlink creation failed, check if it's a permissions/unsupported error
+	if os.IsPermission(err) || strings.Contains(err.Error(), "operation not permitted") ||
+		strings.Contains(err.Error(), "not supported") || strings.Contains(err.Error(), "function not implemented") {
+		t.Logf("Symlink creation not supported (%v), falling back to file copy", err)
+
+		// Read target file
+		content, readErr := os.ReadFile(target)
+		if readErr != nil {
+			t.Fatalf("Failed to read target file for copy fallback: %v", readErr)
+		}
+
+		// Copy file to link location
+		if writeErr := os.WriteFile(linkPath, content, filePermissions); writeErr != nil {
+			t.Fatalf("Failed to copy file as symlink fallback: %v", writeErr)
+		}
+
+		t.Logf("Copied file as symlink fallback: %s", linkPath)
+		return LinkModeCopy
+	}
+
+	// Some other error occurred
+	t.Fatalf("Failed to create symlink or copy fallback: %v", err)
+	return LinkModeSkipped
+}
+
+// RequireTestID sets TEST_ID environment variable if not already set
+func RequireTestID(t *testing.T) string {
+	t.Helper()
+
+	testID := os.Getenv("TEST_ID")
+	if testID == "" {
+		testID = fmt.Sprintf("dsm-e2e-%d-%d", os.Getpid(), time.Now().Unix())
+		os.Setenv("TEST_ID", testID)
+		t.Logf("Generated TEST_ID: %s", testID)
+	}
+	return testID
+}
+
+// MustFileExist asserts that a file exists and provides better error messages
+func MustFileExist(t *testing.T, path string) {
+	t.Helper()
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		t.Fatalf("Expected file to exist but it does not: %s", path)
+	}
+}
+
+// MustFileNotExist asserts that a file does not exist and provides better error messages
+func MustFileNotExist(t *testing.T, path string) {
+	t.Helper()
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("Expected file to not exist but it does: %s", path)
 	}
 }
