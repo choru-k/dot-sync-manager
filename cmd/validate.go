@@ -110,7 +110,7 @@ func validateBasicStructure(cfg *config.SyncConfig) ([]string, []string) {
 	if cfg.Machine.Name == "" {
 		issues = append(issues, "Machine name is empty - required for multi-machine sync")
 	} else {
-		if checkVerbose {
+		if verbose {
 			fmt.Printf("   Machine name: %s\n", cfg.Machine.Name)
 		}
 	}
@@ -156,7 +156,7 @@ func validateRepoPath(repoPath string, issues, warnings []string) ([]string, []s
 	if stat, err := os.Stat(gitDir); err != nil || !stat.IsDir() {
 		issues = append(issues, fmt.Sprintf("Not a valid git repository: %s", expandedPath))
 	} else {
-		if checkVerbose {
+		if verbose {
 			fmt.Printf("   Git repository found at: %s\n", expandedPath)
 		}
 	}
@@ -183,7 +183,7 @@ func validateGitIntegration(cfg *config.SyncConfig) ([]string, []string) {
 			issues = append(issues, fmt.Sprintf("Git manager initialization failed: %v", err))
 		}
 	} else {
-		if checkVerbose {
+		if verbose {
 			fmt.Printf("   Git integration configured successfully\n")
 		}
 	}
@@ -193,7 +193,7 @@ func validateGitIntegration(cfg *config.SyncConfig) ([]string, []string) {
 		warnings = append(warnings, "No remote URL configured - sync will be local only")
 	} else {
 		if strings.HasPrefix(cfg.Git.RemoteURL, "git@") {
-			if checkVerbose {
+			if verbose {
 				fmt.Printf("   SSH remote URL: %s\n", cfg.Git.RemoteURL)
 			}
 		} else if strings.HasPrefix(cfg.Git.RemoteURL, "https://") {
@@ -215,7 +215,7 @@ func validateSecuritySettings(cfg *config.SyncConfig) ([]string, []string) {
 	if cfg.Git.AuthType == "" {
 		warnings = append(warnings, "Git authentication type not explicitly set")
 	} else {
-		if checkVerbose {
+		if verbose {
 			fmt.Printf("   Git auth type: %s\n", cfg.Git.AuthType)
 		}
 
@@ -224,15 +224,15 @@ func validateSecuritySettings(cfg *config.SyncConfig) ([]string, []string) {
 			if cfg.Git.SSHKeyPath == "" {
 				warnings = append(warnings, "SSH key path not configured - may use default SSH agent")
 			} else {
-				if _, err := os.Stat(cfg.Git.SSHKeyPath); os.IsNotExist(err) {
-					issues = append(issues, fmt.Sprintf("SSH key file not found: %s", cfg.Git.SSHKeyPath))
+				if _, err := validatePathExists(cfg.Git.SSHKeyPath); err != nil {
+					issues = append(issues, fmt.Sprintf("SSH key file validation failed: %v", err))
 				}
 			}
 		}
 	}
 
 	// Note: Ignore patterns are handled by .syncignore file in the repository
-	if checkVerbose {
+	if verbose {
 		fmt.Printf("   Sync settings: auto_sync=%v, debounce=%ds, pull_interval=%ds\n",
 			cfg.Sync.AutoSyncEnabled, cfg.Sync.DebounceSeconds, cfg.Sync.PullIntervalSeconds)
 	}

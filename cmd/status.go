@@ -68,7 +68,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	// Show git status (simplified)
 	fmt.Printf("\n📂 Repository Status:\n")
-	showGitStatus(cfg.Git.RepoPath, checkVerbose)
+	showGitStatus(cfg.Git.RepoPath, verbose)
 
 	// Show mappings if any
 	if len(cfg.Mappings) > 0 {
