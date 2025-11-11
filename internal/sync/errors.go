@@ -14,24 +14,24 @@ package sync
 
 const (
 	// Service lifecycle errors
-	ErrIDServiceAlreadyRunning     = "SYNC_SERVICE_ALREADY_RUNNING"
+	ErrIDServiceAlreadyRunning      = "SYNC_SERVICE_ALREADY_RUNNING"
 	ErrIDServiceStopRaceCondition   = "SYNC_SERVICE_STOP_RACE_CONDITION"
 	ErrIDServiceRestartNotSupported = "SYNC_SERVICE_RESTART_NOT_SUPPORTED"
 	ErrIDServiceAlreadyStopped      = "SYNC_SERVICE_ALREADY_STOPPED"
 
 	// Watcher errors
-	ErrIDWatcherCreateFailed    = "SYNC_WATCHER_CREATE_FAILED"
-	ErrIDWatcherCloseFailed     = "SYNC_WATCHER_CLOSE_FAILED"
-	ErrIDWatcherAddPathFailed   = "SYNC_WATCHER_ADD_PATH_FAILED"
+	ErrIDWatcherCreateFailed  = "SYNC_WATCHER_CREATE_FAILED"
+	ErrIDWatcherCloseFailed   = "SYNC_WATCHER_CLOSE_FAILED"
+	ErrIDWatcherAddPathFailed = "SYNC_WATCHER_ADD_PATH_FAILED"
 
 	// Debouncer errors
 	ErrIDAdvancedDebouncerStopFailed = "SYNC_ADVANCED_DEBOUNCER_STOP_FAILED"
-	ErrIDManualSyncFailed       = "SYNC_MANUAL_SYNC_FAILED"
-	ErrIDDebouncerCallbackPanic  = "SYNC_DEBOUNCER_CALLBACK_PANIC"
-	ErrIDDebouncerTimerCancelFailed = "SYNC_DEBOUNCER_TIMER_CANCEL_FAILED"
+	ErrIDManualSyncFailed            = "SYNC_MANUAL_SYNC_FAILED"
+	ErrIDDebouncerCallbackPanic      = "SYNC_DEBOUNCER_CALLBACK_PANIC"
+	ErrIDDebouncerTimerCancelFailed  = "SYNC_DEBOUNCER_TIMER_CANCEL_FAILED"
 
-// Repository errors
-	ErrIDRepoWatchRecursive    = "SYNC_REPO_WATCH_RECURSIVE_FAILED"
+	// Repository errors
+	ErrIDRepoWatchRecursive = "SYNC_REPO_WATCH_RECURSIVE_FAILED"
 
 	// Configuration errors
 	ErrIDConfigRequired         = "SYNC_CONFIG_REQUIRED"

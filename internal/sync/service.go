@@ -85,9 +85,10 @@ func stateToString(state ServiceState) string {
 // mu for protecting watcher recreation and other resources.
 //
 // State Transitions (atomic only):
-//   StateStopped -> StateRunning (Start())
-//   StateRunning -> StateStopping (Stop())
-//   StateStopping -> StateStopped (Stop() completion)
+//
+//	StateStopped -> StateRunning (Start())
+//	StateRunning -> StateStopping (Stop())
+//	StateStopping -> StateStopped (Stop() completion)
 //
 // Resource Protection:
 // - mu.RLock()/RUnlock(): Protects watcher reference access in eventLoop
@@ -104,23 +105,23 @@ type SyncService struct {
 	advancedDebouncer *debouncer.AdvancedDebouncer
 
 	// Atomic state management
-	state   int32 // atomic ServiceState
-	ctx     context.Context
-	cancel  context.CancelFunc
+	state  int32 // atomic ServiceState
+	ctx    context.Context
+	cancel context.CancelFunc
 
 	// Goroutine coordination for graceful shutdown
 	shutdownWG sync.WaitGroup
 
 	// Thread safety - protects watcher access during state transitions
 	// Lock ordering: mu protects watcher recreation, atomic state protects service lifecycle
-	mu       sync.RWMutex
+	mu sync.RWMutex
 
 	// Once to ensure shutdown operations happen exactly once per stop cycle
 	shutdownOnce sync.Once
 
 	// Error tracking for concurrent Stop() calls
 	lastShutdownError error
-	shutdownErrorMu  sync.Mutex
+	shutdownErrorMu   sync.Mutex
 
 	// Shutdown monitoring
 	forcedShutdowns int32 // atomic.Int: tracks forced shutdowns for monitoring
@@ -318,7 +319,6 @@ func (s *SyncService) Start() error {
 		return fmt.Errorf("sync: failed to watch recursively [%s]: %w", ErrIDRepoWatchRecursive, err)
 	}
 
-	
 	// Start the event loop
 	eventLoopStarted = true
 	s.shutdownWG.Add(1)
@@ -330,7 +330,6 @@ func (s *SyncService) Start() error {
 	log.Printf("sync: started watching %s", s.config.RepoPath)
 	return nil
 }
-
 
 // Stop stops the file watching service and returns any error encountered during shutdown
 //
@@ -742,5 +741,3 @@ func (s *SyncService) GetStats() map[string]interface{} {
 
 	return stats
 }
-
-

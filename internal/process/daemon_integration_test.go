@@ -77,7 +77,7 @@ func TestDaemonLifecycleIntegration(t *testing.T) {
 
 	// Use go build to create a test binary
 	cmd := exec.Command("go", "build", "-o", binPath, ".")
-	cmd.Dir = projectRoot  // Go to project root from internal/process/
+	cmd.Dir = projectRoot // Go to project root from internal/process/
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("failed to build test binary: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestConcurrentDaemonStart(t *testing.T) {
 	}
 
 	cmd := exec.Command("go", "build", "-o", binPath, ".")
-	cmd.Dir = projectRoot  // Go to project root from internal/process/
+	cmd.Dir = projectRoot // Go to project root from internal/process/
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("failed to build test binary: %v", err)
 	}
