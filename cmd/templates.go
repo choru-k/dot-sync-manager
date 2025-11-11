@@ -1,7 +1,5 @@
 package cmd
 
-
-
 // Default .syncignore content
 const defaultSyncIgnoreContent = `# Sensitive authentication files
 .ssh/id_rsa

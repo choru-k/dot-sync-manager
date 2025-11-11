@@ -218,5 +218,3 @@ func TestEmailValidation(t *testing.T) {
 		}
 	})
 }
-
-

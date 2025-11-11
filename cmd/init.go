@@ -247,7 +247,6 @@ Options:
 	return nil
 }
 
-
 // promptForNonEmpty repeatedly prompts the user until a non-empty value is entered.
 // It displays a friendly error message with the field name capitalized.
 // fieldName is used for error messages (e.g., "email" becomes "Email").

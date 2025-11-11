@@ -36,7 +36,7 @@ const (
 type TestConfig struct {
 	HomeDir    string
 	RepoPath   string
-	ConfigPath  string
+	ConfigPath string
 	Config     *config.SyncConfig
 }
 
@@ -74,7 +74,7 @@ func setupTestEnvironment(t *testing.T) *TestConfig {
 	cfg.Git.AuthorName = testAuthorName
 	cfg.Git.AuthorEmail = testAuthorEmail
 	cfg.Git.AuthType = "none" // Use "none" auth for local tests to avoid SSH key requirements
-	cfg.Git.RemoteURL = ""     // No remote for local tests
+	cfg.Git.RemoteURL = ""    // No remote for local tests
 	cfg.ConflictResolution.BackupDir = filepath.Join(repoPath, ".backup")
 	cfg.Mappings = make(map[string]string)
 	cfg.ConfigPath = filepath.Join(repoPath, ".sync-config.json")
@@ -87,7 +87,7 @@ func setupTestEnvironment(t *testing.T) *TestConfig {
 	return &TestConfig{
 		HomeDir:    homeDir,
 		RepoPath:   repoPath,
-		ConfigPath:  cfg.ConfigPath,
+		ConfigPath: cfg.ConfigPath,
 		Config:     cfg,
 	}
 }
@@ -145,7 +145,6 @@ func requireSymlinkSupport(t *testing.T) {
 	}
 }
 
-
 // assertFileExists checks if a file exists and fails the test if it doesn't
 func assertFileExists(t *testing.T, path string) {
 	t.Helper()
@@ -163,7 +162,6 @@ func assertFileNotExists(t *testing.T, path string) {
 		t.Fatalf("expected file to not exist: %s", path)
 	}
 }
-
 
 // cleanupTestEnvironment cleans up a test environment
 func cleanupTestEnvironment(config *TestConfig) {
@@ -362,8 +360,8 @@ func checkUnmergedFiles(repoPath string) (bool, error) {
 
 		// Check for common conflict file patterns
 		if strings.Contains(entry.Name(), ".conflict") ||
-		   strings.Contains(entry.Name(), ".merge") ||
-		   strings.Contains(entry.Name(), ".rej") {
+			strings.Contains(entry.Name(), ".merge") ||
+			strings.Contains(entry.Name(), ".rej") {
 			return true, nil
 		}
 	}
@@ -612,7 +610,7 @@ func validateIgnoreContent(content string) error {
 		"; rm",
 		"| rm",
 		"> /dev/null",
-		"`", // backticks for command substitution
+		"`",  // backticks for command substitution
 		"$(", // command substitution
 	}
 

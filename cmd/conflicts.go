@@ -176,4 +176,3 @@ func showConflictDetails(conflictPath string) error {
 
 	return nil
 }
-

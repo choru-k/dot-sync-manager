@@ -35,7 +35,6 @@ Examples:
 	RunE: runConfig,
 }
 
-
 func init() {
 	rootCmd.AddCommand(configCmd)
 
@@ -59,7 +58,7 @@ Examples:
 	// config set subcommand
 	configSetCmd := &cobra.Command{
 		Use:   "set <key> <value>",
-	Short: "Set configuration value",
+		Short: "Set configuration value",
 		Long: `Set a configuration value in the sync configuration file.
 This will update the configuration file with the new value.
 
@@ -74,7 +73,7 @@ Examples:
 	// config edit subcommand
 	configEditCmd := &cobra.Command{
 		Use:   "edit",
-	Short: "Edit configuration file",
+		Short: "Edit configuration file",
 		Long: `Edit the sync configuration file in the default editor.
 This opens the configuration file for manual editing.
 
@@ -241,7 +240,6 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-
 // Helper functions for nested configuration access
 func getNestedValue(obj interface{}, key string) interface{} {
 	// Handle nil input defensively
@@ -316,13 +314,13 @@ func setNestedValue(obj interface{}, key string, value interface{}) bool {
 	// Validate that the section is valid (using the same validation as validateConfigKey)
 	section := parts[0]
 	validSections := map[string]bool{
-		"machine":            true,
-		"git":                true,
-		"sync":               true,
-		"notifications":      true,
+		"machine":             true,
+		"git":                 true,
+		"sync":                true,
+		"notifications":       true,
 		"conflict_resolution": true,
-		"ui":                 true,
-		"advanced":           true,
+		"ui":                  true,
+		"advanced":            true,
 	}
 
 	if !validSections[section] {
@@ -493,7 +491,6 @@ func isNil(obj interface{}) bool {
 	}
 }
 
-
 // mapToStruct converts a map[string]interface{} to the config struct type
 func mapToStruct(data map[string]interface{}) (*config.SyncConfig, error) {
 	// Marshal to JSON
@@ -510,4 +507,3 @@ func mapToStruct(data map[string]interface{}) (*config.SyncConfig, error) {
 
 	return &result, nil
 }
-

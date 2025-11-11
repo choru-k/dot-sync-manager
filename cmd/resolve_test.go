@@ -39,9 +39,9 @@ func TestResolveCmd_Sanity(t *testing.T) {
 
 func TestVerifyConflictResolution(t *testing.T) {
 	tests := []struct {
-		name          string
-		setup         func(t *testing.T) string
-		expectError   bool
+		name           string
+		setup          func(t *testing.T) string
+		expectError    bool
 		expectResolved bool
 	}{
 		{
@@ -334,10 +334,10 @@ func TestValidateResolutionState(t *testing.T) {
 
 func TestGetResolutionStatus(t *testing.T) {
 	tests := []struct {
-		name            string
-		repoPath        string
-		conflictsDir    string
-		expectedStatus  string
+		name           string
+		repoPath       string
+		conflictsDir   string
+		expectedStatus string
 	}{
 		{
 			name:           "non-existent repo",
@@ -346,8 +346,8 @@ func TestGetResolutionStatus(t *testing.T) {
 			expectedStatus: "Repository not found",
 		},
 		{
-			name:           "clean repo",
-			repoPath:       func() string {
+			name: "clean repo",
+			repoPath: func() string {
 				repo := t.TempDir()
 				if err := os.MkdirAll(filepath.Join(repo, ".git"), testDirPerms); err != nil {
 					t.Fatalf("failed to create git directory: %v", err)
@@ -358,8 +358,8 @@ func TestGetResolutionStatus(t *testing.T) {
 			expectedStatus: "No conflicts found",
 		},
 		{
-			name:         "conflicts exist",
-			repoPath:     func() string {
+			name: "conflicts exist",
+			repoPath: func() string {
 				repo := t.TempDir()
 				if err := os.MkdirAll(filepath.Join(repo, ".git"), testDirPerms); err != nil {
 					t.Fatalf("failed to create git directory: %v", err)

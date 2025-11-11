@@ -99,7 +99,6 @@ func validateEditorCommand(editor string) (string, error) {
 		return "", fmt.Errorf("cannot be empty")
 	}
 
-
 	// Then check for dangerous characters
 	dangerousChars := []string{";", "|", "&", "`", "$", ">", "<"}
 	for _, char := range dangerousChars {

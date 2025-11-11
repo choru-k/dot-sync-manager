@@ -26,9 +26,9 @@ Examples:
 }
 
 var (
-	logLines    int
-	logFollow   bool
-	logFile    string
+	logLines  int
+	logFollow bool
+	logFile   string
 )
 
 func init() {
