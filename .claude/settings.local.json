@@ -13,6 +13,9 @@
       "Bash(go build:*)",
       "Bash(go test:*)",
       "Bash(git push:*)",
+      "Bash(git commit:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh pr view:*)"
     ],
     "deny": [],
     "ask": []
