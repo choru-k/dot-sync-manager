@@ -27,6 +27,7 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(statusCmd)
+	statusCmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
