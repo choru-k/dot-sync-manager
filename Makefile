@@ -39,11 +39,6 @@ test-quick:
 	@echo "⚡ Quick test (changed packages only)..."
 	go test -v ./internal/...
 
-# Run tests with coverage (unit + integration only, excludes E2E)
-test-coverage:
-	@echo "📊 Running tests with coverage..."
-	go test -v -coverprofile=coverage.out ./internal/... ./cmd/...
-	go tool cover -func=coverage.out
 
 # Install dependencies
 deps:
@@ -91,8 +86,7 @@ help:
 	@echo "  test-all      - Run all tests including E2E"
 	@echo "  test-e2e      - Run all tests including E2E (alias for test-all)"
 	@echo "  test-quick    - Quick test for development"
-	@echo "  test-coverage - Run tests with coverage report"
-	@echo "  build         - Build the DSM binary"
+		@echo "  build         - Build the DSM binary"
 	@echo "  clean         - Clean build artifacts and test data"
 	@echo "  deps          - Install/update dependencies"
 	@echo "  lint          - Run code linter"
