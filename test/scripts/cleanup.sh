@@ -7,7 +7,7 @@ set -euo pipefail
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-COMPOSE_FILE="$PROJECT_ROOT/test/docker-compose.test.yml"
+COMPOSE_FILE="$PROJECT_ROOT/test/docker compose.test.yml"
 PROJECT_NAME="dot-sync-manager"
 DSM_FORCE_PRUNE="${DSM_FORCE_PRUNE:-false}"
 
@@ -49,11 +49,11 @@ cleanup() {
         # Stop and remove containers
         log_info "Stopping and removing containers..."
         if [ -f "$COMPOSE_FILE" ]; then
-            docker-compose -f "$COMPOSE_FILE" down -v --remove-orphans --timeout 30 || {
+            docker compose -f "$COMPOSE_FILE" down -v --remove-orphans --timeout 30 || {
                 log_warning "Some containers may not have stopped gracefully"
                 # Force remove remaining containers
-                docker-compose -f "$COMPOSE_FILE" kill || true
-                docker-compose -f "$COMPOSE_FILE" rm -fv || true
+                docker compose -f "$COMPOSE_FILE" kill || true
+                docker compose -f "$COMPOSE_FILE" rm -fv || true
             }
         fi
 
@@ -93,7 +93,7 @@ cleanup() {
     # Clean up any leftover processes
     log_info "Cleaning up leftover processes..."
     pkill -f "dsm-test" 2>/dev/null || true
-    pkill -f "docker-compose.*test" 2>/dev/null || true
+    pkill -f "docker compose.*test" 2>/dev/null || true
 
     # Remove temporary SSH keys
     log_info "Cleaning up SSH keys..."
