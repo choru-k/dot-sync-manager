@@ -43,20 +43,31 @@ func runOpen(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	var repoPath string
+	var targetPath string
+	var isFile bool
 	if len(args) == 1 {
 		// Use the provided path
-		repoPath = args[0]
+		targetPath = args[0]
+		isFile = true
 	} else {
-		repoPath = cfg.Git.RepoPath
+		targetPath = cfg.Git.RepoPath
+		isFile = false
 	}
 
-	// Check if repository exists
-	if _, err := os.Stat(repoPath); os.IsNotExist(err) {
-		return fmt.Errorf("dotfiles repository not found at: %s", repoPath)
+	// Check if target exists
+	if _, err := os.Stat(targetPath); os.IsNotExist(err) {
+		if isFile {
+			return fmt.Errorf("file not found: %s", targetPath)
+		} else {
+			return fmt.Errorf("dotfiles repository not found at: %s", targetPath)
+		}
 	}
 
-	fmt.Printf("📂 Opening dotfiles repository: %s\n", repoPath)
+	if isFile {
+		fmt.Printf("📝 Opening file in editor: %s\n", targetPath)
+	} else {
+		fmt.Printf("📂 Opening dotfiles repository: %s\n", targetPath)
+	}
 
 	// Check if we're in a test environment and should avoid launching real file managers
 	if os.Getenv("DSM_TEST_MODE") != "" || os.Getenv("CI") != "" {
@@ -73,23 +84,25 @@ func runOpen(cmd *cobra.Command, args []string) error {
 		// Use centralized editor selection logic
 		editor := getDefaultEditor()
 		openCmd, openArgs = parseCommand(editor)
+		// Append the target path to editor arguments
+		openArgs = append(openArgs, targetPath)
 
 	default:
-		// Use file manager
+		// Use file manager for directories, or try platform-appropriate opener for files
 		switch runtime.GOOS {
 		case "windows":
 			openCmd = "explorer"
-			openArgs = []string{repoPath}
+			openArgs = []string{targetPath}
 		case "darwin":
 			openCmd = "open"
-			openArgs = []string{repoPath}
+			openArgs = []string{targetPath}
 		default: // Linux and others
 			if hasCommand("xdg-open") {
 				openCmd = "xdg-open"
-				openArgs = []string{repoPath}
+				openArgs = []string{targetPath}
 			} else if hasCommand("gnome-open") {
 				openCmd = "gnome-open"
-				openArgs = []string{repoPath}
+				openArgs = []string{targetPath}
 			} else {
 				return fmt.Errorf("no suitable file manager found (tried xdg-open, gnome-open)")
 			}

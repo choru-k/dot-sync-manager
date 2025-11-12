@@ -12,9 +12,7 @@ import (
 	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
-	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
 	"github.com/choru-k/dot-sync-manager/internal/process"
-	syncservice "github.com/choru-k/dot-sync-manager/internal/sync"
 	"github.com/spf13/cobra"
 )
 
@@ -46,6 +44,8 @@ Examples:
 var foreground bool
 var startLogFile string
 
+var daemonExeName string
+
 func init() {
 	rootCmd.AddCommand(startCmd)
 	startCmd.Flags().BoolVar(&foreground, "foreground", false, "Run in foreground instead of daemonizing")
@@ -54,9 +54,17 @@ func init() {
 		// Log warning but don't fail startup - log-file flag is optional
 		log.Printf("warning: failed to hide log-file flag: %v", err)
 	}
+	startCmd.Flags().StringVar(&daemonExeName, "daemon-exe-name", "", "Explicitly set the daemon executable name (for testing)")
+	if err := startCmd.Flags().MarkHidden("daemon-exe-name"); err != nil {
+		log.Printf("warning: failed to hide daemon-exe-name flag: %v", err)
+	}
 }
 
 func runStart(cmd *cobra.Command, args []string) error {
+	if daemonExeName != "" {
+		process.SetExplicitProcessName(daemonExeName)
+	}
+
 	// Load configuration
 	cfg, err := getConfig()
 	if err != nil {
@@ -83,7 +91,7 @@ func runStart(cmd *cobra.Command, args []string) error {
 			}
 			log.SetOutput(f)
 		}
-		return runForegroundDaemon(cfg)
+		return runForegroundDaemon(cfg, startLogFile)
 	}
 
 	startLock, err := process.AcquireCommandLock("start")
@@ -169,30 +177,21 @@ func waitForDaemonStartup(timeout time.Duration) error {
 	return fmt.Errorf("daemon did not start within %v", timeout)
 }
 
-func runForegroundDaemon(cfg *config.SyncConfig) error {
+func runForegroundDaemon(cfg *config.SyncConfig, logFile string) error {
 	fmt.Println("Starting dotfile sync daemon in foreground...")
 	fmt.Println("Press Ctrl+C to stop")
+
+	if logFile != "" {
+		f, err := os.OpenFile(logFile, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+		if err != nil {
+			return fmt.Errorf("failed to open log file: %w", err)
+		}
+		log.SetOutput(f)
+	}
 
 	// Create context with signal handling first so it can be used throughout
 	signalCtx, cancel := signal.NotifyContext(context.Background(), daemonSignals()...)
 	defer cancel()
-
-	gmCfg := cfg.ToGitManagerConfig()
-
-	// Use signal context for git manager so it can be cancelled on shutdown
-	gitMgr, err := gitmanager.NewGitManager(signalCtx, gmCfg)
-	if err != nil {
-		return fmt.Errorf("failed to initialize git manager: %w\nHint: Run 'dsm validate-config' to check for common configuration issues", err)
-	}
-
-	syncSvc, err := syncservice.New(gitMgr, cfg.ToSyncConfig())
-	if err != nil {
-		return fmt.Errorf("failed to create sync service: %w", err)
-	}
-
-	if err := syncSvc.Start(); err != nil {
-		return fmt.Errorf("failed to start sync service: %w", err)
-	}
 
 	// Acquire PID file lock for the daemon's entire lifetime
 	lockManager, err := process.WritePIDExclusive(os.Getpid())
@@ -210,7 +209,7 @@ func runForegroundDaemon(cfg *config.SyncConfig) error {
 	fmt.Println("\n🛑 Signal received, initiating graceful shutdown...")
 
 	// Execute graceful shutdown with timeout protection
-	if err := gracefulShutdown(signalCtx, syncSvc, lockManager); err != nil {
+	if err := gracefulShutdown(signalCtx, lockManager); err != nil {
 		fmt.Printf("❌ Critical: Graceful shutdown failed: %v\n", err)
 		fmt.Printf("⚠️  Daemon state may be inconsistent. Manual cleanup may be required.\n")
 		fmt.Printf("💡 Run 'dsm status' to check daemon state and 'dsm stop' to force cleanup if needed.\n")
@@ -232,7 +231,7 @@ func runForegroundDaemon(cfg *config.SyncConfig) error {
 // Coordination timing: 100ms delay before PID cleanup ensures sync service
 // starts shutting down first, preventing race conditions where PID file
 // might be removed before service cleanup begins.
-func gracefulShutdown(ctx context.Context, syncSvc *syncservice.SyncService, lockManager *process.LockManager) error {
+func gracefulShutdown(_ context.Context, lockManager *process.LockManager) error {
 	fmt.Println("🔄 Shutting down services...")
 
 	// Create shutdown timeout context to prevent indefinite hangs
@@ -244,20 +243,6 @@ func gracefulShutdown(ctx context.Context, syncSvc *syncservice.SyncService, loc
 	// Capacity 2: one for sync service, one for PID cleanup operation
 	shutdownErrors := make(chan error, 2)
 	var shutdownWG sync.WaitGroup
-
-	// Start sync service shutdown in goroutine with timeout
-	shutdownWG.Add(1)
-	go func() {
-		defer shutdownWG.Done()
-
-		// Shutdown sync service - use Stop() method which returns error
-		if err := syncSvc.Stop(); err != nil {
-			shutdownErrors <- fmt.Errorf("sync service shutdown failed after %v timeout: %w", serviceShutdownTimeout, err)
-			log.Printf("CRITICAL: Sync service shutdown failure may indicate: locked files, incomplete git operations, or resource deadlock")
-			return
-		}
-		shutdownErrors <- nil
-	}()
 
 	// Start PID file cleanup in goroutine using LockManager
 	//

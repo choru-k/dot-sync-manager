@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/choru-k/dot-sync-manager/internal/debouncer"
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
 	"github.com/choru-k/dot-sync-manager/internal/ignore"
+	"github.com/choru-k/dot-sync-manager/internal/status"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -104,6 +106,9 @@ type SyncService struct {
 	// Advanced debouncer reference (if used)
 	advancedDebouncer *debouncer.AdvancedDebouncer
 
+	// Status management
+	statusManager *status.StatusManager
+
 	// Atomic state management
 	state  int32 // atomic ServiceState
 	ctx    context.Context
@@ -124,7 +129,7 @@ type SyncService struct {
 	shutdownErrorMu   sync.Mutex
 
 	// Shutdown monitoring
-	forcedShutdowns int32 // atomic.Int: tracks forced shutdowns for monitoring
+	_ int32 // TODO: implement forced shutdowns tracking for monitoring
 
 	// Event callbacks
 	onSyncStart    func()
@@ -148,6 +153,12 @@ type Config struct {
 
 	// Advanced debouncer configuration
 	Backoff *debouncer.AdvancedDebouncerConfig
+
+	// Application version for status reporting
+	Version string
+
+	// Configuration file path for status reporting
+	ConfigPath string
 }
 
 // Validate validates the configuration according to style guide requirements
@@ -210,6 +221,9 @@ func New(gitManager *gitmanager.GitManager, config *Config) (*SyncService, error
 
 	ctx, cancel := context.WithCancel(context.Background())
 
+	// Initialize status manager
+	statusManager := status.NewStatusManager(config.Version, config.ConfigPath)
+
 	service := &SyncService{
 		gitManager:        gitManager,
 		watcher:           watcher,
@@ -217,6 +231,7 @@ func New(gitManager *gitmanager.GitManager, config *Config) (*SyncService, error
 		advancedDebouncer: advancedDebouncer,
 		ignoreParser:      ignoreParser,
 		config:            config,
+		statusManager:     statusManager,
 		ctx:               ctx,
 		cancel:            cancel,
 	}
@@ -307,17 +322,36 @@ func (s *SyncService) Start() error {
 		return fmt.Errorf("sync: watcher is not available [%s]", ErrIDWatcherCloseFailed)
 	}
 
+	// Start status manager
+	if err := s.statusManager.Start(); err != nil {
+		return fmt.Errorf("sync: failed to start status manager: %w", err)
+	}
+
+	// Update PID in status manager
+	if pid := os.Getpid(); pid > 0 {
+		s.statusManager.UpdatePID(pid)
+	}
+
 	// Add the repository path to the watcher
 	if err := watcher.Add(s.config.RepoPath); err != nil {
+		s.statusManager.SetError(fmt.Errorf("failed to watch repo path: %w", err))
+		_ = s.statusManager.Stop() // Explicitly ignore error in cleanup context
 		rollbackState()
 		return fmt.Errorf("sync: failed to watch repo path [%s]: %w", ErrIDWatcherAddPathFailed, err)
 	}
 
 	// Watch subdirectories recursively
 	if err := s.watchRecursiveWithWatcher(watcher, s.config.RepoPath); err != nil {
+		s.statusManager.SetError(fmt.Errorf("failed to watch recursively: %w", err))
+		_ = s.statusManager.Stop() // Explicitly ignore error in cleanup context
 		rollbackState()
 		return fmt.Errorf("sync: failed to watch recursively [%s]: %w", ErrIDRepoWatchRecursive, err)
 	}
+
+	// Update status with watched paths
+	watchedPaths := s.getWatchedPaths()
+	s.statusManager.SetWatchedPaths(watchedPaths)
+	s.statusManager.SetState(status.StateRunning)
 
 	// Start the event loop
 	eventLoopStarted = true
@@ -390,6 +424,13 @@ func (s *SyncService) Stop() error {
 	s.shutdownOnce.Do(func() {
 		// Cancel context to signal shutdown
 		s.cancel()
+
+		// Stop status manager
+		if s.statusManager != nil {
+			if err := s.statusManager.Stop(); err != nil {
+				shutdownErrors = append(shutdownErrors, fmt.Errorf("failed to stop status manager: %w", err))
+			}
+		}
 
 		// Cancel pending debounces
 		s.debouncer.CancelAll()
@@ -600,13 +641,21 @@ func (s *SyncService) performSync() {
 func (s *SyncService) performManualSync() {
 	log.Printf("sync: performing manual sync on repository: %s", s.config.RepoPath)
 
+	// Update status to syncing
+	s.statusManager.SetState(status.StateSyncing)
+
 	// Add panic recovery to prevent service crashes
 	defer func() {
 		if r := recover(); r != nil {
-			err := fmt.Errorf("panic in manual sync for repository %s [%s]: %v", s.config.RepoPath, ErrIDManualSyncFailed, r)
-			log.Printf("sync: %v", err)
-			s.notifyError(err)
-			s.notifySyncComplete(nil, err)
+			errMsg := fmt.Sprintf("panic in manual sync for repository %s [%s]: %v", s.config.RepoPath, ErrIDManualSyncFailed, r)
+			log.Printf("sync: %s", errMsg)
+
+			// Update status with error
+			s.statusManager.SetError(fmt.Errorf("sync: %s", errMsg))
+			s.statusManager.SetState(status.StateRunning)
+
+			s.notifyError(fmt.Errorf("sync: %s", errMsg))
+			s.notifySyncComplete(nil, fmt.Errorf("sync: %s", errMsg))
 		}
 	}()
 
@@ -614,6 +663,9 @@ func (s *SyncService) performManualSync() {
 
 	// Use the git manager to stage, commit, and push changes
 	changedFiles, err := s.gitManager.StageCommitAndPush(s.ctx, time.Now())
+
+	// Update status with sync results
+	s.statusManager.UpdateSync(changedFiles, err)
 
 	if err != nil {
 		// Check if this is a context cancellation (expected during shutdown)
@@ -624,12 +676,20 @@ func (s *SyncService) performManualSync() {
 			return
 		}
 
-		err = fmt.Errorf("manual sync failed on repository %s [%s]: %w", s.config.RepoPath, ErrIDManualSyncFailed, err)
-		log.Printf("sync: %v", err)
-		s.notifyError(err)
+		errMsg := fmt.Sprintf("manual sync failed on repository %s [%s]: %v", s.config.RepoPath, ErrIDManualSyncFailed, err)
+		log.Printf("sync: %s", errMsg)
+
+		// Update status with error
+		s.statusManager.SetError(fmt.Errorf("sync: %s", errMsg))
+		s.statusManager.SetState(status.StateRunning)
+
+		s.notifyError(fmt.Errorf("sync: %s", errMsg))
 		s.notifySyncComplete(changedFiles, err)
 		return
 	}
+
+	// Update status back to running
+	s.statusManager.SetState(status.StateRunning)
 
 	// Only notify success if we reached here without errors
 	s.notifySyncComplete(changedFiles, nil)
@@ -740,4 +800,54 @@ func (s *SyncService) GetStats() map[string]interface{} {
 	}
 
 	return stats
+}
+
+// GetStatusManager returns the status manager
+func (s *SyncService) GetStatusManager() *status.StatusManager {
+	return s.statusManager
+}
+
+// getWatchedPaths returns a list of currently watched paths
+func (s *SyncService) getWatchedPaths() []string {
+	// Protect watcher access with read lock to prevent race conditions
+	s.mu.RLock()
+	watcher := s.watcher
+	s.mu.RUnlock()
+
+	if watcher == nil {
+		return nil
+	}
+
+	// Get the watched paths from the watcher
+	// Note: fsnotify doesn't provide a direct way to get watched paths,
+	// so we'll return the repo path and recursively watched directories
+	paths := []string{s.config.RepoPath}
+
+	// Walk the repository and add all directories that would be watched
+	_ = filepath.Walk(s.config.RepoPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Ignore errors and continue
+		}
+
+		// Skip .git directory
+		if strings.Contains(path, ".git") {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+
+		// Only include directories
+		if info.IsDir() {
+			// Check if directory should be ignored
+			if s.ignoreParser.Match(path) {
+				return filepath.SkipDir
+			}
+			paths = append(paths, path)
+		}
+
+		return nil
+	})
+
+	return paths
 }

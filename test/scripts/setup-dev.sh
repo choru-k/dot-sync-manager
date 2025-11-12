@@ -7,7 +7,7 @@ set -euo pipefail
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-COMPOSE_FILE="$PROJECT_ROOT/e2e/docker-compose.test.yml"
+COMPOSE_FILE="$PROJECT_ROOT/e2e/docker compose.test.yml"
 
 # Colors for output
 RED='\033[0;31m'
@@ -50,8 +50,8 @@ check_prerequisites() {
     fi
 
     # Check Docker Compose
-    if ! command -v docker-compose >/dev/null 2>&1; then
-        log_error "docker-compose is not installed or not in PATH"
+    if ! command -v docker compose >/dev/null 2>&1; then
+        log_error "docker compose is not installed or not in PATH"
         echo "Please install Docker Compose: https://docs.docker.com/compose/install/"
         exit 1
     fi
@@ -80,7 +80,7 @@ build_dev_images() {
 
     # Build test image
     log_info "Building DSM test image..."
-    docker-compose -f "$COMPOSE_FILE" build
+    docker compose -f "$COMPOSE_FILE" build
 
     log_success "✅ Development images built successfully"
 }
@@ -240,7 +240,7 @@ create_dev_helpers() {
 # Quick test runner for development
 
 cd ~/dot-sync-manager
-./test/scripts/run-e2e.sh --scenarios=basic --verbose
+./test/scripts/run-e2e.sh --scenarios basic --verbose
 EOF
 
     # Watch mode script
@@ -268,7 +268,7 @@ fswatch -o -r -1 \
     go.mod \
     go.sum | while read event; do
     echo "🔄 Changes detected, running quick tests..."
-    ./test/scripts/run-e2e.sh --scenarios=basic
+    ./test/scripts/run-e2e.sh --scenarios basic
     echo "✅ Quick tests completed"
     echo "👀 Watching for changes..."
 done

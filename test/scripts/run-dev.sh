@@ -7,7 +7,7 @@ set -euo pipefail
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-COMPOSE_FILE="$PROJECT_ROOT/e2e/docker-compose.test.yml"
+COMPOSE_FILE="$PROJECT_ROOT/e2e/docker compose.test.yml"
 LOCAL_DEV_DIR="$HOME/.dsm-dev"
 
 # Default configuration
@@ -74,7 +74,7 @@ check_dev_environment() {
     # Check if test image exists
     if ! docker images | grep -q "dot-sync-manager.*test"; then
         log_warning "Test image not found. Building..."
-        docker-compose -f "$COMPOSE_FILE" build
+        docker compose -f "$COMPOSE_FILE" build
     fi
 
     log_success "✅ Development environment ready"
@@ -227,23 +227,23 @@ show_status() {
 
     echo ""
     echo "🔧 Test Environment:"
-    local containers=$(docker-compose -f "$COMPOSE_FILE" ps 2>/dev/null | grep -c "Up\|running" || echo "0")
+    local containers=$(docker compose -f "$COMPOSE_FILE" ps 2>/dev/null | grep -c "Up\|running" || echo "0")
     local volumes=$(docker volume ls 2>/dev/null | grep -c "dot-sync-manager" || echo "0")
 
     echo "  📦 Running containers: $containers"
     echo "  💾 Test volumes: $volumes"
 
     echo ""
-    log_info "For detailed container status, run: docker-compose -f $COMPOSE_FILE ps"
+    log_info "For detailed container status, run: docker compose -f $COMPOSE_FILE ps"
 }
 
 # Show logs
 show_logs() {
     log_info "📋 Showing test environment logs..."
 
-    if docker-compose -f "$COMPOSE_FILE" ps | grep -q "Up"; then
+    if docker compose -f "$COMPOSE_FILE" ps | grep -q "Up"; then
         log_info "Container logs (press Ctrl+C to exit):"
-        docker-compose -f "$COMPOSE_FILE" logs -f
+        docker compose -f "$COMPOSE_FILE" logs -f
     else
         log_warning "No containers are currently running"
         log_info "Start containers with: ./test/scripts/run-dev.sh test"
@@ -255,9 +255,9 @@ clean_environment() {
     log_info "🧹 Cleaning development environment..."
 
     # Stop and remove containers
-    if docker-compose -f "$COMPOSE_FILE" ps | grep -q "Up"; then
+    if docker compose -f "$COMPOSE_FILE" ps | grep -q "Up"; then
         log_info "Stopping containers..."
-        docker-compose -f "$COMPOSE_FILE" down
+        docker compose -f "$COMPOSE_FILE" down
     fi
 
     # Clean volumes

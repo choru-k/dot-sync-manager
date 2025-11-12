@@ -297,7 +297,7 @@ func TestConfigToSyncServiceConfig(t *testing.T) {
 		t.Fatalf("DefaultConfig() failed: %v", err)
 	}
 
-	syncConfig := config.ToSyncConfig()
+	syncConfig := config.ToSyncConfig("test-version", "/tmp/test-config.json")
 
 	if syncConfig.RepoPath != config.Git.RepoPath {
 		t.Errorf("Expected repo path %s, got %s", config.Git.RepoPath, syncConfig.RepoPath)
@@ -306,6 +306,14 @@ func TestConfigToSyncServiceConfig(t *testing.T) {
 	expectedDelay := time.Duration(config.Sync.DebounceSeconds) * time.Second
 	if syncConfig.DebounceDelay != expectedDelay {
 		t.Errorf("Expected debounce delay %v, got %v", expectedDelay, syncConfig.DebounceDelay)
+	}
+
+	// Verify version and config path are set
+	if syncConfig.Version != "test-version" {
+		t.Errorf("Expected version 'test-version', got '%s'", syncConfig.Version)
+	}
+	if syncConfig.ConfigPath != "/tmp/test-config.json" {
+		t.Errorf("Expected config path '/tmp/test-config.json', got '%s'", syncConfig.ConfigPath)
 	}
 
 	if syncConfig.AutoSyncEnabled != config.Sync.AutoSyncEnabled {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -15,15 +16,15 @@ func TestScenario_DsmAddWorkflow(t *testing.T) {
 	t.Logf("Testing dsm add workflow with ID: %s", testID)
 
 	// Create isolated test environment
-	sourceDir, targetDir := setupTestDirectories(t)
+	sourceDir, targetDir := CreateTestEnvironment(t, testID)
 	configPath := setupTestConfig(t, testID, sourceDir, targetDir)
 
 	// Create test dotfiles in source directory
 	testFiles := map[string]string{
-		".bashrc":       "# Bash configuration\nexport PATH=$PATH:/usr/local/bin\n",
-		".vimrc":        "# Vim configuration\nset number\nset syntax=on\n",
-		".gitconfig":    "[user]\n\tname = Test User\n\temail = test@example.com\n",
-		".tmux.conf":    "# Tmux configuration\nset -g mouse on\n",
+		".bashrc":    "# Bash configuration\nexport PATH=$PATH:/usr/local/bin\n",
+		".vimrc":     "# Vim configuration\nset number\nset syntax=on\n",
+		".gitconfig": "[user]\n\tname = Test User\n\temail = test@example.com\n",
+		".tmux.conf": "# Tmux configuration\nset -g mouse on\n",
 	}
 
 	for filename, content := range testFiles {
@@ -32,8 +33,7 @@ func TestScenario_DsmAddWorkflow(t *testing.T) {
 		t.Logf("Created test file: %s", testFile)
 	}
 
-	// Initialize DSM repository first
-	initDSMWithConfig(t, configPath, targetDir)
+	// Note: CreateTestEnvironment already sets up the git repository
 
 	t.Run("AddSingleFile", func(t *testing.T) {
 		// Test adding a single file using absolute path
@@ -49,8 +49,8 @@ func TestScenario_DsmAddWorkflow(t *testing.T) {
 		require.NoError(t, err, "dsm add should succeed")
 		t.Logf("dsm add output: %s", string(output))
 
-		// Verify file was added to repository
-		bashrcInRepo := filepath.Join(targetDir, ".bashrc")
+		// Verify file was added to repository (DSM normalizes filenames by removing leading dot)
+		bashrcInRepo := filepath.Join(targetDir, "bashrc") // DSM stores as bashrc, not .bashrc
 		_, err = os.Stat(bashrcInRepo)
 		require.NoError(t, err, "File should exist in DSM repository")
 		t.Logf("✅ File successfully added to repository: %s", bashrcInRepo)
@@ -78,9 +78,9 @@ func TestScenario_DsmAddWorkflow(t *testing.T) {
 		require.NoError(t, err, "dsm add should succeed for gitconfig")
 		t.Logf("dsm add gitconfig output: %s", string(output))
 
-		// Verify both files exist in repository
-		vimrcInRepo := filepath.Join(targetDir, ".vimrc")
-		gitconfigInRepo := filepath.Join(targetDir, ".gitconfig")
+		// Verify both files exist in repository (DSM normalizes filenames by removing leading dot)
+		vimrcInRepo := filepath.Join(targetDir, "vimrc")         // DSM stores as vimrc, not .vimrc
+		gitconfigInRepo := filepath.Join(targetDir, "gitconfig") // DSM stores as gitconfig, not .gitconfig
 
 		_, err = os.Stat(vimrcInRepo)
 		require.NoError(t, err, "vimrc should exist in DSM repository")
@@ -106,18 +106,20 @@ func TestScenario_DsmAddWorkflow(t *testing.T) {
 		t.Logf("dsm add tmux.conf output: %s", string(output))
 
 		// Verify file was added (could be copy or symlink depending on platform)
-		tmuxInRepo := filepath.Join(targetDir, ".tmux.conf")
+		tmuxInRepo := filepath.Join(targetDir, "tmux.conf") // DSM stores as tmux.conf, not .tmux.conf
 		_, err = os.Stat(tmuxInRepo)
 		require.NoError(t, err, "tmux.conf should exist in DSM repository")
 		t.Logf("✅ tmux.conf successfully added to repository")
 	})
 
 	t.Run("VerifyAddedFiles", func(t *testing.T) {
-		// Verify all added files exist and have correct content
+		// Verify all added files exist and have correct content (DSM normalizes filenames by removing leading dot)
 		for filename := range testFiles {
-			repoPath := filepath.Join(targetDir, filename)
+			// DSM removes leading dot from filenames
+			repoFilename := strings.TrimPrefix(filename, ".")
+			repoPath := filepath.Join(targetDir, repoFilename)
 			_, err := os.Stat(repoPath)
-			require.NoError(t, err, "File %s should exist in repository", filename)
+			require.NoError(t, err, "File %s should exist in repository as %s", filename, repoFilename)
 
 			// Verify content matches
 			content, err := os.ReadFile(repoPath)
@@ -160,7 +162,7 @@ func TestScenario_DsmAddErrorHandling(t *testing.T) {
 	t.Logf("Testing dsm add error handling with ID: %s", testID)
 
 	// Create isolated test environment
-	sourceDir, targetDir := setupTestDirectories(t)
+	sourceDir, targetDir := CreateTestEnvironment(t, testID)
 	configPath := setupTestConfig(t, testID, sourceDir, targetDir)
 
 	// Initialize DSM repository
@@ -207,7 +209,7 @@ func TestScenario_DsmAddErrorHandling(t *testing.T) {
 		}
 
 		// Cleanup
-		os.RemoveAll(outsideDir)
+		_ = os.RemoveAll(outsideDir) // Ignore cleanup errors in tests
 	})
 
 	t.Run("AddAlreadyAddedFile", func(t *testing.T) {

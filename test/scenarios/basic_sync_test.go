@@ -22,56 +22,14 @@ func TestBasicSyncWorkflow(t *testing.T) {
 	// Create test environment with dynamic paths
 	sourceDir, targetDir := CreateTestEnvironment(t, testID)
 
-	// Initialize git repository in target directory before DSM init
-	t.Run("InitializeGitRepo", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
-		defer cancel()
-
-		// Initialize bare git repository
-		cmd := execCommandContext(ctx, "git", "init", targetDir)
-		output, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Logf("Git init output: %s", string(output))
-			t.Logf("Git init error: %v", err)
-		}
-		require.NoError(t, err, "Git repository initialization should succeed")
-
-		// Configure git user
-		cmd = execCommandContext(ctx, "git", "-C", targetDir, "config", "user.name", "Test User")
-		err = cmd.Run()
-		require.NoError(t, err, "Git user config should succeed")
-
-		cmd = execCommandContext(ctx, "git", "-C", targetDir, "config", "user.email", "test@example.com")
-		err = cmd.Run()
-		require.NoError(t, err, "Git email config should succeed")
-
-		t.Logf("✅ Git repository initialized at: %s", targetDir)
-	})
-
-	// Test Step 1: Initialize DSM
-	t.Run("InitializeDSM", func(t *testing.T) {
+	// Test Step 1: Initialize git and DSM using shared helper
+	t.Run("InitializeGitAndDSM", func(t *testing.T) {
 		configPath := getBasicConfigPath(t)
 
-		// Since we already have a git repository and DSM config works with status/list commands,
-		// we can consider DSM "initialized" for this test. The init command requires interactive
-		// confirmation when directories exist, which doesn't work well in automated tests.
+		// Use shared helper to initialize git and verify DSM
+		setupDSMWithGit(t, configPath)
 
-		// Verify DSM can read configuration correctly (this confirms DSM is properly initialized)
-		ctx, cancel := context.WithTimeout(context.Background(), defaultCommandTimeout)
-		defer cancel()
-
-		cmd := execCommandContext(ctx, "dsm", "--config", configPath, "status")
-		output, err := cmd.CombinedOutput()
-
-		if err != nil {
-			t.Logf("DSM status output: %s", string(output))
-			t.Logf("DSM status error: %v", err)
-		}
-
-		require.NoError(t, err, "DSM should be able to read configuration")
-		assert.Contains(t, string(output), "Repository: "+filepath.Join(GetTestDataDir(), "dotfiles-test"))
-
-		t.Log("✅ DSM initialization verified through successful status command")
+		t.Log("✅ Git repository and DSM initialization completed successfully")
 	})
 
 	// Test Step 2: Add dotfiles (skip for now - add command needs redesign for containerized tests)

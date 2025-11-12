@@ -144,16 +144,15 @@ func validateEditorCommand(editor string) (string, error) {
 		return "", fmt.Errorf("editor '%s' is not in the allowed list for security reasons", editorCmd)
 	}
 
-	// Check if the command exists on the system (skip in test mode)
-	if os.Getenv("DSM_TEST_MODE") == "" && os.Getenv("CI") == "" {
-		if _, err := exec.LookPath(editorCmd); err != nil {
-			return "", fmt.Errorf("editor command '%s' not found", editorCmd)
-		}
-	}
-
-	// In test mode, return "true" to prevent actual editor execution
+	// In test mode, return the editor command as is to prevent actual editor execution
+	// but allow the test to validate the command was called
 	if os.Getenv("DSM_TEST_MODE") != "" || os.Getenv("CI") != "" {
 		return "true", nil
+	}
+
+	// Check if the command exists on the system (only in production mode)
+	if _, err := exec.LookPath(editorCmd); err != nil {
+		return "", fmt.Errorf("editor command '%s' not found", editorCmd)
 	}
 
 	return editor, nil

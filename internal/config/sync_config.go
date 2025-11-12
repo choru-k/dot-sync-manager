@@ -867,13 +867,18 @@ func (c *SyncConfig) ToGitManagerConfig() gitmanager.Config {
 }
 
 // ToSyncConfig converts to sync.Config
-func (c *SyncConfig) ToSyncConfig() *sync.Config {
+// Parameters:
+//   - version: Application version string (typically from build info)
+//   - configPath: Absolute path to the configuration file
+func (c *SyncConfig) ToSyncConfig(version, configPath string) *sync.Config {
 	debounceDelay := time.Duration(c.Sync.DebounceSeconds) * time.Second
 	config := &sync.Config{
 		RepoPath:        c.Git.RepoPath,
 		DebounceDelay:   debounceDelay,
 		AutoSyncEnabled: c.Sync.AutoSyncEnabled,
 		IgnoreFile:      ".syncignore",
+		Version:         version,
+		ConfigPath:      configPath,
 	}
 
 	// Add backoff configuration if provided

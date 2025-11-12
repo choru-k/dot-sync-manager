@@ -10,17 +10,17 @@ test: test-unit
 # Unit tests only (<30 seconds)
 test-unit:
 	@echo "🧪 Running unit tests..."
-	go test -v ./...
+	go test -v $(go list ./... | grep -v test/scenarios)
 
 # Unit + Integration tests (<2 minutes)
 test-integration:
 	@echo "🧪 Running unit + integration tests..."
-	go test -v -tags=integration ./...
+	go test -v -tags=integration $(go list ./... | grep -v test/scenarios)
 
 # All tests including E2E (<15 minutes)
 test-all: test-integration
 	@echo "🧪 Running all E2E tests..."
-	./test/scripts/run-e2e.sh --scenarios=all
+	./test/scripts/run-e2e.sh -s all
 
 # Build the application
 build:
@@ -39,17 +39,28 @@ test-quick:
 	@echo "⚡ Quick test (changed packages only)..."
 	go test -v ./internal/...
 
-# Run tests with coverage
-test-coverage:
-	@echo "📊 Running tests with coverage..."
-	go test -v -coverprofile=coverage.out ./...
-	go tool cover -func=coverage.out
 
 # Install dependencies
 deps:
 	@echo "📦 Installing dependencies..."
 	go mod download
 	go mod verify
+	@echo "🔧 Installing golangci-lint..."
+	@if ! command -v golangci-lint >/dev/null 2>&1; then \
+		echo "Installing golangci-lint..."; \
+		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
+	else \
+		echo "golangci-lint already installed"; \
+	fi
+
+# Verify code quality (combines all checks)
+verify:
+	@echo "🔍 Running all quality checks..."
+	$(MAKE) lint
+	$(MAKE) test-unit
+	$(MAKE) test-integration
+	$(MAKE) build
+	@echo "✅ All quality checks passed"
 
 # Lint code
 lint:
@@ -63,6 +74,9 @@ setup-dev:
 	chmod +x test/scripts/*.sh
 	chmod +x test/fixtures/ssh_keys/*.sh
 
+# E2E tests alias (for backward compatibility)
+test-e2e: test-all
+
 # Show help
 help:
 	@echo "Available targets:"
@@ -70,11 +84,12 @@ help:
 	@echo "  test-unit     - Run unit tests only"
 	@echo "  test-integration - Run unit + integration tests"
 	@echo "  test-all      - Run all tests including E2E"
+	@echo "  test-e2e      - Run all tests including E2E (alias for test-all)"
 	@echo "  test-quick    - Quick test for development"
-	@echo "  test-coverage - Run tests with coverage report"
 	@echo "  build         - Build the DSM binary"
 	@echo "  clean         - Clean build artifacts and test data"
 	@echo "  deps          - Install/update dependencies"
 	@echo "  lint          - Run code linter"
 	@echo "  setup-dev     - Set up development environment"
+	@echo "  verify        - Run all quality checks (lint + tests + build)"
 	@echo "  help          - Show this help message"

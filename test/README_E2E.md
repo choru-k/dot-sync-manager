@@ -16,7 +16,7 @@ The E2E testing framework ensures that DSM works correctly across different scen
    - Minimal attack surface
    - Optimized for testing
 
-2. **Stateless Docker Compose** (`test/e2e/docker-compose.test.yml`)
+2. **Stateless Docker Compose** (`test/e2e/docker compose.test.yml`)
    - Isolated test runner container
    - Gitea git remote service
    - Disposable volumes for each test run
@@ -59,12 +59,12 @@ The E2E testing framework ensures that DSM works correctly across different scen
 1. **Build test environment:**
    ```bash
    cd test/e2e
-   docker-compose build
+   docker compose build
    ```
 
 2. **Run specific tests:**
    ```bash
-   ./test/scripts/run-e2e.sh --scenarios=basic --verbose
+   ./test/scripts/run-e2e.sh --scenarios basic --verbose
    ```
 
 3. **Clean up:**
@@ -78,7 +78,7 @@ The E2E testing framework ensures that DSM works correctly across different scen
 test/
 ├── e2e/
 │   ├── Dockerfile.test              # Security-hardened test image
-│   ├── docker-compose.test.yml      # Stateless test environment
+│   ├── docker compose.test.yml      # Stateless test environment
 │   ├── scenarios/                   # E2E test scenarios
 │   │   ├── basic_sync_test.go
 │   │   ├── conflict_resolution_test.go
@@ -205,12 +205,12 @@ Test configurations are stored in `test/e2e/fixtures/test_configs/`:
 
 2. **View container logs**:
    ```bash
-   docker-compose -f test/e2e/docker-compose.test.yml logs
+   docker compose -f test/e2e/docker compose.test.yml logs
    ```
 
 3. **Inspect test environment**:
    ```bash
-   docker-compose -f test/e2e/docker-compose.test.yml exec dsm-test bash
+   docker compose -f test/e2e/docker compose.test.yml exec dsm-test bash
    ```
 
 ## 🔄 CI/CD Integration
@@ -231,7 +231,7 @@ e2e-tests:
   needs: test
   steps:
     - name: Run E2E tests
-      run: ./test/scripts/run-e2e.sh --scenarios=basic --verbose
+      run: ./test/scripts/run-e2e.sh --scenarios basic --verbose
 ```
 
 ## 🧹 Cleanup and Maintenance
@@ -304,9 +304,9 @@ Test reports are uploaded as GitHub Actions artifacts for debugging.
 4. **Container startup failures**:
    ```bash
    # Check container logs
-   docker-compose -f test/e2e/docker-compose.test.yml logs
+   docker compose -f test/e2e/docker compose.test.yml logs
    # Rebuild images
-   docker-compose -f test/e2e/docker-compose.test.yml build --no-cache
+   docker compose -f test/e2e/docker compose.test.yml build --no-cache
    ```
 
 ### Debug Mode
