@@ -1,3 +1,58 @@
+// Package status provides real-time daemon status reporting through Unix domain sockets.
+//
+// This package enables rich status monitoring for the Dotfile Sync Manager daemon,
+// exposing comprehensive metrics and state information through a secure Unix socket
+// interface. The status server runs alongside the sync service and provides
+// real-time updates on daemon health, sync operations, and watched paths.
+//
+// # Key Features
+//
+//   - Real-time status updates via Unix domain socket communication
+//   - Thread-safe status tracking with atomic operations and mutex protection
+//   - State-based daemon lifecycle management (starting → running → syncing → idle/error)
+//   - Comprehensive metrics: uptime, sync counts, error tracking, file statistics
+//   - Secure socket permissions (user-only access, 0600)
+//   - Graceful fallback when daemon is not running
+//
+// # Architecture
+//
+// The package consists of two main components:
+//
+//   - StatusManager: Manages daemon status and provides Unix socket server
+//   - DaemonStatus: Immutable status snapshot with all daemon metrics
+//
+// # Usage Example
+//
+//	// Server side (daemon):
+//	statusMgr := status.NewStatusManager("1.0.0", "/etc/dsm/config.json")
+//	if err := statusMgr.Start(); err != nil {
+//	    log.Fatal(err)
+//	}
+//	defer statusMgr.Stop()
+//
+//	// Update status throughout daemon lifecycle
+//	statusMgr.SetState(status.StateRunning)
+//	statusMgr.UpdateSync(changedFiles, nil)
+//
+//	// Client side (status command):
+//	daemonStatus, err := status.GetStatusFromSocket()
+//	if err != nil {
+//	    // Daemon not running or socket unavailable
+//	    return err
+//	}
+//	fmt.Printf("Daemon PID: %d, Uptime: %s\n", daemonStatus.PID, daemonStatus.Uptime)
+//
+// # Thread Safety
+//
+// All StatusManager methods are thread-safe and can be called concurrently.
+// Status updates use atomic operations for counters and mutex protection for
+// complex state transitions, ensuring consistency under high concurrency.
+//
+// # Socket Security
+//
+// The Unix socket is created with 0600 permissions (user-only access),
+// preventing unauthorized access to daemon status information. Socket paths
+// are expanded to support home directory notation (~/).
 package status
 
 import (
@@ -33,19 +88,19 @@ const (
 
 // DaemonStatus represents the current status of the daemon
 type DaemonStatus struct {
-	PID             int           `json:"pid"`
-	Uptime          time.Duration `json:"uptime"`
-	LastSync        time.Time     `json:"last_sync"`
-	LastSyncResult  string        `json:"last_sync_result"`
-	FilesSynced     int           `json:"files_synced"`
-	CurrentState    DaemonState   `json:"current_state"`
-	Version         string        `json:"version"`
-	ConfigPath      string        `json:"config_path"`
-	StartTime       time.Time     `json:"start_time"`
-	SyncCount       int64         `json:"sync_count"`
-	ErrorCount      int64         `json:"error_count"`
-	LastError       string        `json:"last_error,omitempty"`
-	WatchedPaths    []string      `json:"watched_paths"`
+	PID            int           `json:"pid"`
+	Uptime         time.Duration `json:"uptime"`
+	LastSync       time.Time     `json:"last_sync"`
+	LastSyncResult string        `json:"last_sync_result"`
+	FilesSynced    int           `json:"files_synced"`
+	CurrentState   DaemonState   `json:"current_state"`
+	Version        string        `json:"version"`
+	ConfigPath     string        `json:"config_path"`
+	StartTime      time.Time     `json:"start_time"`
+	SyncCount      int64         `json:"sync_count"`
+	ErrorCount     int64         `json:"error_count"`
+	LastError      string        `json:"last_error,omitempty"`
+	WatchedPaths   []string      `json:"watched_paths"`
 }
 
 // StatusManager manages the daemon status and provides Unix socket server
@@ -265,7 +320,12 @@ func expandPath(path string) string {
 	if len(path) > 0 && path[0] == '~' {
 		home, err := os.UserHomeDir()
 		if err == nil {
-			return filepath.Join(home, path[1:])
+			// Handle the case where path is exactly "~"
+			suffix := ""
+			if len(path) > 1 {
+				suffix = path[1:]
+			}
+			return filepath.Join(home, suffix)
 		}
 	}
 	return path

@@ -9,6 +9,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_FILE="$PROJECT_ROOT/test/docker-compose.test.yml"
 PROJECT_NAME="dot-sync-manager"
+DSM_FORCE_PRUNE="${DSM_FORCE_PRUNE:-false}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -34,49 +35,60 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+docker_available() {
+    docker info >/dev/null 2>&1
+}
+
 # Cleanup function for graceful shutdown
 cleanup() {
     log_info "🧹 Starting comprehensive cleanup..."
 
     local exit_code=${1:-0}
 
-    # Stop and remove containers
-    log_info "Stopping and removing containers..."
-    if [ -f "$COMPOSE_FILE" ]; then
-        docker-compose -f "$COMPOSE_FILE" down -v --remove-orphans --timeout 30 || {
-            log_warning "Some containers may not have stopped gracefully"
-            # Force remove remaining containers
-            docker-compose -f "$COMPOSE_FILE" kill || true
-            docker-compose -f "$COMPOSE_FILE" rm -fv || true
-        }
+    if docker_available; then
+        # Stop and remove containers
+        log_info "Stopping and removing containers..."
+        if [ -f "$COMPOSE_FILE" ]; then
+            docker-compose -f "$COMPOSE_FILE" down -v --remove-orphans --timeout 30 || {
+                log_warning "Some containers may not have stopped gracefully"
+                # Force remove remaining containers
+                docker-compose -f "$COMPOSE_FILE" kill || true
+                docker-compose -f "$COMPOSE_FILE" rm -fv || true
+            }
+        fi
+
+        # Remove project-specific containers
+        log_info "Removing project containers..."
+        docker container ls -a --filter "name=$PROJECT_NAME" --format "{{.Names}}" | \
+            xargs -r docker container rm -fv || true
+
+        # Remove project-specific volumes
+        log_info "Removing project volumes..."
+        docker volume ls --filter "name=$PROJECT_NAME" --format "{{.Name}}" | \
+            xargs -r docker volume rm -f || true
+
+        # Remove project-specific networks
+        log_info "Removing project networks..."
+        docker network ls --filter "name=$PROJECT_NAME" --format "{{.Name}}" | \
+            xargs -r docker network rm || true
+
+        if [ "$DSM_FORCE_PRUNE" = "true" ]; then
+            log_info "Performing Docker system cleanup (DSM_FORCE_PRUNE=true)..."
+            docker system prune -f --volumes || {
+                log_warning "Docker system prune failed, continuing..."
+            }
+        else
+            log_info "Skipping docker system prune (set DSM_FORCE_PRUNE=true to enable)."
+        fi
+    else
+        log_warning "Docker daemon not reachable; skipping Docker resource cleanup."
     fi
-
-    # Remove project-specific containers
-    log_info "Removing project containers..."
-    docker container ls -a --filter "name=$PROJECT_NAME" --format "{{.Names}}" | \
-        xargs -r docker container rm -fv || true
-
-    # Remove project-specific volumes
-    log_info "Removing project volumes..."
-    docker volume ls --filter "name=$PROJECT_NAME" --format "{{.Name}}" | \
-        xargs -r docker volume rm -f || true
-
-    # Remove project-specific networks
-    log_info "Removing project networks..."
-    docker network ls --filter "name=$PROJECT_NAME" --format "{{.Name}}" | \
-        xargs -r docker network rm || true
 
     # Clean up test artifacts
     log_info "Cleaning up test artifacts..."
     rm -rf /tmp/dsm-test-* 2>/dev/null || true
     rm -rf /tmp/dsm-e2e-* 2>/dev/null || true
     rm -rf /tmp/dot-sync-test-* 2>/dev/null || true
-
-    # Docker system cleanup
-    log_info "Performing Docker system cleanup..."
-    docker system prune -f --volumes || {
-        log_warning "Docker system prune failed, continuing..."
-    }
 
     # Clean up any leftover processes
     log_info "Cleaning up leftover processes..."
@@ -92,17 +104,21 @@ cleanup() {
     rm -rf ~/.dsm-test-* 2>/dev/null || true
     rm -rf ~/dsm-test-repos 2>/dev/null || true
 
-    # Final verification
-    log_info "Verifying cleanup completion..."
-    local remaining_containers=$(docker container ls -a --filter "name=$PROJECT_NAME" --format "{{.Names}}" | wc -l)
-    local remaining_volumes=$(docker volume ls --filter "name=$PROJECT_NAME" --format "{{.Name}}" | wc -l)
+    if docker_available; then
+        # Final verification
+        log_info "Verifying cleanup completion..."
+        local remaining_containers
+        local remaining_volumes
+        remaining_containers=$(docker container ls -a --filter "name=$PROJECT_NAME" --format "{{.Names}}" | wc -l)
+        remaining_volumes=$(docker volume ls --filter "name=$PROJECT_NAME" --format "{{.Name}}" | wc -l)
 
-    if [ "$remaining_containers" -eq 0 ] && [ "$remaining_volumes" -eq 0 ]; then
-        log_success "✅ Cleanup completed successfully"
-    else
-        log_warning "⚠️  Some resources may remain:"
-        [ "$remaining_containers" -gt 0 ] && echo "  - $remaining_containers containers"
-        [ "$remaining_volumes" -gt 0 ] && echo "  - $remaining_volumes volumes"
+        if [ "$remaining_containers" -eq 0 ] && [ "$remaining_volumes" -eq 0 ]; then
+            log_success "✅ Cleanup completed successfully"
+        else
+            log_warning "⚠️  Some resources may remain:"
+            [ "$remaining_containers" -gt 0 ] && echo "  - $remaining_containers containers"
+            [ "$remaining_volumes" -gt 0 ] && echo "  - $remaining_volumes volumes"
+        fi
     fi
 
     log_info "🎯 Cleanup completed with exit code: $exit_code"
@@ -112,6 +128,11 @@ cleanup() {
 # Force cleanup function (more aggressive)
 force_cleanup() {
     log_info "🔥 Starting force cleanup (aggressive mode)..."
+
+    if ! docker_available; then
+        log_warning "Docker daemon not reachable; skipping force cleanup."
+        return
+    fi
 
     # Kill all containers forcefully
     docker container ls -a --filter "name=$PROJECT_NAME" --format "{{.Names}}" | \

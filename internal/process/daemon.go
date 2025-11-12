@@ -21,6 +21,12 @@ const (
 	lockRetryInterval = 100 * time.Millisecond
 )
 
+var explicitProcessName string
+
+// SetExplicitProcessName sets a custom process name for daemon detection.
+// This is primarily for testing scenarios where the executable path might vary.
+func SetExplicitProcessName(name string) { explicitProcessName = normalizeProcessName(name) }
+
 // pidFilePath returns the absolute path to the PID file in the user's home directory.
 // The PID file is used to track the running daemon process across sessions.
 // Uses 0600 permissions to ensure only the owner can read/write the file.
@@ -44,11 +50,17 @@ type LockManager struct {
 // and writing the PID file. Uses flock for cross-platform file locking.
 // Returns a LockManager that must be held for the daemon's entire lifetime.
 func WritePIDExclusive(pid int) (*LockManager, error) {
+	// Temporary debug: Indicate that WritePIDExclusive has started
+	debugFile, err := os.OpenFile(filepath.Join(os.Getenv("HOME"), "dsm_write_pid_exclusive_started.log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	if err == nil {
+		_, _ = debugFile.WriteString(fmt.Sprintf("%s: WritePIDExclusive started for PID %d\n", time.Now().Format(time.RFC3339), pid)) // Ignore write errors in debug mode
+		_ = debugFile.Close() // Ignore close errors in debug mode
+	}
+
 	if pid <= 0 {
 		return nil, fmt.Errorf("process: write pid exclusive: invalid pid %d", pid)
 	}
 
-	// Get the current executable name for reliable daemon detection
 	exeName := DefaultProcessName()
 
 	path, err := pidFilePath()
@@ -70,6 +82,13 @@ func WritePIDExclusive(pid int) (*LockManager, error) {
 	}
 	if !locked {
 		return nil, fmt.Errorf("process: daemon already running (cannot acquire lock)")
+	}
+
+	// Temporary debug: Indicate that lock was acquired
+	debugFile, err = os.OpenFile(filepath.Join(os.Getenv("HOME"), "dsm_write_pid_exclusive_locked.log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	if err == nil {
+		_, _ = debugFile.WriteString(fmt.Sprintf("%s: WritePIDExclusive lock acquired for PID %d\n", time.Now().Format(time.RFC3339), pid)) // Ignore write errors in debug mode
+		_ = debugFile.Close() // Ignore close errors in debug mode
 	}
 
 	// Check for stale PID file and clean up if necessary
@@ -97,6 +116,13 @@ func WritePIDExclusive(pid int) (*LockManager, error) {
 			log.Printf("process: warning - failed to remove lock file during write failure: %v", removeErr)
 		}
 		return nil, fmt.Errorf("process: write pid exclusive: %w", err)
+	}
+
+	// Temporary debug: Indicate that PID file was written
+	debugFile, err = os.OpenFile(filepath.Join(os.Getenv("HOME"), "dsm_write_pid_exclusive_written.log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
+	if err == nil {
+		_, _ = debugFile.WriteString(fmt.Sprintf("%s: WritePIDExclusive PID file written for PID %d, content: %s\n", time.Now().Format(time.RFC3339), pid, content)) // Ignore write errors in debug mode
+		_ = debugFile.Close() // Ignore close errors in debug mode
 	}
 
 	// Create and return LockManager
@@ -435,6 +461,9 @@ func GetDaemonPID() (int, error) {
 // to "dot-sync-manager" if that fails. This ensures we can find the daemon
 // even if the binary was renamed or executed from a different path.
 func DefaultProcessName() string {
+	if explicitProcessName != "" {
+		return explicitProcessName
+	}
 	if exe, err := os.Executable(); err == nil {
 		if name := normalizeProcessName(exe); name != "" {
 			return name

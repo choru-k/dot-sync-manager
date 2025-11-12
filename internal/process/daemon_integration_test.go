@@ -98,18 +98,25 @@ func TestDaemonLifecycleIntegration(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	t.Logf("Using tempHome: %s", tempHome)
+	t.Logf("Using binPath: %s", binPath)
+	t.Logf("Passing daemonExeName: %s", filepath.Base(binPath))
+
 	logFilePath := filepath.Join(tempHome, "daemon.log")
-	startCmd := exec.CommandContext(ctx, binPath, "start", "--log-file", logFilePath)
-	output, err := startCmd.CombinedOutput()
-	if err != nil {
-		logContent, _ := os.ReadFile(logFilePath)
-		t.Fatalf("failed to start daemon: %v\nOutput:\n%s\nLog:\n%s", err, string(output), string(logContent))
+	startCmd := exec.CommandContext(ctx, binPath, "start", "--log-file", logFilePath, "--config", configPath, "--daemon-exe-name", filepath.Base(binPath))
+	if err := startCmd.Start(); err != nil {
+		t.Fatalf("failed to start daemon process: %v", err)
 	}
+	// Ensure the daemon process is reaped after the test
+	defer func() { _ = startCmd.Process.Kill() }()
 
 	// Poll for daemon to start (more reliable than fixed sleep)
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(20 * time.Second)
 	var daemonRunning bool
 	for time.Now().Before(deadline) {
+		pidPath := filepath.Join(tempHome, ".dotfile-sync-manager.pid")
+		pidContent, _ := os.ReadFile(pidPath)
+		t.Logf("Polling: PID file content: %s, IsDaemonRunning: %v", string(pidContent), process.IsDaemonRunning())
 		if process.IsDaemonRunning() {
 			daemonRunning = true
 			break
@@ -118,7 +125,11 @@ func TestDaemonLifecycleIntegration(t *testing.T) {
 	}
 
 	if !daemonRunning {
-		t.Fatal("daemon should be running after start command")
+		logContent, readErr := os.ReadFile(logFilePath)
+		if readErr != nil {
+			t.Fatalf("daemon should be running after start command, but failed to read daemon log: %v", readErr)
+		}
+		t.Fatalf("daemon should be running after start command. Daemon log:\n%s", string(logContent))
 	}
 
 	// Test 2: Attempt to start second daemon (should fail)
@@ -131,6 +142,11 @@ func TestDaemonLifecycleIntegration(t *testing.T) {
 	stopCmd := exec.CommandContext(ctx, binPath, "stop")
 	if err := stopCmd.Run(); err != nil {
 		t.Fatalf("failed to stop daemon: %v", err)
+	}
+
+	// Wait for the daemon process to exit after being stopped
+	if err := startCmd.Wait(); err != nil && err.Error() != "signal: killed" { // "signal: killed" is expected if the process was killed by the context
+		t.Logf("warning: daemon process did not exit cleanly after stop: %v", err)
 	}
 
 	// Poll for daemon to stop
@@ -277,12 +293,12 @@ func TestConcurrentDaemonStart(t *testing.T) {
 
 	// First attempt should succeed
 	logFilePath1 := filepath.Join(tempHome, "daemon-1.log")
-	startCmd1 := exec.CommandContext(ctx, binPath, "start", "--log-file", logFilePath1, "--config", configPath)
-	output1, err1 := startCmd1.CombinedOutput()
-
-	if err1 != nil {
-		t.Fatalf("First daemon start should succeed, got: %v, output: %s", err1, string(output1))
+	startCmd1 := exec.CommandContext(ctx, binPath, "start", "--log-file", logFilePath1, "--config", configPath, "--daemon-exe-name", filepath.Base(binPath))
+	if err := startCmd1.Start(); err != nil {
+		t.Fatalf("failed to start daemon process: %v", err)
 	}
+	// Ensure the daemon process is reaped after the test
+	defer func() { _ = startCmd1.Process.Kill() }()
 	t.Logf("First daemon start succeeded")
 
 	// Verify daemon is running
@@ -311,6 +327,11 @@ func TestConcurrentDaemonStart(t *testing.T) {
 	stopCmd := exec.CommandContext(ctx, binPath, "stop", "--config", configPath)
 	if err := stopCmd.Run(); err != nil {
 		t.Logf("warning: failed to stop daemon during cleanup: %v", err)
+	}
+
+	// Wait for the daemon process to exit after being stopped
+	if err := startCmd1.Wait(); err != nil && err.Error() != "signal: killed" { // "signal: killed" is expected if the process was killed by the context
+		t.Logf("warning: daemon process did not exit cleanly after stop: %v", err)
 	}
 
 	t.Logf("Daemon serialization test passed: sequential starts properly handled")

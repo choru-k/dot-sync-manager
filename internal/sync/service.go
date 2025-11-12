@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -128,7 +129,7 @@ type SyncService struct {
 	shutdownErrorMu   sync.Mutex
 
 	// Shutdown monitoring
-	forcedShutdowns int32 // atomic.Int: tracks forced shutdowns for monitoring
+	_ int32 // TODO: implement forced shutdowns tracking for monitoring
 
 	// Event callbacks
 	onSyncStart    func()
@@ -351,7 +352,6 @@ func (s *SyncService) Start() error {
 	watchedPaths := s.getWatchedPaths()
 	s.statusManager.SetWatchedPaths(watchedPaths)
 	s.statusManager.SetState(status.StateRunning)
-
 
 	// Start the event loop
 	eventLoopStarted = true
@@ -809,7 +809,12 @@ func (s *SyncService) GetStatusManager() *status.StatusManager {
 
 // getWatchedPaths returns a list of currently watched paths
 func (s *SyncService) getWatchedPaths() []string {
-	if s.watcher == nil {
+	// Protect watcher access with read lock to prevent race conditions
+	s.mu.RLock()
+	watcher := s.watcher
+	s.mu.RUnlock()
+
+	if watcher == nil {
 		return nil
 	}
 

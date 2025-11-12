@@ -49,7 +49,7 @@ func TestGracefulShutdown_TimeoutContext(t *testing.T) {
 		IgnoreFile:      ".syncignore",
 	}
 
-	syncSvc, err := sync.New(gitMgr, syncConfig)
+	_, err = sync.New(gitMgr, syncConfig)
 	if err != nil {
 		t.Fatalf("Failed to create sync service: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestGracefulShutdown_TimeoutContext(t *testing.T) {
 
 	// Test that gracefulShutdown works even with cancelled signal context
 	// This verifies Bug Fix 1: Line 223 uses context.Background() instead of signalCtx
-	err = gracefulShutdown(cancelledCtx, syncSvc, lockManager)
+	err = gracefulShutdown(cancelledCtx, lockManager)
 	if err != nil {
 		t.Errorf("gracefulShutdown should work with cancelled signal context, got error: %v", err)
 	}
@@ -93,26 +93,26 @@ func TestGracefulShutdown_PIDLockRelease(t *testing.T) {
 		IgnoreFile:      ".syncignore",
 	}
 
-	syncSvc, err := sync.New(gitMgr, syncConfig)
+	_, err = sync.New(gitMgr, syncConfig)
 	if err != nil {
 		t.Fatalf("Failed to create sync service: %v", err)
 	}
 
 	// Create lock manager
-	testPID := os.Getpid() + 200000 // Different test PID to avoid conflicts
+	testPID := os.Getpid() + 200000                        // Different test PID to avoid conflicts
 	lockManager, err := process.WritePIDExclusive(testPID) // Test PID
 	if err != nil {
 		t.Fatalf("Failed to create lock manager: %v", err)
 	}
 
 	// Test graceful shutdown
-	err = gracefulShutdown(context.Background(), syncSvc, lockManager)
+	err = gracefulShutdown(context.Background(), lockManager)
 	if err != nil {
 		t.Errorf("gracefulShutdown failed: %v", err)
 	}
 
 	// Verify PID file and lock are cleaned up by checking if we can acquire a new lock
-	testPID3 := os.Getpid() + 300000 // Third test PID to verify cleanup
+	testPID3 := os.Getpid() + 300000                           // Third test PID to verify cleanup
 	newLockManager, err := process.WritePIDExclusive(testPID3) // Verification PID
 	if err != nil {
 		t.Errorf("Failed to acquire new lock after gracefulShutdown, PID may not be cleaned up: %v", err)

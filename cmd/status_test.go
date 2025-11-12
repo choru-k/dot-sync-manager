@@ -96,7 +96,7 @@ func TestShowRichDaemonStatus(t *testing.T) {
 			status: &status.DaemonStatus{
 				PID:          1111,
 				CurrentState: status.StateRunning,
-				Uptime:       2 * time.Hour + 15*time.Minute,
+				Uptime:       2*time.Hour + 15*time.Minute,
 				Version:      "1.0.0",
 				ConfigPath:   "/test/config.json",
 				WatchedPaths: []string{
