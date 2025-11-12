@@ -64,7 +64,7 @@ The E2E testing framework ensures that DSM works correctly across different scen
 
 2. **Run specific tests:**
    ```bash
-   ./test/scripts/run-e2e.sh --scenarios=basic --verbose
+   ./test/scripts/run-e2e.sh --scenarios basic --verbose
    ```
 
 3. **Clean up:**
@@ -231,7 +231,7 @@ e2e-tests:
   needs: test
   steps:
     - name: Run E2E tests
-      run: ./test/scripts/run-e2e.sh --scenarios=basic --verbose
+      run: ./test/scripts/run-e2e.sh --scenarios basic --verbose
 ```
 
 ## 🧹 Cleanup and Maintenance

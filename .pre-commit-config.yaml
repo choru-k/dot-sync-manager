@@ -51,7 +51,7 @@ repos:
         args: [test-integration]
         language: system
         pass_filenames: false
-        files: \.go|
+        files: \.go|go\.mod|go\.sum$
 
       - id: build-check
         name: build check

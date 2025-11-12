@@ -240,7 +240,7 @@ create_dev_helpers() {
 # Quick test runner for development
 
 cd ~/dot-sync-manager
-./test/scripts/run-e2e.sh --scenarios=basic --verbose
+./test/scripts/run-e2e.sh --scenarios basic --verbose
 EOF
 
     # Watch mode script
@@ -268,7 +268,7 @@ fswatch -o -r -1 \
     go.mod \
     go.sum | while read event; do
     echo "🔄 Changes detected, running quick tests..."
-    ./test/scripts/run-e2e.sh --scenarios=basic
+    ./test/scripts/run-e2e.sh --scenarios basic
     echo "✅ Quick tests completed"
     echo "👀 Watching for changes..."
 done

@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -190,34 +189,9 @@ func runForegroundDaemon(cfg *config.SyncConfig, logFile string) error {
 		log.SetOutput(f)
 	}
 
-	// Temporary debug: Indicate that runForegroundDaemon has started
-	debugFile, err := os.OpenFile(filepath.Join(os.Getenv("HOME"), "dsm_daemon_foreground_started.log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
-	if err == nil {
-		_, _ = fmt.Fprintf(debugFile, "%s: runForegroundDaemon started\n", time.Now().Format(time.RFC3339)) // Ignore write errors in debug mode
-		_ = debugFile.Close()                                                                               // Ignore close errors in debug mode
-	}
-
 	// Create context with signal handling first so it can be used throughout
 	signalCtx, cancel := signal.NotifyContext(context.Background(), daemonSignals()...)
 	defer cancel()
-
-	// gmCfg := cfg.ToGitManagerConfig()
-
-	// // Use signal context for git manager so it can be cancelled on shutdown
-	// gitMgr, err := gitmanager.NewGitManager(signalCtx, gmCfg)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to initialize git manager: %w\nHint: Run 'dsm validate-config' to check for common configuration issues", err)
-	// }
-
-	// Create sync service with version and config path for status reporting
-	// syncSvc, err := syncservice.New(gitMgr, cfg.ToSyncConfig(Version, cfg.GetConfigPath()))
-	// if err != nil {
-	// 	return fmt.Errorf("failed to create sync service: %w", err)
-	// }
-
-	// if err := syncSvc.Start(); err != nil {
-	// 	return fmt.Errorf("failed to start sync service: %w", err)
-	// }
 
 	// Acquire PID file lock for the daemon's entire lifetime
 	lockManager, err := process.WritePIDExclusive(os.Getpid())

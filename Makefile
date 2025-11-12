@@ -86,7 +86,7 @@ help:
 	@echo "  test-all      - Run all tests including E2E"
 	@echo "  test-e2e      - Run all tests including E2E (alias for test-all)"
 	@echo "  test-quick    - Quick test for development"
-		@echo "  build         - Build the DSM binary"
+	@echo "  build         - Build the DSM binary"
 	@echo "  clean         - Clean build artifacts and test data"
 	@echo "  deps          - Install/update dependencies"
 	@echo "  lint          - Run code linter"
