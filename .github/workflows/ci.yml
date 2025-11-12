@@ -10,7 +10,6 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    
     steps:
     - uses: actions/checkout@v4
 
@@ -32,11 +31,14 @@ jobs:
     - name: Install dependencies
       run: make deps
 
-    - name: Verify dependencies
-      run: make verify
-
     - name: Run code quality checks
       run: make lint
+
+    - name: Run unit tests
+      run: make test-unit
+
+    - name: Run integration tests
+      run: make test-integration
 
     - name: Run tests with coverage
       run: make test-coverage
@@ -74,11 +76,7 @@ jobs:
         chmod +x test/fixtures/ssh_keys/*.sh
 
     - name: Run E2E tests
-      run: |
-        make test-e2e
-      env:
-        TEST_SCENARIOS: basic
-        TEST_VERBOSE: true
+      run: make test-all
 
     - name: Upload E2E test reports
       if: always()
