@@ -31,6 +31,15 @@ jobs:
     - name: Install dependencies
       run: make deps
 
+    - name: Install golangci-lint (CI specific)
+      run: |
+        if ! command -v golangci-lint >/dev/null 2>&1; then
+          echo "Installing golangci-lint (latest v2.x)..."
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+        else
+          echo "golangci-lint already installed: $(golangci-lint version)"
+        fi
+
     - name: Run code quality checks
       run: make lint
 

@@ -50,6 +50,13 @@ deps:
 	@echo "📦 Installing dependencies..."
 	go mod download
 	go mod verify
+	@echo "🔧 Installing golangci-lint..."
+	@if ! command -v golangci-lint >/dev/null 2>&1; then \
+		echo "Installing golangci-lint..."; \
+		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
+	else \
+		echo "golangci-lint already installed"; \
+	fi
 
 # Verify code quality (combines all checks)
 verify:

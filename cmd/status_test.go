@@ -4,15 +4,73 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/choru-k/dot-sync-manager/internal/process"
 	"github.com/choru-k/dot-sync-manager/internal/status"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// cleanupDaemon ensures no daemon processes or sockets are running before tests
+func cleanupDaemon(t *testing.T) {
+	// Stop all daemon processes
+	if err := process.StopAllDaemons(); err != nil {
+		t.Logf("Warning: failed to stop all daemons: %v", err)
+	}
+
+	// Remove Unix socket if it exists
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Logf("Warning: could not get home directory: %v", err)
+		return
+	}
+
+	socketPath := filepath.Join(home, ".dotfile-sync-manager.sock")
+	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
+		t.Logf("Warning: failed to remove socket file %s: %v", socketPath, err)
+	}
+
+	// Remove PID file if it exists
+	pidPath := filepath.Join(home, ".dotfile-sync-manager.pid")
+	if err := os.Remove(pidPath); err != nil && !os.IsNotExist(err) {
+		t.Logf("Warning: failed to remove PID file %s: %v", pidPath, err)
+	}
+}
+
+// ensureCleanState ensures the daemon is not running for tests that expect fallback behavior
+func ensureCleanState(t *testing.T) {
+	// Try multiple times to ensure daemon is fully stopped
+	for i := 0; i < 3; i++ {
+		cleanupDaemon(t)
+
+		// Check if daemon is still running via socket
+		if status.IsDaemonRunning() {
+			t.Logf("Daemon still detected via socket (attempt %d), waiting...", i+1)
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
+		// Check if daemon is still running via process detection
+		if process.IsDaemonRunning() {
+			t.Logf("Daemon still detected via process (attempt %d), waiting...", i+1)
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
+		// Daemon is not running
+		break
+	}
+
+	// Final verification
+	if status.IsDaemonRunning() || process.IsDaemonRunning() {
+		t.Logf("Warning: daemon may still be running after cleanup attempts")
+	}
+}
 
 func TestShowRichDaemonStatus(t *testing.T) {
 	tests := []struct {
@@ -175,6 +233,14 @@ func TestRunStatus_WithDaemon(t *testing.T) {
 }
 
 func TestRunStatus_FallbackBehavior(t *testing.T) {
+	// Ensure clean state before test - no daemon should be running
+	ensureCleanState(t)
+
+	// Ensure cleanup after test
+	t.Cleanup(func() {
+		cleanupDaemon(t)
+	})
+
 	// Create a mock command
 	cmd := &cobra.Command{}
 
@@ -298,6 +364,14 @@ func captureCommandOutput(cmd *cobra.Command, _ []string) (string, error) {
 
 // Test integration with status command
 func TestStatusCommand_Integration(t *testing.T) {
+	// Ensure clean state before test - no daemon should be running
+	ensureCleanState(t)
+
+	// Ensure cleanup after test
+	t.Cleanup(func() {
+		cleanupDaemon(t)
+	})
+
 	// Test the status command directly
 	cmd := &cobra.Command{
 		Use: "test",
