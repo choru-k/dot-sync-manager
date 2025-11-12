@@ -179,7 +179,7 @@ func execCommandContext(ctx context.Context, name string, args ...string) *exec.
 // execCommandContextWithConfig creates an exec.Cmd with custom configuration path support.
 // Extends execCommandContext by adding DSM_CONFIG_PATH environment variable for test isolation.
 // Ensures each test scenario can use its own configuration file without conflicts.
-func execCommandContextWithConfig(ctx context.Context, configPath string, _ /*name*/ string, args ...string) *exec.Cmd {
+func execCommandContextWithConfig(ctx context.Context, configPath string, name string, args ...string) *exec.Cmd {
 	// Initialize path resolution to ensure all paths are set
 	initPathResolution()
 
