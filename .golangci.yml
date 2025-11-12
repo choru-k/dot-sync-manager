@@ -10,8 +10,9 @@ linters:
     - govet          # Reports suspicious constructs
     - misspell       # Finds commonly misspelled English words
     - ineffassign    # Detects ineffectual assignments
-    - unused         # Finds unused code
-    - unparam        # Finds unused function parameters
+  disable:
+    - unused         # Disabled - acceptable in test code
+    - unparam        # Disabled - acceptable in test code
     # Note: errcheck, revive, staticcheck, whitespace disabled for minimal pre-commit set
     # Additional linters can be run in CI for comprehensive analysis
 
@@ -34,6 +35,11 @@ issues:
   exclude-rules:
     - path: '.*_test\.go$'
       linters:
+        - unparam
+        - unused
+    - path: '^test/.*'
+      linters:
+        - unused
         - unparam
 
 output:

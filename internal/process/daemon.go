@@ -53,8 +53,8 @@ func WritePIDExclusive(pid int) (*LockManager, error) {
 	// Temporary debug: Indicate that WritePIDExclusive has started
 	debugFile, err := os.OpenFile(filepath.Join(os.Getenv("HOME"), "dsm_write_pid_exclusive_started.log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err == nil {
-		_, _ = debugFile.WriteString(fmt.Sprintf("%s: WritePIDExclusive started for PID %d\n", time.Now().Format(time.RFC3339), pid)) // Ignore write errors in debug mode
-		_ = debugFile.Close() // Ignore close errors in debug mode
+		_, _ = fmt.Fprintf(debugFile, "%s: WritePIDExclusive started for PID %d\n", time.Now().Format(time.RFC3339), pid) // Ignore write errors in debug mode
+		_ = debugFile.Close()                                                                                             // Ignore close errors in debug mode
 	}
 
 	if pid <= 0 {
@@ -87,8 +87,8 @@ func WritePIDExclusive(pid int) (*LockManager, error) {
 	// Temporary debug: Indicate that lock was acquired
 	debugFile, err = os.OpenFile(filepath.Join(os.Getenv("HOME"), "dsm_write_pid_exclusive_locked.log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err == nil {
-		_, _ = debugFile.WriteString(fmt.Sprintf("%s: WritePIDExclusive lock acquired for PID %d\n", time.Now().Format(time.RFC3339), pid)) // Ignore write errors in debug mode
-		_ = debugFile.Close() // Ignore close errors in debug mode
+		_, _ = fmt.Fprintf(debugFile, "%s: WritePIDExclusive lock acquired for PID %d\n", time.Now().Format(time.RFC3339), pid) // Ignore write errors in debug mode
+		_ = debugFile.Close()                                                                                                   // Ignore close errors in debug mode
 	}
 
 	// Check for stale PID file and clean up if necessary
@@ -121,8 +121,8 @@ func WritePIDExclusive(pid int) (*LockManager, error) {
 	// Temporary debug: Indicate that PID file was written
 	debugFile, err = os.OpenFile(filepath.Join(os.Getenv("HOME"), "dsm_write_pid_exclusive_written.log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err == nil {
-		_, _ = debugFile.WriteString(fmt.Sprintf("%s: WritePIDExclusive PID file written for PID %d, content: %s\n", time.Now().Format(time.RFC3339), pid, content)) // Ignore write errors in debug mode
-		_ = debugFile.Close() // Ignore close errors in debug mode
+		_, _ = fmt.Fprintf(debugFile, "%s: WritePIDExclusive PID file written for PID %d, content: %s\n", time.Now().Format(time.RFC3339), pid, content) // Ignore write errors in debug mode
+		_ = debugFile.Close()                                                                                                                            // Ignore close errors in debug mode
 	}
 
 	// Create and return LockManager

@@ -193,8 +193,8 @@ func runForegroundDaemon(cfg *config.SyncConfig, logFile string) error {
 	// Temporary debug: Indicate that runForegroundDaemon has started
 	debugFile, err := os.OpenFile(filepath.Join(os.Getenv("HOME"), "dsm_daemon_foreground_started.log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err == nil {
-		_, _ = debugFile.WriteString(fmt.Sprintf("%s: runForegroundDaemon started\n", time.Now().Format(time.RFC3339))) // Ignore write errors in debug mode
-		_ = debugFile.Close() // Ignore close errors in debug mode
+		_, _ = fmt.Fprintf(debugFile, "%s: runForegroundDaemon started\n", time.Now().Format(time.RFC3339)) // Ignore write errors in debug mode
+		_ = debugFile.Close()                                                                               // Ignore close errors in debug mode
 	}
 
 	// Create context with signal handling first so it can be used throughout

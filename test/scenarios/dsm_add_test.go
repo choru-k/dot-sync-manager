@@ -209,7 +209,7 @@ func TestScenario_DsmAddErrorHandling(t *testing.T) {
 		}
 
 		// Cleanup
-		os.RemoveAll(outsideDir)
+		_ = os.RemoveAll(outsideDir) // Ignore cleanup errors in tests
 	})
 
 	t.Run("AddAlreadyAddedFile", func(t *testing.T) {

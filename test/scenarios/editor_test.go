@@ -89,7 +89,7 @@ Remote changes
 			// Read existing content and append conflict markers
 			if content, err := os.ReadFile(targetFile); err == nil {
 				modifiedContent := string(content) + "\n" + conflictContent
-				os.WriteFile(targetFile, []byte(modifiedContent), 0644)
+				_ = os.WriteFile(targetFile, []byte(modifiedContent), 0644) // Ignore write errors in tests
 			}
 		}
 	})
@@ -177,7 +177,7 @@ func TestScenario_EditorEnvironmentVariable(t *testing.T) {
 }
 
 // setupTestConfig creates a test configuration for DSM with editor settings
-func setupTestConfig(t *testing.T, testID, sourceDir, targetDir string) string {
+func setupTestConfig(t *testing.T, _ /*testID*/, sourceDir, targetDir string) string {
 	// Use the basic config template like other working tests
 	return writeConfigFromTemplate(t, "basic", map[string]interface{}{
 		"SourceDir": sourceDir,

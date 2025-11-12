@@ -170,8 +170,8 @@ func CreateTestEnvironment(t *testing.T, testID string) (sourceDir, targetDir st
 	targetDir = filepath.Join(testDataDir, "dotfiles-test_"+testID)
 
 	// Clean up any existing test data
-	os.RemoveAll(sourceDir)
-	os.RemoveAll(targetDir)
+	_ = os.RemoveAll(sourceDir) // Ignore cleanup errors in tests
+	_ = os.RemoveAll(targetDir) // Ignore cleanup errors in tests
 
 	// Create directories
 	if err := os.MkdirAll(sourceDir, dirPermissions); err != nil {

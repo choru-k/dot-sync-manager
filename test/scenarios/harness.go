@@ -48,8 +48,8 @@ func NewScenarioHarness(t *testing.T, template string, opts ...HarnessOption) *S
 
 	// Setup cleanup
 	h.Cleanup = func() {
-		os.RemoveAll(h.SourceDir)
-		os.RemoveAll(h.TargetDir)
+		_ = os.RemoveAll(h.SourceDir) // Ignore cleanup errors in tests
+		_ = os.RemoveAll(h.TargetDir) // Ignore cleanup errors in tests
 	}
 
 	return h

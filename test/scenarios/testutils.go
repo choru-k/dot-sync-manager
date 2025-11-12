@@ -179,7 +179,7 @@ func execCommandContext(ctx context.Context, name string, args ...string) *exec.
 // execCommandContextWithConfig creates an exec.Cmd with custom configuration path support.
 // Extends execCommandContext by adding DSM_CONFIG_PATH environment variable for test isolation.
 // Ensures each test scenario can use its own configuration file without conflicts.
-func execCommandContextWithConfig(ctx context.Context, configPath string, name string, args ...string) *exec.Cmd {
+func execCommandContextWithConfig(ctx context.Context, configPath string, _ /*name*/ string, args ...string) *exec.Cmd {
 	// Initialize path resolution to ensure all paths are set
 	initPathResolution()
 
@@ -307,7 +307,7 @@ func syncChangesWithConfig(t *testing.T, configPath string) {
 // initDSMWithConfig initializes DSM with a custom configuration file and repository path.
 // Sets up DSM for testing with isolated configuration to avoid conflicts with other tests.
 // Uses extended timeout to accommodate repository initialization operations.
-func initDSMWithConfig(t *testing.T, configPath, repoPath string) {
+func initDSMWithConfig(t *testing.T, _ /*configPath*/, repoPath string) {
 	// Note: CreateTestEnvironment already sets up the git repository
 	// This function is kept for backward compatibility but should not be used
 	// with tests that use CreateTestEnvironment
@@ -458,17 +458,17 @@ func createIsolatedTestEnvironment(t *testing.T) (testID string, cleanup func())
 		defer cancel()
 
 		// Remove test directory
-		os.RemoveAll(testDir)
+		_ = os.RemoveAll(testDir) // Ignore cleanup errors in tests
 
 		// Kill any processes with our test ID
 		cmd := execCommandContext(ctx, "pkill", "-f", testID)
-		cmd.Run() // Ignore errors - processes may not exist
+		_ = cmd.Run() // Ignore errors - processes may not exist
 
 		// Remove any test-specific temp files
 		pattern := filepath.Join(os.TempDir(), testID+"*")
 		matches, _ := filepath.Glob(pattern)
 		for _, match := range matches {
-			os.RemoveAll(match)
+			_ = os.RemoveAll(match) // Ignore cleanup errors in tests
 		}
 	}
 
@@ -547,13 +547,13 @@ func CleanupTestProcesses(testID string) {
 
 	// Kill any processes with our test ID
 	cmd := execCommandContext(ctx, "pkill", "-f", testID)
-	cmd.Run() // Ignore errors - processes may not exist
+	_ = cmd.Run() // Ignore errors - processes may not exist
 
 	// Also clean up any test-specific temp files
 	pattern := filepath.Join(os.TempDir(), testID+"*")
 	matches, _ := filepath.Glob(pattern)
 	for _, match := range matches {
-		os.RemoveAll(match)
+		_ = os.RemoveAll(match) // Ignore cleanup errors in tests
 	}
 }
 
@@ -644,12 +644,12 @@ func ForceCleanupIfNeeded(testID string) error {
 	// Force kill any remaining processes
 	for _, process := range verification.Processes {
 		cmd := execCommandContext(ctx, "kill", "-9", process)
-		cmd.Run() // Ignore errors
+		_ = cmd.Run() // Ignore errors
 	}
 
 	// Force remove any remaining artifacts
 	for _, artifact := range verification.Artifacts {
-		os.RemoveAll(artifact)
+		_ = os.RemoveAll(artifact) // Ignore cleanup errors in tests
 	}
 
 	// Final verification
@@ -683,7 +683,7 @@ func ValidateTestEnvironment(t *testing.T) {
 	if err := os.MkdirAll(tempDir, dirPermissions); err != nil {
 		t.Fatalf("Cannot create test directory: %v", err)
 	}
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }() // Ignore cleanup errors in tests
 
 	if err := os.WriteFile(testFile, []byte("test"), filePermissions); err != nil {
 		t.Fatalf("Cannot write to test directory: %v", err)
@@ -758,7 +758,7 @@ func RequireTestID(t *testing.T) string {
 	testID := os.Getenv("TEST_ID")
 	if testID == "" {
 		testID = fmt.Sprintf("dsm-e2e-%d-%d", os.Getpid(), time.Now().Unix())
-		os.Setenv("TEST_ID", testID)
+		_ = os.Setenv("TEST_ID", testID) // Ignore setenv errors in tests
 		t.Logf("Generated TEST_ID: %s", testID)
 	}
 	return testID
