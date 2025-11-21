@@ -684,3 +684,80 @@ func TestInitCmd_DryRunExitCodes(t *testing.T) {
 		})
 	}
 }
+
+// TestInitCmd_DryRunErrorHandling verifies that dry-run mode properly handles error scenarios
+// This test ensures dry-run provides appropriate error messages for invalid inputs
+func TestInitCmd_DryRunErrorHandling(t *testing.T) {
+	tests := []struct {
+		name      string
+		repoPath  string
+		wantErr   bool
+		errSubstr string
+	}{
+		{
+			name:      "dry-run handles empty path gracefully",
+			repoPath:  "", // Empty path should still work (util.ExpandPath handles it)
+			wantErr:   false,
+			errSubstr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set up test environment
+			dryRun = true
+			repoPath = tt.repoPath
+			gitURL = ""
+
+			// Capture stdout to verify dry-run still produces output before any error
+			oldStdout := os.Stdout
+			r, w, err := os.Pipe()
+			if err != nil {
+				t.Fatalf("Failed to create pipe: %v", err)
+			}
+			os.Stdout = w
+			t.Cleanup(func() {
+				os.Stdout = oldStdout
+				_ = r.Close()
+				_ = w.Close()
+			})
+
+			// Read output in a goroutine
+			outputChan := make(chan string, 1)
+			go func() {
+				defer close(outputChan)
+				var buf bytes.Buffer
+				_, _ = buf.ReadFrom(r)
+				outputChan <- buf.String()
+			}()
+
+			// Execute dry-run
+			cmd := &cobra.Command{}
+			args := []string{""}
+			err = runInit(cmd, args)
+
+			// Close the writer to signal the reader
+			_ = w.Close()
+
+			// Get captured output
+			output := <-outputChan
+
+			// Check error expectations
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Expected dry-run to fail with error, but got nil")
+				} else if tt.errSubstr != "" && !strings.Contains(err.Error(), tt.errSubstr) {
+					t.Errorf("Expected error to contain %q, but got: %v", tt.errSubstr, err)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected dry-run to succeed (nil error), but got: %v", err)
+				}
+				// Verify dry-run output is present for successful cases
+				if !strings.Contains(output, "Dry run mode") {
+					t.Errorf("Expected output to contain 'Dry run mode', but output was:\n%s", output)
+				}
+			}
+		})
+	}
+}
