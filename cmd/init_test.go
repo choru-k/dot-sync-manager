@@ -447,3 +447,86 @@ func TestInitCmd_DryRunShowsConfigPath(t *testing.T) {
 		})
 	}
 }
+
+// TestInitCmd_DryRunShowsDefaultValues verifies that dry-run mode displays default configuration values
+// This test ensures the dry-run shows what default settings would be applied
+func TestInitCmd_DryRunShowsDefaultValues(t *testing.T) {
+	tests := []struct {
+		name           string
+		repoPath       string
+		expectedSubstr string
+	}{
+		{
+			name:           "dry-run shows default configuration values with Would... prefix",
+			repoPath:       "~/dotfiles",
+			expectedSubstr: "Default configuration settings:",
+		},
+		{
+			name:           "dry-run shows pull interval default",
+			repoPath:       "~/dotfiles",
+			expectedSubstr: "Pull interval: 300 seconds",
+		},
+		{
+			name:           "dry-run shows backup retention default",
+			repoPath:       "~/dotfiles",
+			expectedSubstr: "Backup retention: 7 days",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set up test environment
+			dryRun = true
+			repoPath = tt.repoPath
+			gitURL = "" // Use empty gitURL for new repo scenario
+
+			// Capture stdout using os.Pipe
+			oldStdout := os.Stdout
+			r, w, err := os.Pipe()
+			if err != nil {
+				t.Fatalf("Failed to create pipe: %v", err)
+			}
+			os.Stdout = w
+			t.Cleanup(func() {
+				os.Stdout = oldStdout
+				_ = r.Close()
+				_ = w.Close()
+			})
+
+			// Read output in a goroutine
+			outputChan := make(chan string, 1)
+			go func() {
+				defer close(outputChan)
+				var buf bytes.Buffer
+				_, _ = buf.ReadFrom(r)
+				outputChan <- buf.String()
+			}()
+
+			// Call runInit directly with our dry-run setup
+			cmd := &cobra.Command{}
+			args := []string{""}
+			err = runInit(cmd, args)
+
+			// Close the writer to signal the reader
+			_ = w.Close()
+
+			// In dry-run mode, the function should succeed without errors
+			if err != nil {
+				t.Fatalf("Expected dry-run to succeed, got error: %v", err)
+			}
+
+			// Get captured output
+			output := <-outputChan
+
+			// Check that output contains expected substring
+			if !strings.Contains(output, tt.expectedSubstr) {
+				t.Errorf("Expected output to contain %q, but output was:\n%s", tt.expectedSubstr, output)
+			}
+
+			// Verify "Dry run mode" message is present
+			if !strings.Contains(output, "Dry run mode") {
+				t.Errorf("Expected output to contain 'Dry run mode', but output was:\n%s", output)
+			}
+		})
+	}
+}

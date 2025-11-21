@@ -320,5 +320,13 @@ func runInitDryRun() error {
 
 	fmt.Printf("Would create configuration file: %s\n", configPath)
 
+	// Show default configuration values
+	fmt.Println("\nDefault configuration settings:")
+	fmt.Printf("- Pull interval: %d seconds\n", config.DefaultPullIntervalSeconds)
+	fmt.Printf("- Debounce interval: %d seconds\n", config.DefaultDebounceSeconds)
+	fmt.Printf("- Backup retention: %d days\n", config.DefaultKeepBackupsDays)
+	fmt.Println("- Auto-sync: enabled")
+	fmt.Println("- Auto-push: enabled")
+
 	return nil
 }
