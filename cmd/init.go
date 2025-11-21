@@ -61,6 +61,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 		gitURL = args[0]
 	}
 
+	// Handle dry-run mode early before any operations
+	if dryRun {
+		return runInitDryRun()
+	}
+
 	// Expand repo path
 	var (
 		err              error
@@ -291,4 +296,24 @@ func promptForInput(prompt, defaultValue string) (string, error) {
 		return defaultValue, nil
 	}
 	return input, nil
+}
+
+// runInitDryRun shows what would be done during initialization without actually doing it
+func runInitDryRun() error {
+	// Expand repo path for display
+	expandedRepoPath, err := util.ExpandPath(repoPath)
+	if err != nil {
+		return fmt.Errorf("failed to expand repo path: %w", err)
+	}
+
+	fmt.Println("🔍 Dry run mode - no changes will be made")
+	fmt.Printf("Would initialize dotfiles repository at: %s\n", expandedRepoPath)
+
+	if gitURL != "" {
+		fmt.Printf("Would clone repository from: %s\n", gitURL)
+	} else {
+		fmt.Printf("Would create new repository in %s\n", expandedRepoPath)
+	}
+
+	return nil
 }

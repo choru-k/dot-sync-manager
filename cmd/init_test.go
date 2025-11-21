@@ -1,10 +1,13 @@
 package cmd
 
 import (
+	"bytes"
 	"net/mail"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 func TestGetMachineName(t *testing.T) {
@@ -282,6 +285,86 @@ func TestInitCmd_DryRunFlagParsing(t *testing.T) {
 			// Check if dryRun matches expected value
 			if dryRun != tt.expected {
 				t.Errorf("Expected dryRun to be %v, got %v", tt.expected, dryRun)
+			}
+		})
+	}
+}
+
+// TestInitCmd_DryRunShowsCloneLocation verifies that dry-run mode displays clone location with "Would..." prefix
+// This test ensures the dry-run shows where files would be cloned without actually doing it
+func TestInitCmd_DryRunShowsCloneLocation(t *testing.T) {
+	tests := []struct {
+		name          string
+		gitURL        string
+		expectedSubstr string
+	}{
+		{
+			name:          "dry-run shows clone location with Would... prefix for HTTPS URL",
+			gitURL:        "https://github.com/user/dotfiles.git",
+			expectedSubstr: "Would clone repository from: https://github.com/user/dotfiles.git",
+		},
+		{
+			name:          "dry-run shows clone location with Would... prefix for SSH URL",
+			gitURL:        "git@github.com:user/dotfiles.git",
+			expectedSubstr: "Would clone repository from: git@github.com:user/dotfiles.git",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set up test environment
+			dryRun = true
+			repoPath = t.TempDir()
+
+			// Capture stdout using os.Pipe
+			oldStdout := os.Stdout
+			r, w, err := os.Pipe()
+			if err != nil {
+				t.Fatalf("Failed to create pipe: %v", err)
+			}
+			os.Stdout = w
+			t.Cleanup(func() {
+				os.Stdout = oldStdout
+				_ = r.Close()
+				_ = w.Close()
+			})
+
+			// Read output in a goroutine
+			outputChan := make(chan string, 1)
+			go func() {
+				defer close(outputChan)
+				var buf bytes.Buffer
+				_, _ = buf.ReadFrom(r)
+				outputChan <- buf.String()
+			}()
+
+			// Call runInit directly with our dry-run setup
+			cmd := &cobra.Command{}
+			args := []string{tt.gitURL}
+
+			// Set gitURL before calling runInit
+			gitURL = tt.gitURL
+			err = runInit(cmd, args)
+
+			// Close the writer to signal the reader
+			_ = w.Close()
+
+			// In dry-run mode, the function should succeed without errors
+			if err != nil {
+				t.Fatalf("Expected dry-run to succeed, got error: %v", err)
+			}
+
+			// Get captured output
+			output := <-outputChan
+
+			// Check that output contains expected substring
+			if !strings.Contains(output, tt.expectedSubstr) {
+				t.Errorf("Expected output to contain %q, but output was:\n%s", tt.expectedSubstr, output)
+			}
+
+			// Verify "Dry run mode" message is present
+			if !strings.Contains(output, "Dry run mode") {
+				t.Errorf("Expected output to contain 'Dry run mode', but output was:\n%s", output)
 			}
 		})
 	}
