@@ -306,6 +306,9 @@ func runInitDryRun() error {
 		return fmt.Errorf("failed to expand repo path: %w", err)
 	}
 
+	// Get config file path
+	configPath := filepath.Join(expandedRepoPath, ".sync-config.json")
+
 	fmt.Println("🔍 Dry run mode - no changes will be made")
 	fmt.Printf("Would initialize dotfiles repository at: %s\n", expandedRepoPath)
 
@@ -314,6 +317,8 @@ func runInitDryRun() error {
 	} else {
 		fmt.Printf("Would create new repository in %s\n", expandedRepoPath)
 	}
+
+	fmt.Printf("Would create configuration file: %s\n", configPath)
 
 	return nil
 }
