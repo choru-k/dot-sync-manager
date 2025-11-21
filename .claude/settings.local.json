@@ -37,7 +37,10 @@
       "Bash(xargs cat:*)",
       "Bash(chmod:*)",
       "Bash(gofmt:*)",
-      "Bash(golangci-lint:*)"
+      "Bash(golangci-lint:*)",
+      "WebFetch(domain:github.com)",
+      "mcp__zen__consensus",
+      "Bash(gh pr view:*)"
     ],
     "deny": [],
     "ask": []
