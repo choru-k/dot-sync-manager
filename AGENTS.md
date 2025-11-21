@@ -1,93 +1,49 @@
-# Agent Workflow Rules
+# Repository Guidelines
 
-## Purpose
-This guide defines how we track work for the Dotfile Sync Manager (DSM) project using GitHub issues, labels, and the `DSM Roadmap` project board.
+## Project Structure & Module Organization
+- CLI entrypoint in `main.go`; subcommands live in `cmd/` (one command per file).
+- Core packages under `internal/` (config, gitmanager, sync, process, debouncer, ignore, util); keep cross-package imports minimal.
+- Tests: unit/integration alongside code (`*_test.go`, `*_integration_test.go`); E2E scenarios in `test/scenarios/` with helper scripts in `test/scripts/`. Fixtures in `test/fixtures/` and sample data in `test-data/`.
+- Design docs and rules: `.gemini/styleguide.md`, `CODING_RULES.md`, `TEST_ARCHITECTURE_BOOK.md`, and `docs/git-manager.md` are the canonical references—read before major changes.
 
-## Tooling
-- Use the `gh` CLI for GitHub lookups and updates; do not rely on generic `fetch` or browser-based commands when GitHub data is needed.
+## Build, Test, and Development Commands
+- `make test-unit` – Go unit tests (fast, default).  
+- `make test-integration` – Unit + integration tests (medium).  
+- `make test-all` or `./test/scripts/run-e2e.sh -s all` – Full E2E suite.  
+- `make test-quick` – Targeted fast loop for `internal/...`.  
+- `make lint` – `golangci-lint run ./...`.  
+- `make build` – Build CLI binary to `bin/dsm`.  
+- `make verify` – lint + unit + integration + build.  
+- `make deps` / `make setup-dev` – install Go deps and tooling (golangci-lint, script perms).
 
-## Daily Triage
-- Check new notifications and confirm any newly created issues are added to the `DSM Roadmap` board.
-- Assign the `Phase` field to match the PRD timeline and set `Status` to `Todo` unless work has started.
-- Ensure every issue carries the appropriate `phase:` label (e.g., `phase: core sync`).
+## Coding Style & Naming Conventions
+- Go code must be `gofmt` + `golangci-lint` clean; prefer tabs (Go default).
+- Path handling: expand user/tilde paths early, return errors on expansion, keep validation pure (no mutation), require absolute paths.
+- Error messages use “must …” and wrap with context (`fmt.Errorf("op failed: %w", err)`); use raw string literals for multi-line text.
+- Avoid duplicating config defaults—start from `config.DefaultConfig()`. Keep file permission constants named (0600/0644).
+- Exported items need Godoc; comments explain “why”. Prefer table-driven tests and helpers over duplication.
 
-## Opening New Issues
-- Use the naming convention `Phase X: <Short title>` and describe the problem or task clearly.
-- Link to PRD sections or other source docs for context.
-- Assign the correct phase label and add the issue to the roadmap project, setting `Status: Todo`.
-- Update `tasks/development_tasks.md` if the task belongs in the canonical checklist.
+## Testing Guidelines
+- Framework: `go test`. Layers: unit (`*_test.go`), integration (`*_integration_test.go`), E2E (`test/scenarios/*.go`).
+- Boundaries: unit tests avoid real FS/network/git; integration can touch real FS/git but not full workflows; E2E exercises CLI flows with real editors/SSH as needed.
+- Targets (see TEST_ARCHITECTURE_BOOK): unit 85% coverage goal, integration 70%, E2E scenario coverage of critical flows. Keep unit tests <100ms; use `t.Cleanup` for teardown.
+- Naming: `TestPackage_Feature_WhenCondition`. Use maps over loops for validation in tests to match production patterns.
 
-## Working an Issue
-- Move the item to `Status: In Progress` on the project board when picking it up.
-- Create a feature branch named `phase-x/<short-slug>` and reference the issue number in commits (`Fixes #<n>` when appropriate).
-- Keep the issue updated with findings, decisions, or blockers so the next agent can continue seamlessly.
+## Commit & Pull Request Guidelines
+- Commit style: imperative summaries with clear scope; recent history uses “Phase X: <title> (#NN)”—stay consistent and include issue/PR refs (`Fixes #123` when applicable).
+- Branches: `phase-x/<short-slug>` (per style guide).
+- Before pushing: run `make lint` and at least `make test-unit`; note what you ran in the PR description.
+- PRs should include: concise summary, rationale, linked issues, test evidence (commands + results), and mention of user-facing changes or CLI flags. Add screenshots only when UI differ; otherwise short output snippets are enough.
 
-## Completing an Issue
-- Ensure associated PRs link back to the issue and have passing checks.
-- Move the project item to `Status: Done` only after the fix is merged and post-merge validation (tests/build) is complete.
-- Close the issue and, if relevant, check off the corresponding entry in `tasks/development_tasks.md`.
-- Add any follow-up work as new issues rather than re-opening completed ones.
+## Workflow: Plan-First TDD
+- Always check `plan.md` first; follow the next unchecked item in order. If missing, create it with a minimal checklist before coding.
+- Cycle: Red → Green → Refactor. One test at a time: write failing test, implement minimal code, run `go test ./...` or the narrowest `go test ./internal/<pkg>`; refactor only with green tests.
+- Separate structural vs behavioral changes (“Tidy First”): do renames/extractions with no behavior change, then new behavior/tests; avoid mixing.
+- Keep tests fast: prefer unit scope; skip long E2E unless required. Document skipped long runs in PR notes.
+- After each checklist item: update `plan.md` (mark done), rerun relevant tests, then proceed to the next item.
+- For the full TDD/Tidy discipline playbook, see `TDD_WORKFLOW.md`.
 
-## Board Hygiene
-- Review the board at least twice per week to confirm statuses and assignments are accurate.
-- Use the Phase filter to validate progress against the PRD timeline and surface dependencies.
-- Keep no more than ten items in `In Progress`; negotiate hand-offs or park items back to `Todo`.
-
-## Code Quality Standards
-
-Before submitting code for review:
-
-## GitHub CLI
-IMPORTANT: When responding to GitHub comment or review requests, use the helper script instead of hitting the API directly.
-Example:
-```bash
-bin/review_report.sh https://github.com/choru-k/dot-sync-manager/pull/<n>
-```
-
-### Required Reading
-- **CODING_RULES.md** - Quick reference with 18 essential rules
-- **.gemini/styleguide.md** - Detailed guide with examples
-- **CLAUDE.md** - Project-specific patterns and conventions
-
-#### Running `droid exec`
-- Base syntax: `droid exec [options] [prompt]` or pipe stdin (e.g., ``echo "summarize repo" | droid exec``)
-- Always start prompts from `DROID.md` plus task-specific context; favor `droid exec -f prompt.md` for longer briefs
-- Default to `--auto high` for DSM work so end-to-end flows (tests → commit → push/deploy) succeed without extra reruns; consciously drop to lower levels when the task truly stays local
-- Know the autonomy envelope before launching:
-  - default (no flags) stays read-only
-  - `--auto low` covers safe read/write tasks with minimal side-effects
-  - `--auto medium` unlocks routine dev flows (installs, builds, local git operations)
-  - `--auto high` enables production-impacting actions (e.g., running untrusted scripts, opening ports, `git push`, migrations, handling secrets) and still blocks destructive commands like `sudo rm -rf /`
-- `--skip-permissions-unsafe` removes all safeguards and must only run inside disposable sandboxes; it cannot be combined with any `--auto` flag
-- Prefer `--session-id` to continue an existing run only when explicitly coordinating with teammates; otherwise each exec should stay isolated
-- Capture outputs (logs, artifacts) immediately after the command finishes—`droid exec` exits once the task is complete
-- Default Usage: droid exec --auto high -f DROID.md -f prompt.md
-
-### Pre-Commit Checklist
-- [ ] All user-provided paths expanded via `expandPaths()` method
-- [ ] Path expansion functions return errors (never silently fail)
-- [ ] Tilde expansion uses `strings.TrimLeft(path[1:], "/\\")` for `~/` prefix
-- [ ] Validation methods only check state (never mutate)
-- [ ] Error messages use "must" not "should"
-- [ ] Magic numbers extracted to named constants
-- [ ] Helper functions reduce code duplication
-- [ ] Tests use `t.Cleanup` instead of `defer`
-- [ ] All error returns checked in tests
-
-### Review Process
-1. Run tests: `go test ./...`
-2. Run linter: `golangci-lint run` (if available)
-3. Self-review against coding rules checklist
-4. Request Gemini review: `/gemini review` in PR comments
-5. Address feedback promptly with separate fix commits
-
-### When Receiving Feedback
-- Each review issue should be addressed in a separate commit
-- Use descriptive commit messages referencing review IDs
-- Group related fixes (e.g., all "magic numbers" fixes in one commit)
-- Update tests to reflect architectural changes
-- Re-run full test suite after all fixes
-
-## Escalations
-- Flag scope changes, timeline risk, or missing requirements by creating a new issue labeled `needs clarification` and tagging the product owner.
-- Document unresolved questions in the issue and link to the relevant PRD section.
+## Security & Configuration Tips
+- Never overwrite user config or dotfiles without confirmation; check existence before writing.
+- Respect `--config` / discovered paths (`cfg.GetConfigPath()`), keep operations absolute, and avoid shelling out for git (use internal gitmanager).
+- Keep logs free of secrets (SSH paths, tokens); prefer contextual errors over raw outputs.

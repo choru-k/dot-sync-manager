@@ -25,15 +25,12 @@ and push to the remote repository.
 
 Examples:
   dsm sync
-  dsm sync --dry-run  # Show what would be synced without actually doing it`,
+  dsm --dry-run sync  # Show what would be synced without actually doing it`,
 	RunE: runSync,
 }
 
-var dryRun bool
-
 func init() {
 	rootCmd.AddCommand(syncCmd)
-	syncCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be synced without actually doing it")
 }
 
 func runSync(cmd *cobra.Command, args []string) error {
@@ -59,7 +56,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to prepare git repository: %w\nHint: Check that the repository path exists and is a valid git repository\nRun 'dsm validate-config' to verify your configuration", err)
 	}
 
-	if dryRun {
+	if isDryRun() {
 		fmt.Println("🔍 Dry run mode - no changes will be made")
 
 		// Open the worktree and get status

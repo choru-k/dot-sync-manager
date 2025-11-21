@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -144,5 +145,91 @@ func TestGetDaemonPID(t *testing.T) {
 	}
 	if pid != 0 {
 		t.Errorf("Expected PID 0, got %d", pid)
+	}
+}
+
+func TestRootCmd_HasDryRunFlag(t *testing.T) {
+	// Test that global --dry-run flag exists and can be accessed
+	flag := rootCmd.PersistentFlags().Lookup("dry-run")
+	if flag == nil {
+		t.Error("Expected global --dry-run flag to be present")
+		return
+	}
+
+	// Test default value is false
+	if flag.DefValue != "false" {
+		t.Errorf("Expected default value 'false', got '%s'", flag.DefValue)
+	}
+}
+
+func TestIsDryRun(t *testing.T) {
+	// Test that isDryRun function returns the global flag value
+	// Initially should be false (default)
+	if isDryRun() != false {
+		t.Errorf("Expected isDryRun() to return false by default, got %v", isDryRun())
+	}
+}
+
+func TestPrintDryRun(t *testing.T) {
+	// Test printDryRun function format and emoji behavior
+	// Save original noEmoji state
+	oldNoEmoji := noEmoji
+	t.Cleanup(func() { noEmoji = oldNoEmoji })
+
+	// Test with emoji enabled (default)
+	noEmoji = false
+	var buf bytes.Buffer
+	printDryRun(&buf, "test message")
+	expected := "🔍 test message\n"
+	if buf.String() != expected {
+		t.Errorf("Expected emoji output %q, got %q", expected, buf.String())
+	}
+
+	// Test with emoji disabled
+	noEmoji = true
+	buf.Reset()
+	printDryRun(&buf, "test message")
+	expected = "DRY-RUN: test message\n"
+	if buf.String() != expected {
+		t.Errorf("Expected no-emoji output %q, got %q", expected, buf.String())
+	}
+}
+
+func TestLogDryRunAction(t *testing.T) {
+	// Test LogDryRunAction function with different scenarios
+	// Save original states
+	oldGlobalDryRun := globalDryRun
+	oldNoEmoji := noEmoji
+	t.Cleanup(func() {
+		globalDryRun = oldGlobalDryRun
+		noEmoji = oldNoEmoji
+	})
+
+	// Test when dry-run is enabled (should print)
+	globalDryRun = true
+	noEmoji = false
+	var buf bytes.Buffer
+	LogDryRunAction(&buf, "test action", "detail1", "detail2")
+	expected := "🔍 test action: detail1, detail2\n"
+	if buf.String() != expected {
+		t.Errorf("Expected emoji output %q, got %q", expected, buf.String())
+	}
+
+	// Test with emoji disabled
+	globalDryRun = true
+	noEmoji = true
+	buf.Reset()
+	LogDryRunAction(&buf, "test action", "detail1")
+	expected = "DRY-RUN: test action: detail1\n"
+	if buf.String() != expected {
+		t.Errorf("Expected no-emoji output %q, got %q", expected, buf.String())
+	}
+
+	// Test when dry-run is disabled (should not print)
+	globalDryRun = false
+	buf.Reset()
+	LogDryRunAction(&buf, "test action", "detail1") // Should not print
+	if buf.String() != "" {
+		t.Errorf("Expected no output when dry-run disabled, got %q", buf.String())
 	}
 }

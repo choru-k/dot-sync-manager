@@ -1,6 +1,10 @@
 # Simple Makefile for dot-sync-manager testing
 # Based on TEST_ARCHITECTURE_BOOK guidelines
 
+# Keep in sync with CI (.github/workflows/ci.yml)
+GOLANGCI_LINT_VERSION ?= v2.6.2
+BIN_DIR := $(shell go env GOPATH)/bin
+
 .PHONY: test test-unit test-integration test-all clean build help
 
 # Default target
@@ -46,11 +50,15 @@ deps:
 	go mod download
 	go mod verify
 	@echo "🔧 Installing golangci-lint..."
-	@if ! command -v golangci-lint >/dev/null 2>&1; then \
-		echo "Installing golangci-lint..."; \
-		go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; \
+	@installed=""; \
+	if command -v golangci-lint >/dev/null 2>&1; then installed=$$(golangci-lint --version | awk '{print $$4}'); fi; \
+	desired="$(GOLANGCI_LINT_VERSION)"; \
+	desired_stripped=$${desired#v}; \
+	if [ "$$installed" != "$$desired_stripped" ]; then \
+		echo "Installing golangci-lint $$desired to $(BIN_DIR)..."; \
+		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(BIN_DIR) $$desired; \
 	else \
-		echo "golangci-lint already installed"; \
+		echo "golangci-lint already installed: $$installed"; \
 	fi
 
 # Verify code quality (combines all checks)
