@@ -4,7 +4,7 @@
 - CLI entrypoint in `main.go`; subcommands live in `cmd/` (one command per file).
 - Core packages under `internal/` (config, gitmanager, sync, process, debouncer, ignore, util); keep cross-package imports minimal.
 - Tests: unit/integration alongside code (`*_test.go`, `*_integration_test.go`); E2E scenarios in `test/scenarios/` with helper scripts in `test/scripts/`. Fixtures in `test/fixtures/` and sample data in `test-data/`.
-- Design docs and rules: `.gemini/styleguide.md`, `CODING_RULES.md`, `TEST_ARCHITECTURE_BOOK.md`, and `docs/git-manager.md` are the canonical references—read before major changes.
+- Design docs and rules: `docs/STYLE_GUIDE.md` (canonical, via `.gemini/styleguide.md`), `docs/git-manager.md` are the key references—read before major changes.
 
 ## Build, Test, and Development Commands
 - `make test-unit` – Go unit tests (fast, default).  
@@ -26,7 +26,7 @@
 ## Testing Guidelines
 - Framework: `go test`. Layers: unit (`*_test.go`), integration (`*_integration_test.go`), E2E (`test/scenarios/*.go`).
 - Boundaries: unit tests avoid real FS/network/git; integration can touch real FS/git but not full workflows; E2E exercises CLI flows with real editors/SSH as needed.
-- Targets (see TEST_ARCHITECTURE_BOOK): unit 85% coverage goal, integration 70%, E2E scenario coverage of critical flows. Keep unit tests <100ms; use `t.Cleanup` for teardown.
+- Targets (see STYLE_GUIDE): unit 85% coverage goal, integration 70%, E2E scenario coverage of critical flows. Keep unit tests <100ms; use `t.Cleanup` for teardown.
 - Naming: `TestPackage_Feature_WhenCondition`. Use maps over loops for validation in tests to match production patterns.
 
 ## Commit & Pull Request Guidelines
@@ -47,3 +47,8 @@
 - Never overwrite user config or dotfiles without confirmation; check existence before writing.
 - Respect `--config` / discovered paths (`cfg.GetConfigPath()`), keep operations absolute, and avoid shelling out for git (use internal gitmanager).
 - Keep logs free of secrets (SSH paths, tokens); prefer contextual errors over raw outputs.
+
+## Guiding Principles
+- Make it first, enhance later.
+- Simple is always best.
+- Do not over-engineer: when solutions are equivalent in behavior, choose the simpler one.

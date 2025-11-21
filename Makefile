@@ -1,5 +1,5 @@
 # Simple Makefile for dot-sync-manager testing
-# Based on TEST_ARCHITECTURE_BOOK guidelines
+# Based on unified STYLE_GUIDE guidelines
 
 # Keep in sync with CI (.github/workflows/ci.yml)
 GOLANGCI_LINT_VERSION ?= v2.6.2

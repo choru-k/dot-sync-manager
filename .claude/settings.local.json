@@ -40,7 +40,12 @@
       "Bash(golangci-lint:*)",
       "WebFetch(domain:github.com)",
       "mcp__zen__consensus",
-      "Bash(gh pr view:*)"
+      "Bash(gh pr view:*)",
+      "mcp__serena__list_dir",
+      "mcp__serena__get_symbols_overview",
+      "mcp__zen__planner",
+      "SlashCommand(/sc:save)",
+      "mcp__serena__read_memory"
     ],
     "deny": [],
     "ask": []

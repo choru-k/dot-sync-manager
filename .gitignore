@@ -59,3 +59,4 @@ test-binary
 # E2E test artifacts - temporary test data directories
 test-data/
 
+plan.md
