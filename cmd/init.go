@@ -52,6 +52,7 @@ func init() {
 	initCmd.Flags().StringVar(&authorName, "name", "", "Git author name")
 	initCmd.Flags().StringVar(&authorEmail, "email", "", "Git author email")
 	initCmd.Flags().BoolVar(&force, "force", false, "Force initialization even if directory exists")
+	initCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview what would be done without making changes")
 }
 
 func runInit(cmd *cobra.Command, args []string) error {

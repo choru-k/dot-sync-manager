@@ -229,3 +229,15 @@ func TestInitCmd_DryRunVariableExists(t *testing.T) {
 	// If the dryRun variable doesn't exist, this will cause a compilation error
 	_ = dryRun // This will fail to compile if dryRun variable doesn't exist
 }
+
+// TestInitCmd_DryRunFlagRegistration verifies that the --dry-run flag is registered on the init command
+// This test ensures the flag exists and can be looked up in the command's flag set
+func TestInitCmd_DryRunFlagRegistration(t *testing.T) {
+	// Look up the --dry-run flag in the init command's flag set
+	flag := initCmd.Flags().Lookup("dry-run")
+
+	// The flag should exist
+	if flag == nil {
+		t.Error("Expected --dry-run flag to be registered on init command, but it was not found")
+	}
+}
