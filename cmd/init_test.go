@@ -653,6 +653,12 @@ func TestInitCmd_DryRunExitCodes(t *testing.T) {
 			repoPath: "/custom/dotfiles",
 			wantErr:  false,
 		},
+		{
+			name:     "dry-run with --force flag still does preview (no actual deletion)",
+			gitURL:   "",
+			repoPath: "~/dotfiles",
+			wantErr:  false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -682,6 +688,72 @@ func TestInitCmd_DryRunExitCodes(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestInitCmd_DryRunForceInteraction verifies that dry-run takes precedence over force flag
+// This test ensures --dry-run prevents actual deletion even when --force is specified
+func TestInitCmd_DryRunForceInteraction(t *testing.T) {
+	tmpDir := t.TempDir()
+	testRepoPath := filepath.Join(tmpDir, "existing-dotfiles")
+
+	// Create an existing directory to test force interaction
+	if err := os.Mkdir(testRepoPath, 0755); err != nil {
+		t.Fatalf("Failed to create test directory: %v", err)
+	}
+
+	// Set up test environment with dry-run + force
+	dryRun = true
+	force = true
+	repoPath = testRepoPath
+	gitURL = ""
+
+	// Capture stdout to verify dry-run output
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("Failed to create pipe: %v", err)
+	}
+	os.Stdout = w
+	t.Cleanup(func() {
+		os.Stdout = oldStdout
+		_ = r.Close()
+		_ = w.Close()
+	})
+
+	// Read output in a goroutine
+	outputChan := make(chan string, 1)
+	go func() {
+		defer close(outputChan)
+		var buf bytes.Buffer
+		_, _ = buf.ReadFrom(r)
+		outputChan <- buf.String()
+	}()
+
+	// Execute dry-run with force flag
+	cmd := &cobra.Command{}
+	args := []string{""}
+	err = runInit(cmd, args)
+
+	// Close the writer to signal the reader
+	_ = w.Close()
+
+	// Dry-run should succeed (no prompt, no deletion)
+	if err != nil {
+		t.Errorf("Expected dry-run with --force to succeed, got error: %v", err)
+	}
+
+	// Get captured output
+	output := <-outputChan
+
+	// Verify dry-run output is present
+	if !strings.Contains(output, "Dry run mode") {
+		t.Errorf("Expected output to contain 'Dry run mode', but output was:\n%s", output)
+	}
+
+	// Verify the directory still exists (was not deleted by force)
+	if _, err := os.Stat(testRepoPath); os.IsNotExist(err) {
+		t.Errorf("Dry-run with --force should not delete directories, but %s was removed", testRepoPath)
 	}
 }
 
