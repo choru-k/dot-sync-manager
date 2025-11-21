@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"runtime"
@@ -96,23 +97,35 @@ func isDryRun() bool {
 }
 
 // printDryRun prints a formatted dry-run message
-func printDryRun(format string, args ...interface{}) {
+func printDryRun(writer io.Writer, format string, args ...interface{}) {
 	if noEmoji {
-		fmt.Printf("DRY-RUN: "+format+"\n", args...)
+		fmt.Fprintf(writer, "DRY-RUN: "+format+"\n", args...)
 	} else {
-		fmt.Printf("🔍 "+format+"\n", args...)
+		fmt.Fprintf(writer, "🔍 "+format+"\n", args...)
 	}
 }
 
 // LogDryRunAction logs a dry-run action with optional details
-func LogDryRunAction(action string, details ...string) {
+func LogDryRunAction(writer io.Writer, action string, details ...string) {
 	if isDryRun() {
 		msg := action
 		if len(details) > 0 {
 			msg += ": " + strings.Join(details, ", ")
 		}
-		printDryRun(msg)
+		printDryRun(writer, msg)
 	}
+}
+
+// Backward compatibility wrappers for existing code that doesn't provide io.Writer
+
+// PrintDryRun is a backward-compatible wrapper that uses os.Stdout
+func PrintDryRun(format string, args ...interface{}) {
+	printDryRun(os.Stdout, format, args...)
+}
+
+// LogDryRunActionCompat is a backward-compatible wrapper that uses os.Stdout
+func LogDryRunActionCompat(action string, details ...string) {
+	LogDryRunAction(os.Stdout, action, details...)
 }
 
 // Editor and command handling functions

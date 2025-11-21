@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -173,15 +174,25 @@ func TestPrintDryRun(t *testing.T) {
 	// Test printDryRun function format and emoji behavior
 	// Save original noEmoji state
 	oldNoEmoji := noEmoji
-	defer func() { noEmoji = oldNoEmoji }()
+	t.Cleanup(func() { noEmoji = oldNoEmoji })
 
 	// Test with emoji enabled (default)
 	noEmoji = false
-	printDryRun("test message")
+	var buf bytes.Buffer
+	printDryRun(&buf, "test message")
+	expected := "🔍 test message\n"
+	if buf.String() != expected {
+		t.Errorf("Expected emoji output %q, got %q", expected, buf.String())
+	}
 
 	// Test with emoji disabled
 	noEmoji = true
-	printDryRun("test message")
+	buf.Reset()
+	printDryRun(&buf, "test message")
+	expected = "DRY-RUN: test message\n"
+	if buf.String() != expected {
+		t.Errorf("Expected no-emoji output %q, got %q", expected, buf.String())
+	}
 }
 
 func TestLogDryRunAction(t *testing.T) {
@@ -189,22 +200,36 @@ func TestLogDryRunAction(t *testing.T) {
 	// Save original states
 	oldGlobalDryRun := globalDryRun
 	oldNoEmoji := noEmoji
-	defer func() {
+	t.Cleanup(func() {
 		globalDryRun = oldGlobalDryRun
 		noEmoji = oldNoEmoji
-	}()
+	})
 
 	// Test when dry-run is enabled (should print)
 	globalDryRun = true
 	noEmoji = false
-	LogDryRunAction("test action", "detail1", "detail2")
+	var buf bytes.Buffer
+	LogDryRunAction(&buf, "test action", "detail1", "detail2")
+	expected := "🔍 test action: detail1, detail2\n"
+	if buf.String() != expected {
+		t.Errorf("Expected emoji output %q, got %q", expected, buf.String())
+	}
 
 	// Test with emoji disabled
 	globalDryRun = true
 	noEmoji = true
-	LogDryRunAction("test action", "detail1")
+	buf.Reset()
+	LogDryRunAction(&buf, "test action", "detail1")
+	expected = "DRY-RUN: test action: detail1\n"
+	if buf.String() != expected {
+		t.Errorf("Expected no-emoji output %q, got %q", expected, buf.String())
+	}
 
 	// Test when dry-run is disabled (should not print)
 	globalDryRun = false
-	LogDryRunAction("test action", "detail1") // Should not print
+	buf.Reset()
+	LogDryRunAction(&buf, "test action", "detail1") // Should not print
+	if buf.String() != "" {
+		t.Errorf("Expected no output when dry-run disabled, got %q", buf.String())
+	}
 }
