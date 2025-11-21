@@ -449,8 +449,9 @@ func TestInitCmd_DryRunShowsConfigPath(t *testing.T) {
 	}
 }
 
-// TestInitCmd_DryRunShowsDefaultValues verifies that dry-run mode displays default configuration values
-// This test ensures the dry-run shows what default settings would be applied
+// TestInitCmd_DryRunShowsDefaultValues verifies that dry-run mode displays default configuration values.
+// This test ensures the dry-run shows what default settings would be applied, including
+// pull intervals, backup retention, and auto-sync settings.
 func TestInitCmd_DryRunShowsDefaultValues(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -691,8 +692,9 @@ func TestInitCmd_DryRunExitCodes(t *testing.T) {
 	}
 }
 
-// TestInitCmd_DryRunForceInteraction verifies that dry-run takes precedence over force flag
-// This test ensures --dry-run prevents actual deletion even when --force is specified
+// TestInitCmd_DryRunForceInteraction verifies that dry-run takes precedence over force flag.
+// This test ensures --dry-run prevents actual deletion even when --force is specified,
+// confirming that dry-run mode provides complete protection against accidental data loss.
 func TestInitCmd_DryRunForceInteraction(t *testing.T) {
 	tmpDir := t.TempDir()
 	testRepoPath := filepath.Join(tmpDir, "existing-dotfiles")

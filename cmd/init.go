@@ -298,17 +298,21 @@ func promptForInput(prompt, defaultValue string) (string, error) {
 	return input, nil
 }
 
-// runInitDryRun shows what would be done during initialization without actually doing it
+// runInitDryRun shows what would be done during initialization without actually doing it.
+// This function provides a preview of all operations that would normally be performed,
+// including repository initialization, configuration file creation, and default settings.
+// No file system operations are executed - only informational output is displayed.
 func runInitDryRun() error {
-	// Expand repo path for display
+	// Phase 1: Validate and prepare paths
 	expandedRepoPath, err := util.ExpandPath(repoPath)
 	if err != nil {
 		return fmt.Errorf("failed to expand repo path: %w", err)
 	}
 
-	// Get config file path
+	// Phase 2: Generate configuration paths
 	configPath := filepath.Join(expandedRepoPath, ".sync-config.json")
 
+	// Phase 3: Display dry-run header and repository actions
 	fmt.Println("🔍 Dry run mode - no changes will be made")
 	fmt.Printf("Would initialize dotfiles repository at: %s\n", expandedRepoPath)
 
@@ -318,9 +322,10 @@ func runInitDryRun() error {
 		fmt.Printf("Would create new repository in %s\n", expandedRepoPath)
 	}
 
+	// Phase 4: Display configuration file creation
 	fmt.Printf("Would create configuration file: %s\n", configPath)
 
-	// Show default configuration values
+	// Phase 5: Display default configuration values
 	fmt.Println("\nDefault configuration settings:")
 	fmt.Printf("- Pull interval: %d seconds\n", config.DefaultPullIntervalSeconds)
 	fmt.Printf("- Debounce interval: %d seconds\n", config.DefaultDebounceSeconds)
@@ -328,5 +333,6 @@ func runInitDryRun() error {
 	fmt.Println("- Auto-sync: enabled")
 	fmt.Println("- Auto-push: enabled")
 
+	// Phase 6: Complete successfully (no operations performed)
 	return nil
 }
