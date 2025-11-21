@@ -619,3 +619,68 @@ func TestInitCmd_DryRunPreventsFileOperations(t *testing.T) {
 		t.Errorf("Dry-run should not create any files, but found entries: %v", entries)
 	}
 }
+
+// TestInitCmd_DryRunExitCodes verifies that dry-run mode returns proper exit codes
+// This test ensures dry-run succeeds with exit code 0 for valid inputs
+func TestInitCmd_DryRunExitCodes(t *testing.T) {
+	tests := []struct {
+		name    string
+		gitURL  string
+		repoPath string
+		wantErr bool
+	}{
+		{
+			name:     "dry-run with new repo succeeds",
+			gitURL:   "",
+			repoPath: "~/dotfiles",
+			wantErr:  false,
+		},
+		{
+			name:     "dry-run with HTTPS URL succeeds",
+			gitURL:   "https://github.com/user/dotfiles.git",
+			repoPath: "~/dotfiles",
+			wantErr:  false,
+		},
+		{
+			name:     "dry-run with SSH URL succeeds",
+			gitURL:   "git@github.com:user/dotfiles.git",
+			repoPath: "~/dotfiles",
+			wantErr:  false,
+		},
+		{
+			name:     "dry-run with custom path succeeds",
+			gitURL:   "",
+			repoPath: "/custom/dotfiles",
+			wantErr:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set up test environment
+			dryRun = true
+			repoPath = tt.repoPath
+			gitURL = tt.gitURL
+
+			// Execute dry-run
+			cmd := &cobra.Command{}
+			args := []string{""}
+			if tt.gitURL != "" {
+				args[0] = tt.gitURL
+			}
+
+			err := runInit(cmd, args)
+
+			// Check exit code expectations
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("Expected dry-run to fail with error, but got nil")
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Expected dry-run to succeed (nil error), but got: %v", err)
+				}
+			}
+		})
+	}
+}
