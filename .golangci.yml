@@ -10,6 +10,8 @@ linters:
     - govet
     - misspell
     - ineffassign
+  disable:
+    - unused  # Disabled due to false positives in test helper functions
 
 linters-settings:
   gofmt:
