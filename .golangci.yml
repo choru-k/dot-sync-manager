@@ -1,3 +1,5 @@
+version: "2"
+
 run:
   timeout: 5m
   tests: true
@@ -5,31 +7,19 @@ run:
 
 linters:
   enable:
-    - govet          # Reports suspicious constructs
-    - misspell       # Finds commonly misspelled English words
-    - ineffassign    # Detects ineffectual assignments
-  disable:
-    - unused         # Disabled - acceptable in test code
-    - unparam        # Disabled - acceptable in test code
-    # Note: errcheck, revive, staticcheck, whitespace disabled for minimal pre-commit set
-    # Additional linters can be run in CI for comprehensive analysis
+    - govet
+    - misspell
+    - ineffassign
 
 linters-settings:
   gofmt:
     simplify: true
 
-  goimports:
-    local-prefixes: github.com/choru-k/dot-sync-manager
-
-  revive:
-    confidence: 0.8
-
 issues:
   exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
-  
-  # Exclude some linters from running on tests files
+
   exclude-rules:
     - path: '.*_test\.go$'
       linters:
@@ -41,7 +31,6 @@ issues:
         - unparam
 
 output:
-  formats:
-    - format: colored-line-number
-      print-issued-lines: true
-      print-linter-name: true
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
