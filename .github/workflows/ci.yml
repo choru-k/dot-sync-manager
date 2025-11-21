@@ -9,6 +9,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      GO_VERSION: "1.25"
+      GOLANGCI_LINT_VERSION: "v2.6.2"
 
     steps:
     - uses: actions/checkout@v4
@@ -16,7 +19,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: 1.23
+        go-version: ${{ env.GO_VERSION }}
 
     - name: Cache Go modules
       uses: actions/cache@v4
@@ -24,21 +27,17 @@ jobs:
         path: |
           ~/.cache/go-build
           ~/go/pkg/mod
-        key: ${{ runner.os }}-go-1.23-${{ hashFiles('**/go.sum') }}
+        key: ${{ runner.os }}-go-${{ env.GO_VERSION }}-${{ hashFiles('**/go.sum') }}
         restore-keys: |
-          ${{ runner.os }}-go-1.23-
+          ${{ runner.os }}-go-${{ env.GO_VERSION }}-
 
     - name: Install dependencies
       run: make deps
 
     - name: Install golangci-lint (CI specific)
       run: |
-        if ! command -v golangci-lint >/dev/null 2>&1; then
-          echo "Installing golangci-lint (latest v2.x)..."
-          go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-        else
-          echo "golangci-lint already installed: $(golangci-lint version)"
-        fi
+        echo "Installing golangci-lint ${GOLANGCI_LINT_VERSION} via install.sh..."
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$(go env GOPATH)/bin" "${GOLANGCI_LINT_VERSION}"
 
     - name: Run code quality checks
       run: make lint
@@ -54,6 +53,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     if: github.event_name == 'push' || github.event_name == 'pull_request'
+    env:
+      GO_VERSION: "1.25"
 
     steps:
     - uses: actions/checkout@v4
@@ -93,6 +94,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     needs: [test, e2e-tests]
+    env:
+      GO_VERSION: "1.25"
 
     steps:
     - uses: actions/checkout@v4
@@ -100,7 +103,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: 1.23
+        go-version: ${{ env.GO_VERSION }}
 
     - name: Cache Go modules
       uses: actions/cache@v4
@@ -108,9 +111,9 @@ jobs:
         path: |
           ~/.cache/go-build
           ~/go/pkg/mod
-        key: ${{ runner.os }}-go-1.23-${{ hashFiles('**/go.sum') }}
+        key: ${{ runner.os }}-go-${{ env.GO_VERSION }}-${{ hashFiles('**/go.sum') }}
         restore-keys: |
-          ${{ runner.os }}-go-1.23-
+          ${{ runner.os }}-go-${{ env.GO_VERSION }}-
 
     - name: Install dependencies
       run: make deps
