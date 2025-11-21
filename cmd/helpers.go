@@ -98,11 +98,14 @@ func isDryRun() bool {
 
 // printDryRun prints a formatted dry-run message
 func printDryRun(writer io.Writer, format string, args ...interface{}) {
+	var msg string
 	if noEmoji {
-		fmt.Fprintf(writer, "DRY-RUN: "+format+"\n", args...)
+		msg = fmt.Sprintf("DRY-RUN: "+format+"\n", args...)
 	} else {
-		fmt.Fprintf(writer, "🔍 "+format+"\n", args...)
+		msg = fmt.Sprintf("🔍 "+format+"\n", args...)
 	}
+	// Ignore write errors for dry-run output (typically to stdout/stderr)
+	_, _ = fmt.Fprint(writer, msg)
 }
 
 // LogDryRunAction logs a dry-run action with optional details

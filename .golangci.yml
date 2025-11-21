@@ -29,6 +29,9 @@ issues:
       linters:
         - unused
         - unparam
+    - path: '^test/scenarios/.*\.go$'
+      linters:
+        - unused
 
 output:
   format: colored-line-number
