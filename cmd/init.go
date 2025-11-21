@@ -20,6 +20,7 @@ var (
 	authorName  string
 	authorEmail string
 	force       bool
+	dryRun      bool
 )
 
 const (
@@ -51,12 +52,18 @@ func init() {
 	initCmd.Flags().StringVar(&authorName, "name", "", "Git author name")
 	initCmd.Flags().StringVar(&authorEmail, "email", "", "Git author email")
 	initCmd.Flags().BoolVar(&force, "force", false, "Force initialization even if directory exists")
+	initCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview what would be done without making changes")
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
 	// Get Git URL from argument or flag
 	if len(args) > 0 {
 		gitURL = args[0]
+	}
+
+	// Handle dry-run mode early before any operations
+	if dryRun {
+		return runInitDryRun()
 	}
 
 	// Expand repo path
@@ -289,4 +296,43 @@ func promptForInput(prompt, defaultValue string) (string, error) {
 		return defaultValue, nil
 	}
 	return input, nil
+}
+
+// runInitDryRun shows what would be done during initialization without actually doing it.
+// This function provides a preview of all operations that would normally be performed,
+// including repository initialization, configuration file creation, and default settings.
+// No file system operations are executed - only informational output is displayed.
+func runInitDryRun() error {
+	// Phase 1: Validate and prepare paths
+	expandedRepoPath, err := util.ExpandPath(repoPath)
+	if err != nil {
+		return fmt.Errorf("failed to expand repo path: %w", err)
+	}
+
+	// Phase 2: Generate configuration paths
+	configPath := filepath.Join(expandedRepoPath, ".sync-config.json")
+
+	// Phase 3: Display dry-run header and repository actions
+	fmt.Println("🔍 Dry run mode - no changes will be made")
+	fmt.Printf("Would initialize dotfiles repository at: %s\n", expandedRepoPath)
+
+	if gitURL != "" {
+		fmt.Printf("Would clone repository from: %s\n", gitURL)
+	} else {
+		fmt.Printf("Would create new repository in %s\n", expandedRepoPath)
+	}
+
+	// Phase 4: Display configuration file creation
+	fmt.Printf("Would create configuration file: %s\n", configPath)
+
+	// Phase 5: Display default configuration values
+	fmt.Println("\nDefault configuration settings:")
+	fmt.Printf("- Pull interval: %d seconds\n", config.DefaultPullIntervalSeconds)
+	fmt.Printf("- Debounce interval: %d seconds\n", config.DefaultDebounceSeconds)
+	fmt.Printf("- Backup retention: %d days\n", config.DefaultKeepBackupsDays)
+	fmt.Println("- Auto-sync: enabled")
+	fmt.Println("- Auto-push: enabled")
+
+	// Phase 6: Complete successfully (no operations performed)
+	return nil
 }
