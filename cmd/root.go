@@ -19,9 +19,10 @@ import (
 )
 
 var (
-	configFile string
-	verbose    bool
-	noEmoji    bool
+	configFile  string
+	verbose     bool
+	noEmoji     bool
+	globalDryRun bool
 
 	configFileMu sync.RWMutex
 )
@@ -50,6 +51,7 @@ func init() {
 	// and using a proper logging framework (like logrus or zap) with configurable levels
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose logging")
 	rootCmd.PersistentFlags().BoolVar(&noEmoji, "no-emoji", false, "Disable emoji output")
+	rootCmd.PersistentFlags().BoolVar(&globalDryRun, "dry-run", false, "Show what would be done without executing")
 }
 
 // getConfig loads configuration using proper discovery logic.

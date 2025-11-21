@@ -88,6 +88,33 @@ func printStatus(emoji, category, message string) {
 	}
 }
 
+// Dry-run helper functions
+
+// isDryRun returns the global dry-run flag value
+func isDryRun() bool {
+	return globalDryRun
+}
+
+// printDryRun prints a formatted dry-run message
+func printDryRun(format string, args ...interface{}) {
+	if noEmoji {
+		fmt.Printf("DRY-RUN: "+format+"\n", args...)
+	} else {
+		fmt.Printf("🔍 "+format+"\n", args...)
+	}
+}
+
+// LogDryRunAction logs a dry-run action with optional details
+func LogDryRunAction(action string, details ...string) {
+	if isDryRun() {
+		msg := action
+		if len(details) > 0 {
+			msg += ": " + strings.Join(details, ", ")
+		}
+		printDryRun(msg)
+	}
+}
+
 // Editor and command handling functions
 
 // validateEditorCommand validates that an editor command is safe to execute.

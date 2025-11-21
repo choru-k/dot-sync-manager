@@ -146,3 +146,65 @@ func TestGetDaemonPID(t *testing.T) {
 		t.Errorf("Expected PID 0, got %d", pid)
 	}
 }
+
+func TestRootCmd_HasDryRunFlag(t *testing.T) {
+	// Test that global --dry-run flag exists and can be accessed
+	flag := rootCmd.PersistentFlags().Lookup("dry-run")
+	if flag == nil {
+		t.Error("Expected global --dry-run flag to be present")
+		return
+	}
+
+	// Test default value is false
+	if flag.DefValue != "false" {
+		t.Errorf("Expected default value 'false', got '%s'", flag.DefValue)
+	}
+}
+
+func TestIsDryRun(t *testing.T) {
+	// Test that isDryRun function returns the global flag value
+	// Initially should be false (default)
+	if isDryRun() != false {
+		t.Errorf("Expected isDryRun() to return false by default, got %v", isDryRun())
+	}
+}
+
+func TestPrintDryRun(t *testing.T) {
+	// Test printDryRun function format and emoji behavior
+	// Save original noEmoji state
+	oldNoEmoji := noEmoji
+	defer func() { noEmoji = oldNoEmoji }()
+
+	// Test with emoji enabled (default)
+	noEmoji = false
+	printDryRun("test message")
+
+	// Test with emoji disabled
+	noEmoji = true
+	printDryRun("test message")
+}
+
+func TestLogDryRunAction(t *testing.T) {
+	// Test LogDryRunAction function with different scenarios
+	// Save original states
+	oldGlobalDryRun := globalDryRun
+	oldNoEmoji := noEmoji
+	defer func() {
+		globalDryRun = oldGlobalDryRun
+		noEmoji = oldNoEmoji
+	}()
+
+	// Test when dry-run is enabled (should print)
+	globalDryRun = true
+	noEmoji = false
+	LogDryRunAction("test action", "detail1", "detail2")
+
+	// Test with emoji disabled
+	globalDryRun = true
+	noEmoji = true
+	LogDryRunAction("test action", "detail1")
+
+	// Test when dry-run is disabled (should not print)
+	globalDryRun = false
+	LogDryRunAction("test action", "detail1") // Should not print
+}
