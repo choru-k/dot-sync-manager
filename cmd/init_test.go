@@ -241,3 +241,48 @@ func TestInitCmd_DryRunFlagRegistration(t *testing.T) {
 		t.Error("Expected --dry-run flag to be registered on init command, but it was not found")
 	}
 }
+
+// TestInitCmd_DryRunFlagParsing verifies that the --dry-run flag can be parsed correctly
+// This test ensures the flag defaults to false and can be set to true
+func TestInitCmd_DryRunFlagParsing(t *testing.T) {
+	tests := []struct {
+		name     string
+		args     []string
+		expected bool
+	}{
+		{
+			name:     "dry-run flag defaults to false when not specified",
+			args:     []string{},
+			expected: false,
+		},
+		{
+			name:     "dry-run flag can be set to true with --dry-run",
+			args:     []string{"--dry-run"},
+			expected: true,
+		},
+		{
+			name:     "dry-run flag can be set to false with --dry-run=false",
+			args:     []string{"--dry-run=false"},
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Reset dryRun to initial state
+			dryRun = false
+
+			// Parse flags
+			initCmd.SetArgs(tt.args)
+			err := initCmd.ParseFlags(tt.args)
+			if err != nil {
+				t.Fatalf("Failed to parse flags: %v", err)
+			}
+
+			// Check if dryRun matches expected value
+			if dryRun != tt.expected {
+				t.Errorf("Expected dryRun to be %v, got %v", tt.expected, dryRun)
+			}
+		})
+	}
+}
