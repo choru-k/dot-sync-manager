@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"net/mail"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -528,5 +529,93 @@ func TestInitCmd_DryRunShowsDefaultValues(t *testing.T) {
 				t.Errorf("Expected output to contain 'Dry run mode', but output was:\n%s", output)
 			}
 		})
+	}
+}
+
+// TestInitCmd_DryRunPreventsFileOperations verifies that dry-run mode doesn't create any files or directories
+// This test ensures the dry-run has no side effects on the filesystem
+func TestInitCmd_DryRunPreventsFileOperations(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Set up test environment with temporary directory
+	testRepoPath := filepath.Join(tmpDir, "test-dotfiles")
+	dryRun = true
+	repoPath = testRepoPath
+	gitURL = "" // New repo scenario
+
+	// Capture initial filesystem state
+	before, err := os.Stat(testRepoPath)
+	if err == nil {
+		t.Fatalf("Test directory should not exist initially, but found: %v", before)
+	}
+
+	// Capture stdout to verify dry-run output
+	oldStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("Failed to create pipe: %v", err)
+	}
+	os.Stdout = w
+	t.Cleanup(func() {
+		os.Stdout = oldStdout
+		_ = r.Close()
+		_ = w.Close()
+	})
+
+	// Read output in a goroutine
+	outputChan := make(chan string, 1)
+	go func() {
+		defer close(outputChan)
+		var buf bytes.Buffer
+		_, _ = buf.ReadFrom(r)
+		outputChan <- buf.String()
+	}()
+
+	// Execute dry-run
+	cmd := &cobra.Command{}
+	args := []string{""}
+	err = runInit(cmd, args)
+
+	// Close the writer to signal the reader
+	_ = w.Close()
+
+	// Dry-run should succeed
+	if err != nil {
+		t.Fatalf("Expected dry-run to succeed, got error: %v", err)
+	}
+
+	// Get captured output
+	output := <-outputChan
+
+	// Verify dry-run output is present
+	if !strings.Contains(output, "Dry run mode") {
+		t.Errorf("Expected output to contain 'Dry run mode', but output was:\n%s", output)
+	}
+
+	// Verify no filesystem changes occurred
+	after, err := os.Stat(testRepoPath)
+	if err == nil {
+		t.Errorf("Dry-run should not create directories, but found: %v", after)
+	}
+
+	// Check that no config file was created
+	configPath := filepath.Join(testRepoPath, ".sync-config.json")
+	if _, err := os.Stat(configPath); err == nil {
+		t.Errorf("Dry-run should not create config file, but found: %s", configPath)
+	}
+
+	// Check that no .syncignore file was created
+	ignorePath := filepath.Join(testRepoPath, ".syncignore")
+	if _, err := os.Stat(ignorePath); err == nil {
+		t.Errorf("Dry-run should not create ignore file, but found: %s", ignorePath)
+	}
+
+	// Verify the temporary directory itself still exists but is empty
+	entries, err := os.ReadDir(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to read temporary directory: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("Dry-run should not create any files, but found entries: %v", entries)
 	}
 }
