@@ -20,6 +20,7 @@ var (
 	authorName  string
 	authorEmail string
 	force       bool
+	dryRun      bool
 )
 
 const (

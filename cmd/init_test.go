@@ -218,3 +218,14 @@ func TestEmailValidation(t *testing.T) {
 		}
 	})
 }
+
+// TestInitCmd_DryRunVariableExists verifies that the dryRun variable exists for the init command
+// This is a structural test to ensure the variable is declared before we attempt to use it
+func TestInitCmd_DryRunVariableExists(t *testing.T) {
+	// This test ensures the dryRun variable is declared in the init command package
+	// We verify this by attempting to reference the variable (which will fail compilation if not declared)
+
+	// The variable should be accessible at package level
+	// If the dryRun variable doesn't exist, this will cause a compilation error
+	_ = dryRun // This will fail to compile if dryRun variable doesn't exist
+}
