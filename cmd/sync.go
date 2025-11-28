@@ -57,7 +57,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	if isDryRun() {
-		fmt.Println("🔍 Dry run mode - no changes will be made")
+		PrintDryRun("Dry run mode - no changes will be made")
 
 		// Open the worktree and get status
 		worktree, err := gitMgr.Repo().Worktree()
