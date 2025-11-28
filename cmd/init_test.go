@@ -223,26 +223,24 @@ func TestEmailValidation(t *testing.T) {
 	})
 }
 
-// TestInitCmd_DryRunVariableExists verifies that the dryRun variable exists for the init command
-// This is a structural test to ensure the variable is declared before we attempt to use it
+// TestInitCmd_DryRunVariableExists verifies that the global dry-run flag is accessible
+// This structural test ensures the global flag system is properly integrated
 func TestInitCmd_DryRunVariableExists(t *testing.T) {
-	// This test ensures the dryRun variable is declared in the init command package
-	// We verify this by attempting to reference the variable (which will fail compilation if not declared)
-
-	// The variable should be accessible at package level
-	// If the dryRun variable doesn't exist, this will cause a compilation error
-	_ = dryRun // This will fail to compile if dryRun variable doesn't exist
+	// The init command now uses the global dry-run flag system
+	// We verify this by checking that isDryRun() is accessible
+	_ = isDryRun() // This will fail to compile if isDryRun() doesn't exist
 }
 
-// TestInitCmd_DryRunFlagRegistration verifies that the --dry-run flag is registered on the init command
-// This test ensures the flag exists and can be looked up in the command's flag set
+// TestInitCmd_DryRunFlagRegistration verifies that the --dry-run flag is inherited from root command
+// This test ensures the persistent flag from rootCmd is accessible to init command
 func TestInitCmd_DryRunFlagRegistration(t *testing.T) {
-	// Look up the --dry-run flag in the init command's flag set
-	flag := initCmd.Flags().Lookup("dry-run")
+	// The --dry-run flag is a persistent flag on rootCmd, inherited by all subcommands
+	// Check if it's accessible through the init command (includes inherited flags)
+	flag := rootCmd.PersistentFlags().Lookup("dry-run")
 
-	// The flag should exist
+	// The flag should exist on rootCmd
 	if flag == nil {
-		t.Error("Expected --dry-run flag to be registered on init command, but it was not found")
+		t.Error("Expected --dry-run persistent flag to be registered on root command, but it was not found")
 	}
 }
 
@@ -273,19 +271,23 @@ func TestInitCmd_DryRunFlagParsing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Reset dryRun to initial state
-			dryRun = false
+			// Reset globalDryRun to initial state with proper cleanup
+			oldDryRun := globalDryRun
+			globalDryRun = false
+			t.Cleanup(func() {
+				globalDryRun = oldDryRun
+			})
 
-			// Parse flags
-			initCmd.SetArgs(tt.args)
-			err := initCmd.ParseFlags(tt.args)
+			// Parse flags on rootCmd (persistent flags)
+			rootCmd.SetArgs(append([]string{"init"}, tt.args...))
+			err := rootCmd.ParseFlags(append([]string{"init"}, tt.args...))
 			if err != nil {
 				t.Fatalf("Failed to parse flags: %v", err)
 			}
 
-			// Check if dryRun matches expected value
-			if dryRun != tt.expected {
-				t.Errorf("Expected dryRun to be %v, got %v", tt.expected, dryRun)
+			// Check if globalDryRun matches expected value
+			if globalDryRun != tt.expected {
+				t.Errorf("Expected globalDryRun to be %v, got %v", tt.expected, globalDryRun)
 			}
 		})
 	}
@@ -313,9 +315,26 @@ func TestInitCmd_DryRunShowsCloneLocation(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set up test environment
-			dryRun = true
+			// Set up test environment with proper cleanup
+			oldDryRun := globalDryRun
+			globalDryRun = true
+			t.Cleanup(func() {
+				globalDryRun = oldDryRun
+			})
+
+			oldRepoPath := repoPath
 			repoPath = t.TempDir()
+			t.Cleanup(func() {
+				repoPath = oldRepoPath
+			})
+
+			// Use --force to bypass directory existence validation
+			// (these tests are testing dry-run output, not validation logic)
+			oldForce := force
+			force = true
+			t.Cleanup(func() {
+				force = oldForce
+			})
 
 			// Capture stdout using os.Pipe
 			oldStdout := os.Stdout
@@ -343,8 +362,13 @@ func TestInitCmd_DryRunShowsCloneLocation(t *testing.T) {
 			cmd := &cobra.Command{}
 			args := []string{tt.gitURL}
 
-			// Set gitURL before calling runInit
+			// Set gitURL before calling runInit with cleanup
+			oldGitURL := gitURL
 			gitURL = tt.gitURL
+			t.Cleanup(func() {
+				gitURL = oldGitURL
+			})
+
 			err = runInit(cmd, args)
 
 			// Close the writer to signal the reader
@@ -393,9 +417,26 @@ func TestInitCmd_DryRunShowsConfigPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set up test environment
-			dryRun = true
+			// Set up test environment with proper cleanup
+			oldDryRun := globalDryRun
+			globalDryRun = true
+			t.Cleanup(func() {
+				globalDryRun = oldDryRun
+			})
+
+			oldRepoPath := repoPath
 			repoPath = tt.repoPath
+			t.Cleanup(func() {
+				repoPath = oldRepoPath
+			})
+
+			// Use --force to bypass directory existence validation
+			// (these tests are testing dry-run output, not validation logic)
+			oldForce := force
+			force = true
+			t.Cleanup(func() {
+				force = oldForce
+			})
 
 			// Capture stdout using os.Pipe
 			oldStdout := os.Stdout
@@ -422,7 +463,13 @@ func TestInitCmd_DryRunShowsConfigPath(t *testing.T) {
 			// Call runInit directly with our dry-run setup
 			cmd := &cobra.Command{}
 			args := []string{""} // Empty gitURL for new repo
+
+			oldGitURL := gitURL
 			gitURL = "" // Clear gitURL to test new repo scenario
+			t.Cleanup(func() {
+				gitURL = oldGitURL
+			})
+
 			err = runInit(cmd, args)
 
 			// Close the writer to signal the reader
@@ -477,10 +524,32 @@ func TestInitCmd_DryRunShowsDefaultValues(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set up test environment
-			dryRun = true
+			// Set up test environment with proper cleanup
+			oldDryRun := globalDryRun
+			globalDryRun = true
+			t.Cleanup(func() {
+				globalDryRun = oldDryRun
+			})
+
+			oldRepoPath := repoPath
 			repoPath = tt.repoPath
+			t.Cleanup(func() {
+				repoPath = oldRepoPath
+			})
+
+			oldGitURL := gitURL
 			gitURL = "" // Use empty gitURL for new repo scenario
+			t.Cleanup(func() {
+				gitURL = oldGitURL
+			})
+
+			// Use --force to bypass directory existence validation
+			// (these tests are testing dry-run output, not validation logic)
+			oldForce := force
+			force = true
+			t.Cleanup(func() {
+				force = oldForce
+			})
 
 			// Capture stdout using os.Pipe
 			oldStdout := os.Stdout
@@ -538,11 +607,26 @@ func TestInitCmd_DryRunShowsDefaultValues(t *testing.T) {
 func TestInitCmd_DryRunPreventsFileOperations(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// Set up test environment with temporary directory
+	// Set up test environment with temporary directory and proper cleanup
 	testRepoPath := filepath.Join(tmpDir, "test-dotfiles")
-	dryRun = true
+
+	oldDryRun := globalDryRun
+	globalDryRun = true
+	t.Cleanup(func() {
+		globalDryRun = oldDryRun
+	})
+
+	oldRepoPath := repoPath
 	repoPath = testRepoPath
+	t.Cleanup(func() {
+		repoPath = oldRepoPath
+	})
+
+	oldGitURL := gitURL
 	gitURL = "" // New repo scenario
+	t.Cleanup(func() {
+		gitURL = oldGitURL
+	})
 
 	// Capture initial filesystem state
 	before, err := os.Stat(testRepoPath)
@@ -664,10 +748,32 @@ func TestInitCmd_DryRunExitCodes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set up test environment
-			dryRun = true
+			// Set up test environment with proper cleanup
+			oldDryRun := globalDryRun
+			globalDryRun = true
+			t.Cleanup(func() {
+				globalDryRun = oldDryRun
+			})
+
+			oldRepoPath := repoPath
 			repoPath = tt.repoPath
+			t.Cleanup(func() {
+				repoPath = oldRepoPath
+			})
+
+			oldGitURL := gitURL
 			gitURL = tt.gitURL
+			t.Cleanup(func() {
+				gitURL = oldGitURL
+			})
+
+			// Use --force to bypass directory existence validation
+			// (these tests are testing dry-run exit codes, not validation logic)
+			oldForce := force
+			force = true
+			t.Cleanup(func() {
+				force = oldForce
+			})
 
 			// Execute dry-run
 			cmd := &cobra.Command{}
@@ -704,11 +810,30 @@ func TestInitCmd_DryRunForceInteraction(t *testing.T) {
 		t.Fatalf("Failed to create test directory: %v", err)
 	}
 
-	// Set up test environment with dry-run + force
-	dryRun = true
+	// Set up test environment with dry-run + force and proper cleanup
+	oldDryRun := globalDryRun
+	globalDryRun = true
+	t.Cleanup(func() {
+		globalDryRun = oldDryRun
+	})
+
+	oldForce := force
 	force = true
+	t.Cleanup(func() {
+		force = oldForce
+	})
+
+	oldRepoPath := repoPath
 	repoPath = testRepoPath
+	t.Cleanup(func() {
+		repoPath = oldRepoPath
+	})
+
+	oldGitURL := gitURL
 	gitURL = ""
+	t.Cleanup(func() {
+		gitURL = oldGitURL
+	})
 
 	// Capture stdout to verify dry-run output
 	oldStdout := os.Stdout
@@ -778,10 +903,32 @@ func TestInitCmd_DryRunErrorHandling(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set up test environment
-			dryRun = true
+			// Set up test environment with proper cleanup
+			oldDryRun := globalDryRun
+			globalDryRun = true
+			t.Cleanup(func() {
+				globalDryRun = oldDryRun
+			})
+
+			oldRepoPath := repoPath
 			repoPath = tt.repoPath
+			t.Cleanup(func() {
+				repoPath = oldRepoPath
+			})
+
+			oldGitURL := gitURL
 			gitURL = ""
+			t.Cleanup(func() {
+				gitURL = oldGitURL
+			})
+
+			// Use --force to bypass directory existence validation
+			// (these tests are testing dry-run error handling, not validation logic)
+			oldForce := force
+			force = true
+			t.Cleanup(func() {
+				force = oldForce
+			})
 
 			// Capture stdout to verify dry-run still produces output before any error
 			oldStdout := os.Stdout
@@ -833,5 +980,54 @@ func TestInitCmd_DryRunErrorHandling(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestInitDryRunShouldValidateDirectories verifies that dry-run mode performs directory validation
+// This test ensures dry-run doesn't bypass validation checks that normal execution would perform
+func TestInitDryRunShouldValidateDirectories(t *testing.T) {
+	// Create existing directory with content to trigger validation error
+	dir := t.TempDir()
+	existingFile := filepath.Join(dir, "existing.txt")
+	if err := os.WriteFile(existingFile, []byte("content"), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Set dry-run mode using proper cleanup pattern
+	oldDryRun := globalDryRun
+	globalDryRun = true
+	t.Cleanup(func() {
+		globalDryRun = oldDryRun
+	})
+
+	// Set other package variables with cleanup
+	oldRepoPath := repoPath
+	repoPath = dir
+	t.Cleanup(func() {
+		repoPath = oldRepoPath
+	})
+
+	oldForce := force
+	force = false
+	t.Cleanup(func() {
+		force = oldForce
+	})
+
+	// Attempt dry-run init in existing directory (should validate)
+	cmd := &cobra.Command{}
+	err := runInit(cmd, []string{})
+
+	// Should fail with validation error, not silently succeed
+	if err == nil {
+		t.Error("Expected dry-run to fail with validation error, but got nil error")
+	} else {
+		// Verify error message mentions directory exists
+		if !strings.Contains(err.Error(), "already exists") {
+			t.Errorf("Expected error to mention 'already exists', but got: %v", err)
+		}
+		// Verify error suggests using --force flag
+		if !strings.Contains(err.Error(), "--force") {
+			t.Errorf("Expected error to suggest '--force' flag, but got: %v", err)
+		}
 	}
 }
