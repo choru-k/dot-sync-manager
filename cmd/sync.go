@@ -16,6 +16,22 @@ const (
 	syncTimeout = 5 * time.Minute
 )
 
+// displaySyncSummary shows summary statistics for dry-run mode
+func displaySyncSummary(addedCount, modifiedCount, deletedCount int) {
+	totalFiles := addedCount + modifiedCount + deletedCount
+	fmt.Println("\nSummary:")
+	fmt.Printf("  %d files total\n", totalFiles)
+	if addedCount > 0 {
+		fmt.Printf("  %d added\n", addedCount)
+	}
+	if modifiedCount > 0 {
+		fmt.Printf("  %d modified\n", modifiedCount)
+	}
+	if deletedCount > 0 {
+		fmt.Printf("  %d deleted\n", deletedCount)
+	}
+}
+
 // categorizeFilesByOperation groups files by their git operation type
 func categorizeFilesByOperation(status git.Status) (added, modified, deleted []string) {
 	for path, fileStatus := range status {
@@ -142,6 +158,9 @@ func runSync(cmd *cobra.Command, args []string) error {
 		commitMessage := gitmanager.BuildAutoCommitMessage(time.Now(), allChangedFiles)
 		fmt.Println("\nWould create commit:")
 		fmt.Println(commitMessage)
+
+		// Display statistics summary
+		displaySyncSummary(len(addedFiles), len(modifiedFiles), len(deletedFiles))
 
 		if cfg.Git.RemoteURL != "" {
 			fmt.Println("\n📤 Would push to remote repository")

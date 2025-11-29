@@ -202,3 +202,71 @@ func TestSyncCmd_DryRunShowsCommitMessage(t *testing.T) {
 	assert.Contains(t, output, "Auto-sync:", "Should show commit message format")
 	assert.Contains(t, output, ".bashrc", "Should list changed file in message")
 }
+
+func TestSyncCmd_DryRunShowsStatistics(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoPath := filepath.Join(tmpDir, "test-repo")
+	setupTestRepo(t, repoPath)
+
+	// Create config file
+	configPath := filepath.Join(repoPath, ".sync-config.json")
+	testConfig, err := config.DefaultConfig()
+	require.NoError(t, err)
+
+	testConfig.Git.RepoPath = repoPath
+	testConfig.Git.AuthorName = "Test User"
+	testConfig.Git.AuthorEmail = "test@example.com"
+	testConfig.Git.AuthType = "none"
+	testConfig.ConfigPath = configPath
+
+	err = testConfig.SaveToFile(configPath)
+	require.NoError(t, err)
+
+	// Set config file for this test
+	oldConfigFile := getConfigFile()
+	setConfigFile(configPath)
+	t.Cleanup(func() {
+		setConfigFile(oldConfigFile)
+	})
+
+	// Create multiple files of different types
+	addedFile1 := filepath.Join(repoPath, "new1.txt")
+	addedFile2 := filepath.Join(repoPath, "new2.txt")
+	modifiedFile := filepath.Join(repoPath, ".bashrc")
+
+	require.NoError(t, os.WriteFile(addedFile1, []byte("content"), 0644))
+	require.NoError(t, os.WriteFile(addedFile2, []byte("content"), 0644))
+	require.NoError(t, os.WriteFile(modifiedFile, []byte("modified"), 0644))
+
+	// Setup dry-run
+	oldDryRun := globalDryRun
+	globalDryRun = true
+	t.Cleanup(func() { globalDryRun = oldDryRun })
+
+	// Capture output
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	t.Cleanup(func() { os.Stdout = oldStdout })
+
+	outputChan := make(chan string, 1)
+	go func() {
+		defer close(outputChan)
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		outputChan <- buf.String()
+	}()
+
+	cmd := &cobra.Command{}
+	err = runSync(cmd, []string{})
+
+	_ = w.Close()
+	output := <-outputChan
+
+	// Assertions: Should show summary statistics
+	assert.NoError(t, err)
+	assert.Contains(t, output, "Summary:", "Should show summary section")
+	assert.Contains(t, output, "4 files", "Should show total file count")
+	assert.Contains(t, output, "3 added", "Should show added count")
+	assert.Contains(t, output, "1 modified", "Should show modified count")
+}
