@@ -164,6 +164,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 		if cfg.Git.RemoteURL != "" {
 			fmt.Println("\n📤 Would push to remote repository")
+			fmt.Printf("   Remote: %s\n", cfg.Git.RemoteURL)
 		}
 		return nil
 	}
