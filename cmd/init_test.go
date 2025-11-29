@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"io"
 	"net/mail"
 	"os"
 	"path/filepath"
@@ -1028,5 +1029,74 @@ func TestInitDryRunShouldValidateDirectories(t *testing.T) {
 		if !strings.Contains(err.Error(), "--force") {
 			t.Errorf("Expected error to suggest '--force' flag, but got: %v", err)
 		}
+	}
+}
+
+// TestInitDryRunForceShowsDeletion verifies that dry-run with --force
+// shows a warning about directory deletion without actually deleting
+func TestInitDryRunForceShowsDeletion(t *testing.T) {
+	// Create existing directory with content
+	dir := t.TempDir()
+	existingFile := filepath.Join(dir, "existing.txt")
+	if err := os.WriteFile(existingFile, []byte("content"), defaultFilePerms); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Set dry-run mode using proper cleanup pattern
+	oldDryRun := globalDryRun
+	globalDryRun = true
+	t.Cleanup(func() {
+		globalDryRun = oldDryRun
+	})
+
+	// Set other package variables with cleanup
+	oldRepoPath := repoPath
+	repoPath = dir
+	t.Cleanup(func() {
+		repoPath = oldRepoPath
+	})
+
+	// Enable force flag to allow deletion preview
+	oldForce := force
+	force = true
+	t.Cleanup(func() {
+		force = oldForce
+	})
+
+	// Capture stdout to verify warning message
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	t.Cleanup(func() {
+		os.Stdout = oldStdout
+	})
+
+	// Run dry-run init with force on existing directory
+	cmd := &cobra.Command{}
+	err := runInit(cmd, []string{})
+
+	// Close writer and read output
+	if closeErr := w.Close(); closeErr != nil {
+		t.Fatalf("Failed to close pipe writer: %v", closeErr)
+	}
+	var buf bytes.Buffer
+	if _, copyErr := io.Copy(&buf, r); copyErr != nil {
+		t.Fatalf("Failed to read output: %v", copyErr)
+	}
+	output := buf.String()
+
+	// Should succeed (dry-run doesn't actually delete)
+	if err != nil {
+		t.Errorf("Expected dry-run with force to succeed, but got error: %v", err)
+	}
+
+	// Verify warning message about deletion
+	if !strings.Contains(output, "Would delete") {
+		t.Errorf("Expected output to warn about deletion, but got: %s", output)
+	}
+
+	// Verify directory still exists (dry-run doesn't actually delete)
+	if _, statErr := os.Stat(existingFile); os.IsNotExist(statErr) {
+		t.Error("Expected file to still exist after dry-run, but it was deleted")
 	}
 }

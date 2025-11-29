@@ -84,11 +84,14 @@ Options:
   - Use a different --path
   - Remove the existing directory first`, repoPath)
 		}
+	} else if !os.IsNotExist(statErr) {
+		// Surface permission errors and other non-ENOENT failures
+		return fmt.Errorf("failed to check directory %s: %w", repoPath, statErr)
 	}
 
 	// Handle dry-run mode early before any destructive operations
 	if isDryRun() {
-		return runInitDryRun()
+		return runInitDryRun(dirExists)
 	}
 
 	// Handle --force directory removal (only in non-dry-run mode)
@@ -307,18 +310,21 @@ func promptForInput(prompt, defaultValue string) (string, error) {
 // This function provides a preview of all operations that would normally be performed,
 // including repository initialization, configuration file creation, and default settings.
 // No file system operations are executed - only informational output is displayed.
-func runInitDryRun() error {
-	// Phase 1: Validate and prepare paths
-	expandedRepoPath, err := util.ExpandPath(repoPath)
-	if err != nil {
-		return fmt.Errorf("failed to expand repo path: %w", err)
-	}
+func runInitDryRun(dirExists bool) error {
+	// Phase 1: Validate and prepare paths (repoPath already expanded by caller)
+	expandedRepoPath := repoPath
 
 	// Phase 2: Generate configuration paths
 	configPath := filepath.Join(expandedRepoPath, ".sync-config.json")
 
 	// Phase 3: Display dry-run header and repository actions
 	PrintDryRun("Dry run mode - no changes will be made")
+
+	// Warn about --force deletion if directory exists
+	if dirExists && force {
+		fmt.Printf("⚠️  Would delete existing directory: %s\n", expandedRepoPath)
+	}
+
 	fmt.Printf("Would initialize dotfiles repository at: %s\n", expandedRepoPath)
 
 	if gitURL != "" {
