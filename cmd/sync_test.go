@@ -348,3 +348,71 @@ func TestSyncCmd_DryRunNoFilesystemChanges(t *testing.T) {
 	finalCommitCount := string(output)
 	assert.Equal(t, initialCommitCount, finalCommitCount, "No new commits should be created")
 }
+
+func TestSyncCmd_DryRunHandlesCleanRepository(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoPath := filepath.Join(tmpDir, "test-repo")
+	setupTestRepo(t, repoPath)
+
+	// Create config file
+	configPath := filepath.Join(repoPath, ".sync-config.json")
+	testConfig, err := config.DefaultConfig()
+	require.NoError(t, err)
+
+	testConfig.Git.RepoPath = repoPath
+	testConfig.Git.AuthorName = "Test User"
+	testConfig.Git.AuthorEmail = "test@example.com"
+	testConfig.Git.AuthType = "none"
+	testConfig.ConfigPath = configPath
+
+	err = testConfig.SaveToFile(configPath)
+	require.NoError(t, err)
+
+	// Commit the config file to ensure clean repository
+	gitCmd := exec.Command("git", "add", ".sync-config.json")
+	gitCmd.Dir = repoPath
+	require.NoError(t, gitCmd.Run())
+
+	gitCmd = exec.Command("git", "commit", "-m", "Add config")
+	gitCmd.Dir = repoPath
+	require.NoError(t, gitCmd.Run())
+
+	// Set config file for this test
+	oldConfigFile := getConfigFile()
+	setConfigFile(configPath)
+	t.Cleanup(func() {
+		setConfigFile(oldConfigFile)
+	})
+
+	// Don't create any changes - repository is clean
+
+	// Setup dry-run mode
+	oldDryRun := globalDryRun
+	globalDryRun = true
+	t.Cleanup(func() { globalDryRun = oldDryRun })
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	t.Cleanup(func() { os.Stdout = oldStdout })
+
+	outputChan := make(chan string, 1)
+	go func() {
+		defer close(outputChan)
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		outputChan <- buf.String()
+	}()
+
+	// Execute sync
+	cmd := &cobra.Command{}
+	err = runSync(cmd, []string{})
+
+	_ = w.Close()
+	output := <-outputChan
+
+	// Assertions: Should handle clean repo gracefully
+	assert.NoError(t, err, "Should not return error for clean repo")
+	assert.Contains(t, output, "No changes to sync", "Should show no changes message")
+}
