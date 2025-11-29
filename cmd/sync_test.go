@@ -322,15 +322,12 @@ func TestSyncCmd_DryRunNoFilesystemChanges(t *testing.T) {
 
 	// Suppress output for this test
 	oldStdout := os.Stdout
-	os.Stdout = nil
+	os.Stdout = os.NewFile(0, os.DevNull)
 	t.Cleanup(func() { os.Stdout = oldStdout })
 
 	// Execute sync
 	cobraCmd := &cobra.Command{}
 	err = runSync(cobraCmd, []string{})
-
-	// Restore stdout
-	os.Stdout = oldStdout
 
 	// Assertions: No filesystem changes
 	assert.NoError(t, err)
@@ -348,6 +345,12 @@ func TestSyncCmd_DryRunNoFilesystemChanges(t *testing.T) {
 	require.NoError(t, err)
 	finalCommitCount := string(output)
 	assert.Equal(t, initialCommitCount, finalCommitCount, "No new commits should be created")
+
+	// Verify staging area remains clean
+	cmd = exec.Command("git", "diff", "--staged", "--quiet")
+	cmd.Dir = repoPath
+	err = cmd.Run()
+	assert.NoError(t, err, "Staging area should remain clean")
 }
 
 func TestSyncCmd_DryRunHandlesCleanRepository(t *testing.T) {
@@ -702,4 +705,81 @@ func TestSyncCmd_DryRunRespectsGitignore(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotContains(t, output, "debug.log", "Ignored file should not appear in dry-run output")
 	assert.Contains(t, output, "data.txt", "Non-ignored file should appear in dry-run output")
+}
+
+func TestSyncCmd_DryRunShowsDeletedFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoPath := filepath.Join(tmpDir, "test-repo")
+	setupTestRepo(t, repoPath)
+
+	// Create and commit a file that will be deleted
+	deletedFile := filepath.Join(repoPath, "to-delete.txt")
+	err := os.WriteFile(deletedFile, []byte("will be deleted"), 0o644)
+	require.NoError(t, err)
+
+	cmd := exec.Command("git", "add", "to-delete.txt")
+	cmd.Dir = repoPath
+	err = cmd.Run()
+	require.NoError(t, err)
+
+	cmd = exec.Command("git", "commit", "-m", "Add file to delete")
+	cmd.Dir = repoPath
+	err = cmd.Run()
+	require.NoError(t, err)
+
+	// Delete the file
+	err = os.Remove(deletedFile)
+	require.NoError(t, err)
+
+	// Create config file
+	configPath := filepath.Join(repoPath, ".sync-config.json")
+	testConfig, err := config.DefaultConfig()
+	require.NoError(t, err)
+	testConfig.Git.RepoPath = repoPath
+	testConfig.Git.AuthorName = "Test User"
+	testConfig.Git.AuthorEmail = "test@example.com"
+	testConfig.Git.AuthType = "none"
+	testConfig.Git.RemoteURL = ""
+	testConfig.ConfigPath = configPath
+
+	err = testConfig.SaveToFile(configPath)
+	require.NoError(t, err)
+
+	setConfigFile(configPath)
+
+	// Enable dry-run mode
+	oldDryRun := globalDryRun
+	globalDryRun = true
+	t.Cleanup(func() { globalDryRun = oldDryRun })
+
+	// Capture stdout
+	r, w, _ := os.Pipe()
+	oldStdout := os.Stdout
+	os.Stdout = w
+	t.Cleanup(func() { os.Stdout = oldStdout })
+
+	outputChan := make(chan string, 1)
+	go func() {
+		defer close(outputChan)
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		outputChan <- buf.String()
+	}()
+
+	// Execute sync
+	cobraCmd := &cobra.Command{}
+	err = runSync(cobraCmd, []string{})
+
+	_ = w.Close()
+	output := <-outputChan
+
+	// Assertions: Deleted files should be shown
+	assert.NoError(t, err)
+	assert.Contains(t, output, "Would delete:", "Should show deletion section")
+	assert.Contains(t, output, "to-delete.txt", "Deleted file should appear in output")
+	assert.Contains(t, output, "1 deleted", "Summary should show 1 deleted file")
+
+	// Verify file is still deleted (dry-run shouldn't restore it)
+	_, err = os.Stat(deletedFile)
+	assert.True(t, os.IsNotExist(err), "Deleted file should remain deleted after dry-run")
 }

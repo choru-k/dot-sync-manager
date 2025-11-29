@@ -49,6 +49,42 @@ func NewGitManager(ctx context.Context, cfg Config) (*GitManager, error) {
 	return manager, nil
 }
 
+// NewGitManagerReadOnly opens an existing repository in read-only mode without
+// any mutations (no bootstrap, no remote config, no clone/init).
+// Returns an error if the repository does not exist.
+// Use this for dry-run operations that need to inspect repository state without changes.
+func NewGitManagerReadOnly(ctx context.Context, cfg Config) (*GitManager, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	// Normalize config (apply defaults) before validation
+	cfg.normalize()
+
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
+
+	auth, err := cfg.authMethod()
+	if err != nil {
+		return nil, err
+	}
+
+	// Open existing repository without any mutations
+	repo, err := git.PlainOpen(cfg.RepoPath)
+	if err != nil {
+		return nil, fmt.Errorf("gitmanager: open repo (read-only): %w", err)
+	}
+
+	return &GitManager{
+		cfg:  cfg,
+		auth: auth,
+		repo: repo,
+	}, nil
+}
+
 // bootstrapRepo ensures the working tree exists and is connected to the configured remote.
 func (gm *GitManager) bootstrapRepo(ctx context.Context) error {
 	select {

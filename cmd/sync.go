@@ -45,7 +45,7 @@ func categorizeFilesByOperation(status git.Status) (added, modified, deleted []s
 		case fileStatus.Worktree == git.Untracked:
 			// Untracked files are new additions
 			added = append(added, path)
-		case fileStatus.Worktree == git.Added || fileStatus.Staging == git.Added:
+		case fileStatus.Staging == git.Added:
 			added = append(added, path)
 		case fileStatus.Worktree == git.Deleted || fileStatus.Staging == git.Deleted:
 			deleted = append(deleted, path)
@@ -97,9 +97,20 @@ func runSync(cmd *cobra.Command, args []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), syncTimeout)
 	defer cancel()
 
-	gitMgr, err := gitmanager.NewGitManager(ctx, gmCfg)
-	if err != nil {
-		return fmt.Errorf("failed to prepare git repository: %w\nHint: Check that the repository path exists and is a valid git repository\nRun 'dsm validate-config' to verify your configuration", err)
+	var gitMgr *gitmanager.GitManager
+
+	if isDryRun() {
+		// Use read-only manager for dry-run - no repo mutations
+		gitMgr, err = gitmanager.NewGitManagerReadOnly(ctx, gmCfg)
+		if err != nil {
+			return fmt.Errorf("failed to open git repository: %w\nHint: Dry-run requires an existing repository\nRun 'dsm validate-config' to verify your configuration", err)
+		}
+	} else {
+		// Use standard manager for actual sync - allows bootstrap
+		gitMgr, err = gitmanager.NewGitManager(ctx, gmCfg)
+		if err != nil {
+			return fmt.Errorf("failed to prepare git repository: %w\nHint: Check that the repository path exists and is a valid git repository\nRun 'dsm validate-config' to verify your configuration", err)
+		}
 	}
 
 	if isDryRun() {
@@ -155,7 +166,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		allChangedFiles = append(allChangedFiles, deletedFiles...)
 		sort.Strings(allChangedFiles)
 
-		commitMessage := gitmanager.BuildAutoCommitMessage(time.Now(), allChangedFiles)
+		commitMessage := gitmanager.BuildAutoCommitMessage(timeNow(), allChangedFiles)
 		fmt.Println("\nWould create commit:")
 		fmt.Println(commitMessage)
 
