@@ -169,23 +169,37 @@ func runSync(cmd *cobra.Command, args []string) error {
 		// Categorize files by operation type
 		addedFiles, modifiedFiles, deletedFiles := categorizeFilesByOperation(gitMgr.Repo(), status)
 
-		// Display files by operation type
+		// Display files by operation type with consistent spacing
+		// First section gets no leading newline, subsequent sections do
+		firstSection := true
+
 		if len(addedFiles) > 0 {
-			fmt.Println("\nWould add:")
+			if !firstSection {
+				fmt.Println()
+			}
+			fmt.Println("Would add:")
 			for _, path := range addedFiles {
 				fmt.Printf(" • %s\n", path)
 			}
+			firstSection = false
 		}
 
 		if len(modifiedFiles) > 0 {
-			fmt.Println("\nWould modify:")
+			if !firstSection {
+				fmt.Println()
+			}
+			fmt.Println("Would modify:")
 			for _, path := range modifiedFiles {
 				fmt.Printf(" • %s\n", path)
 			}
+			firstSection = false
 		}
 
 		if len(deletedFiles) > 0 {
-			fmt.Println("\nWould delete:")
+			if !firstSection {
+				fmt.Println()
+			}
+			fmt.Println("Would delete:")
 			for _, path := range deletedFiles {
 				fmt.Printf(" • %s\n", path)
 			}

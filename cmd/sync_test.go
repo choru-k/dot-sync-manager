@@ -736,3 +736,66 @@ func TestSyncCmd_DryRunEdgeCase_DeletedThenRecreated(t *testing.T) {
 			"DU file should NOT be in added section (git add . treats it as modification)")
 	}
 }
+
+// TestSyncCmd_DryRunEdgeCase_StagedThenModified tests the AM (Added-Modified) edge case
+// A file is staged for addition, then modified again in the worktree.
+// Expected: git add . updates staging with latest content, file is still categorized as "added"
+func TestSyncCmd_DryRunEdgeCase_StagedThenModified(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoPath := filepath.Join(tmpDir, "test-repo")
+	setupTestRepo(t, repoPath)
+	setupTestConfig(t, repoPath, "")
+
+	// Create a new file, stage it, then modify it
+	testFile := filepath.Join(repoPath, "staged-modified.txt")
+	err := os.WriteFile(testFile, []byte("version 1"), testFilePerms)
+	require.NoError(t, err)
+
+	cmd := exec.Command("git", "add", "staged-modified.txt")
+	cmd.Dir = repoPath
+	require.NoError(t, cmd.Run(), "git add should succeed")
+
+	// Modify the file again (now it's AM: Added in staging, Modified in worktree)
+	err = os.WriteFile(testFile, []byte("version 2"), testFilePerms)
+	require.NoError(t, err)
+
+	// Setup dry-run mode
+	oldDryRun := globalDryRun
+	globalDryRun = true
+	t.Cleanup(func() { globalDryRun = oldDryRun })
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	t.Cleanup(func() { os.Stdout = oldStdout })
+
+	outputChan := make(chan string, 1)
+	go func() {
+		defer close(outputChan)
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		outputChan <- buf.String()
+	}()
+
+	// Execute sync
+	cobraCmd := &cobra.Command{}
+	err = runSync(cobraCmd, []string{})
+
+	_ = w.Close()
+	output := <-outputChan
+
+	// Assertions: File should appear in "added" section
+	// git add . will update staging with latest content, but file is still new (added)
+	assert.NoError(t, err)
+	assert.Contains(t, output, "Would add:", "AM file should be in added section")
+	assert.Contains(t, output, "staged-modified.txt", "AM file should appear in output")
+
+	// Verify it's NOT in modified or deleted sections
+	assert.NotContains(t, output, "Would modify:", "AM file should not be in modified section")
+	if strings.Contains(output, "Would delete:") {
+		deletedSection := output[strings.Index(output, "Would delete:"):]
+		assert.NotContains(t, deletedSection, "staged-modified.txt",
+			"AM file should NOT be in deleted section")
+	}
+}

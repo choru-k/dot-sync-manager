@@ -318,6 +318,10 @@ func (gm *GitManager) PullWithStash(ctx context.Context) error {
 }
 
 // BuildAutoCommitMessage formats the auto-sync commit message.
+// Exported to support dry-run preview in cmd/sync.go, which needs to display
+// the exact commit message that would be created without actually committing.
+// The function ensures the preview matches the actual sync behavior by using
+// the same message format and file sorting logic.
 func BuildAutoCommitMessage(when time.Time, files []string) string {
 	var builder strings.Builder
 	builder.WriteString(fmt.Sprintf("Auto-sync: %s\n\nChanged files:\n", when.Format("2006-01-02 15:04:05")))
