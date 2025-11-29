@@ -131,6 +131,18 @@ func runSync(cmd *cobra.Command, args []string) error {
 			}
 		}
 
+		// Build and display commit message preview
+		// Combine all changed files for commit message
+		allChangedFiles := make([]string, 0, len(addedFiles)+len(modifiedFiles)+len(deletedFiles))
+		allChangedFiles = append(allChangedFiles, addedFiles...)
+		allChangedFiles = append(allChangedFiles, modifiedFiles...)
+		allChangedFiles = append(allChangedFiles, deletedFiles...)
+		sort.Strings(allChangedFiles)
+
+		commitMessage := gitmanager.BuildAutoCommitMessage(time.Now(), allChangedFiles)
+		fmt.Println("\nWould create commit:")
+		fmt.Println(commitMessage)
+
 		if cfg.Git.RemoteURL != "" {
 			fmt.Println("\n📤 Would push to remote repository")
 		}

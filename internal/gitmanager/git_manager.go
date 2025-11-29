@@ -196,7 +196,7 @@ func (gm *GitManager) StageAndCommit(ctx context.Context, when time.Time) ([]str
 		return nil, fmt.Errorf("gitmanager: add --all: %w", err)
 	}
 
-	message := buildAutoCommitMessage(when, changedFiles)
+	message := BuildAutoCommitMessage(when, changedFiles)
 	_, err = worktree.Commit(message, &git.CommitOptions{
 		Author: &object.Signature{
 			Name:  gm.cfg.AuthorName,
@@ -284,8 +284,8 @@ func (gm *GitManager) PullWithStash(ctx context.Context) error {
 	return nil
 }
 
-// buildAutoCommitMessage formats the auto-sync commit message.
-func buildAutoCommitMessage(when time.Time, files []string) string {
+// BuildAutoCommitMessage formats the auto-sync commit message.
+func BuildAutoCommitMessage(when time.Time, files []string) string {
 	var builder strings.Builder
 	builder.WriteString(fmt.Sprintf("Auto-sync: %s\n\nChanged files:\n", when.Format("2006-01-02 15:04:05")))
 	for _, file := range files {
