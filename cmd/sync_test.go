@@ -270,3 +270,81 @@ func TestSyncCmd_DryRunShowsStatistics(t *testing.T) {
 	assert.Contains(t, output, "3 added", "Should show added count")
 	assert.Contains(t, output, "1 modified", "Should show modified count")
 }
+
+func TestSyncCmd_DryRunNoFilesystemChanges(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoPath := filepath.Join(tmpDir, "test-repo")
+	setupTestRepo(t, repoPath)
+
+	// Create config file
+	configPath := filepath.Join(repoPath, ".sync-config.json")
+	testConfig, err := config.DefaultConfig()
+	require.NoError(t, err)
+
+	testConfig.Git.RepoPath = repoPath
+	testConfig.Git.AuthorName = "Test User"
+	testConfig.Git.AuthorEmail = "test@example.com"
+	testConfig.Git.AuthType = "none"
+	testConfig.ConfigPath = configPath
+
+	err = testConfig.SaveToFile(configPath)
+	require.NoError(t, err)
+
+	// Set config file for this test
+	oldConfigFile := getConfigFile()
+	setConfigFile(configPath)
+	t.Cleanup(func() {
+		setConfigFile(oldConfigFile)
+	})
+
+	// Create a modified file
+	testFile := filepath.Join(repoPath, ".bashrc")
+	err = os.WriteFile(testFile, []byte("modified content"), 0644)
+	require.NoError(t, err)
+
+	// Record file modification times before dry-run
+	beforeStat, err := os.Stat(testFile)
+	require.NoError(t, err)
+	beforeModTime := beforeStat.ModTime()
+
+	// Get initial commit count
+	cmd := exec.Command("git", "rev-list", "--count", "HEAD")
+	cmd.Dir = repoPath
+	output, err := cmd.Output()
+	require.NoError(t, err)
+	initialCommitCount := string(output)
+
+	// Setup dry-run mode
+	oldDryRun := globalDryRun
+	globalDryRun = true
+	t.Cleanup(func() { globalDryRun = oldDryRun })
+
+	// Suppress output for this test
+	oldStdout := os.Stdout
+	os.Stdout = nil
+	t.Cleanup(func() { os.Stdout = oldStdout })
+
+	// Execute sync
+	cobraCmd := &cobra.Command{}
+	err = runSync(cobraCmd, []string{})
+
+	// Restore stdout
+	os.Stdout = oldStdout
+
+	// Assertions: No filesystem changes
+	assert.NoError(t, err)
+
+	// Verify file modification time unchanged
+	afterStat, err := os.Stat(testFile)
+	require.NoError(t, err)
+	afterModTime := afterStat.ModTime()
+	assert.Equal(t, beforeModTime, afterModTime, "File modification time should not change")
+
+	// Verify no new commits created
+	cmd = exec.Command("git", "rev-list", "--count", "HEAD")
+	cmd.Dir = repoPath
+	output, err = cmd.Output()
+	require.NoError(t, err)
+	finalCommitCount := string(output)
+	assert.Equal(t, initialCommitCount, finalCommitCount, "No new commits should be created")
+}
