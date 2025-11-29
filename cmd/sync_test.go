@@ -620,3 +620,86 @@ func TestSyncCmd_DryRunCategorizesUntrackedFiles(t *testing.T) {
 	}
 	assert.Contains(t, addedSection, "new-untracked.txt", "Untracked file should be in added section")
 }
+
+func TestSyncCmd_DryRunRespectsGitignore(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoPath := filepath.Join(tmpDir, "test-repo")
+	setupTestRepo(t, repoPath)
+
+	// Create .gitignore file
+	gitignorePath := filepath.Join(repoPath, ".gitignore")
+	gitignoreContent := "*.log\ntemp/\n"
+	err := os.WriteFile(gitignorePath, []byte(gitignoreContent), 0644)
+	require.NoError(t, err)
+
+	// Commit .gitignore
+	gitCmd := exec.Command("git", "add", ".gitignore")
+	gitCmd.Dir = repoPath
+	require.NoError(t, gitCmd.Run())
+
+	gitCmd = exec.Command("git", "commit", "-m", "Add gitignore")
+	gitCmd.Dir = repoPath
+	require.NoError(t, gitCmd.Run())
+
+	// Create config file
+	configPath := filepath.Join(repoPath, ".sync-config.json")
+	testConfig, err := config.DefaultConfig()
+	require.NoError(t, err)
+
+	testConfig.Git.RepoPath = repoPath
+	testConfig.Git.AuthorName = "Test User"
+	testConfig.Git.AuthorEmail = "test@example.com"
+	testConfig.Git.AuthType = "none"
+	testConfig.ConfigPath = configPath
+
+	err = testConfig.SaveToFile(configPath)
+	require.NoError(t, err)
+
+	// Set config file for this test
+	oldConfigFile := getConfigFile()
+	setConfigFile(configPath)
+	t.Cleanup(func() {
+		setConfigFile(oldConfigFile)
+	})
+
+	// Create ignored file (should be filtered out)
+	ignoredFile := filepath.Join(repoPath, "debug.log")
+	err = os.WriteFile(ignoredFile, []byte("log content"), 0644)
+	require.NoError(t, err)
+
+	// Create non-ignored file (should appear in output)
+	normalFile := filepath.Join(repoPath, "data.txt")
+	err = os.WriteFile(normalFile, []byte("normal content"), 0644)
+	require.NoError(t, err)
+
+	// Setup dry-run mode
+	oldDryRun := globalDryRun
+	globalDryRun = true
+	t.Cleanup(func() { globalDryRun = oldDryRun })
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	t.Cleanup(func() { os.Stdout = oldStdout })
+
+	outputChan := make(chan string, 1)
+	go func() {
+		defer close(outputChan)
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		outputChan <- buf.String()
+	}()
+
+	// Execute sync
+	cmd := &cobra.Command{}
+	err = runSync(cmd, []string{})
+
+	_ = w.Close()
+	output := <-outputChan
+
+	// Assertions: .gitignore patterns should be respected
+	assert.NoError(t, err)
+	assert.NotContains(t, output, "debug.log", "Ignored file should not appear in dry-run output")
+	assert.Contains(t, output, "data.txt", "Non-ignored file should appear in dry-run output")
+}
