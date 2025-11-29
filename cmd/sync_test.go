@@ -480,3 +480,67 @@ func TestSyncCmd_DryRunShowsRemotePushDetails(t *testing.T) {
 	assert.Contains(t, output, "Would push to remote repository", "Should show push message")
 	assert.Contains(t, output, "https://github.com/test/repo.git", "Should show remote URL")
 }
+
+func TestSyncCmd_DryRunHandlesNoRemote(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoPath := filepath.Join(tmpDir, "test-repo")
+	setupTestRepo(t, repoPath)
+
+	// Create config file without remote URL (local-only)
+	configPath := filepath.Join(repoPath, ".sync-config.json")
+	testConfig, err := config.DefaultConfig()
+	require.NoError(t, err)
+
+	testConfig.Git.RepoPath = repoPath
+	testConfig.Git.AuthorName = "Test User"
+	testConfig.Git.AuthorEmail = "test@example.com"
+	testConfig.Git.AuthType = "none"
+	testConfig.Git.RemoteURL = "" // No remote configured
+	testConfig.ConfigPath = configPath
+
+	err = testConfig.SaveToFile(configPath)
+	require.NoError(t, err)
+
+	// Set config file for this test
+	oldConfigFile := getConfigFile()
+	setConfigFile(configPath)
+	t.Cleanup(func() {
+		setConfigFile(oldConfigFile)
+	})
+
+	// Create a modified file
+	testFile := filepath.Join(repoPath, ".bashrc")
+	err = os.WriteFile(testFile, []byte("modified"), 0644)
+	require.NoError(t, err)
+
+	// Setup dry-run mode
+	oldDryRun := globalDryRun
+	globalDryRun = true
+	t.Cleanup(func() { globalDryRun = oldDryRun })
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	t.Cleanup(func() { os.Stdout = oldStdout })
+
+	outputChan := make(chan string, 1)
+	go func() {
+		defer close(outputChan)
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		outputChan <- buf.String()
+	}()
+
+	// Execute sync
+	cmd := &cobra.Command{}
+	err = runSync(cmd, []string{})
+
+	_ = w.Close()
+	output := <-outputChan
+
+	// Assertions: Should not show push message for local-only repo
+	assert.NoError(t, err)
+	assert.NotContains(t, output, "Would push", "Should not show push message when no remote")
+	assert.Contains(t, output, "Would modify", "Should still show file operations")
+}
