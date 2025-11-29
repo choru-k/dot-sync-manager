@@ -32,7 +32,13 @@ func displaySyncSummary(addedCount, modifiedCount, deletedCount int) {
 	}
 }
 
-// categorizeFilesByOperation groups files by their git operation type
+// categorizeFilesByOperation groups files by their git operation type.
+// It examines the git status for each file and categorizes them into three groups:
+//   - added: untracked files or files staged as added
+//   - modified: files with changes (not added or deleted)
+//   - deleted: files staged or marked for deletion
+//
+// The returned slices are sorted alphabetically for deterministic output.
 func categorizeFilesByOperation(status git.Status) (added, modified, deleted []string) {
 	for path, fileStatus := range status {
 		// Skip unmodified files

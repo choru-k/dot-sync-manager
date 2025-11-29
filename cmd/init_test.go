@@ -297,18 +297,18 @@ func TestInitCmd_DryRunFlagParsing(t *testing.T) {
 // This test ensures the dry-run shows where files would be cloned without actually doing it
 func TestInitCmd_DryRunShowsCloneLocation(t *testing.T) {
 	tests := []struct {
-		name          string
-		gitURL        string
+		name           string
+		gitURL         string
 		expectedSubstr string
 	}{
 		{
-			name:          "dry-run shows clone location with Would... prefix for HTTPS URL",
-			gitURL:        "https://github.com/user/dotfiles.git",
+			name:           "dry-run shows clone location with Would... prefix for HTTPS URL",
+			gitURL:         "https://github.com/user/dotfiles.git",
 			expectedSubstr: "Would clone repository from: https://github.com/user/dotfiles.git",
 		},
 		{
-			name:          "dry-run shows clone location with Would... prefix for SSH URL",
-			gitURL:        "git@github.com:user/dotfiles.git",
+			name:           "dry-run shows clone location with Would... prefix for SSH URL",
+			gitURL:         "git@github.com:user/dotfiles.git",
 			expectedSubstr: "Would clone repository from: git@github.com:user/dotfiles.git",
 		},
 	}
@@ -399,18 +399,18 @@ func TestInitCmd_DryRunShowsCloneLocation(t *testing.T) {
 // This test ensures the dry-run shows where the configuration file would be created
 func TestInitCmd_DryRunShowsConfigPath(t *testing.T) {
 	tests := []struct {
-		name          string
-		repoPath      string
+		name           string
+		repoPath       string
 		expectedSubstr string
 	}{
 		{
-			name:          "dry-run shows config file path with Would... prefix for custom path",
-			repoPath:      "/custom/dotfiles",
+			name:           "dry-run shows config file path with Would... prefix for custom path",
+			repoPath:       "/custom/dotfiles",
 			expectedSubstr: "Would create configuration file: /custom/dotfiles/.sync-config.json",
 		},
 		{
-			name:          "dry-run shows config file path with Would... prefix for default path",
-			repoPath:      "~/dotfiles",
+			name:           "dry-run shows config file path with Would... prefix for default path",
+			repoPath:       "~/dotfiles",
 			expectedSubstr: "Would create configuration file:",
 		},
 	}
@@ -709,10 +709,10 @@ func TestInitCmd_DryRunPreventsFileOperations(t *testing.T) {
 // This test ensures dry-run succeeds with exit code 0 for valid inputs
 func TestInitCmd_DryRunExitCodes(t *testing.T) {
 	tests := []struct {
-		name    string
-		gitURL  string
+		name     string
+		gitURL   string
 		repoPath string
-		wantErr bool
+		wantErr  bool
 	}{
 		{
 			name:     "dry-run with new repo succeeds",

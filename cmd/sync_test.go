@@ -20,7 +20,7 @@ func setupTestRepo(t *testing.T, path string) {
 	t.Helper()
 
 	// Create directory
-	err := os.MkdirAll(path, 0755)
+	err := os.MkdirAll(path, testDirPerms)
 	require.NoError(t, err)
 
 	// Initialize git repo
@@ -31,37 +31,32 @@ func setupTestRepo(t *testing.T, path string) {
 
 	// Create initial file
 	initialFile := filepath.Join(path, ".bashrc")
-	err = os.WriteFile(initialFile, []byte("initial content"), 0644)
+	err = os.WriteFile(initialFile, []byte("initial content"), testFilePerms)
 	require.NoError(t, err)
 
 	// Configure git user
 	cmd = exec.Command("git", "config", "user.name", "Test User")
 	cmd.Dir = path
-	_ = cmd.Run()
+	require.NoError(t, cmd.Run(), "git config user.name failed")
 
 	cmd = exec.Command("git", "config", "user.email", "test@example.com")
 	cmd.Dir = path
-	_ = cmd.Run()
+	require.NoError(t, cmd.Run(), "git config user.email failed")
 
 	// Add and commit
 	cmd = exec.Command("git", "add", ".")
 	cmd.Dir = path
-	_ = cmd.Run()
+	require.NoError(t, cmd.Run(), "git add failed")
 
 	cmd = exec.Command("git", "commit", "-m", "Initial commit")
 	cmd.Dir = path
-	_ = cmd.Run()
+	require.NoError(t, cmd.Run(), "git commit failed")
 }
 
-func TestSyncCmd_DryRunShowsFileOperationTypes(t *testing.T) {
-	// Setup: Create temp directory with git repo
-	tmpDir := t.TempDir()
-	repoPath := filepath.Join(tmpDir, "test-repo")
+// setupTestConfig creates and saves a test configuration with the given repository path and optional remote URL
+func setupTestConfig(t *testing.T, repoPath, remoteURL string) string {
+	t.Helper()
 
-	// Initialize git repo and create test config
-	setupTestRepo(t, repoPath)
-
-	// Create config file pointing to test repo
 	configPath := filepath.Join(repoPath, ".sync-config.json")
 	testConfig, err := config.DefaultConfig()
 	require.NoError(t, err)
@@ -71,10 +66,10 @@ func TestSyncCmd_DryRunShowsFileOperationTypes(t *testing.T) {
 	testConfig.Git.AuthorName = "Test User"
 	testConfig.Git.AuthorEmail = "test@example.com"
 	testConfig.Git.AuthType = "none" // No auth needed for local test repo
+	testConfig.Git.RemoteURL = remoteURL
 	testConfig.ConfigPath = configPath
 
-	err = testConfig.SaveToFile(configPath)
-	require.NoError(t, err)
+	require.NoError(t, testConfig.SaveToFile(configPath))
 
 	// Set config file for this test
 	oldConfigFile := getConfigFile()
@@ -83,16 +78,28 @@ func TestSyncCmd_DryRunShowsFileOperationTypes(t *testing.T) {
 		setConfigFile(oldConfigFile)
 	})
 
+	return configPath
+}
+
+func TestSyncCmd_DryRunShowsFileOperationTypes(t *testing.T) {
+	// Setup: Create temp directory with git repo
+	tmpDir := t.TempDir()
+	repoPath := filepath.Join(tmpDir, "test-repo")
+
+	// Initialize git repo and create test config
+	setupTestRepo(t, repoPath)
+	setupTestConfig(t, repoPath, "")
+
 	// Create files in different states
 	addedFile := filepath.Join(repoPath, "new-file.txt")
 	modifiedFile := filepath.Join(repoPath, ".bashrc")
 
 	// Add new file (untracked)
-	err = os.WriteFile(addedFile, []byte("new content"), 0644)
+	err := os.WriteFile(addedFile, []byte("new content"), testFilePerms)
 	require.NoError(t, err)
 
 	// Modify existing file
-	err = os.WriteFile(modifiedFile, []byte("modified content"), 0644)
+	err = os.WriteFile(modifiedFile, []byte("modified content"), testFilePerms)
 	require.NoError(t, err)
 
 	// Setup dry-run mode with cleanup
@@ -140,31 +147,11 @@ func TestSyncCmd_DryRunShowsCommitMessage(t *testing.T) {
 	tmpDir := t.TempDir()
 	repoPath := filepath.Join(tmpDir, "test-repo")
 	setupTestRepo(t, repoPath)
-
-	// Create config file
-	configPath := filepath.Join(repoPath, ".sync-config.json")
-	testConfig, err := config.DefaultConfig()
-	require.NoError(t, err)
-
-	testConfig.Git.RepoPath = repoPath
-	testConfig.Git.AuthorName = "Test User"
-	testConfig.Git.AuthorEmail = "test@example.com"
-	testConfig.Git.AuthType = "none"
-	testConfig.ConfigPath = configPath
-
-	err = testConfig.SaveToFile(configPath)
-	require.NoError(t, err)
-
-	// Set config file for this test
-	oldConfigFile := getConfigFile()
-	setConfigFile(configPath)
-	t.Cleanup(func() {
-		setConfigFile(oldConfigFile)
-	})
+	setupTestConfig(t, repoPath, "")
 
 	// Modify a file
 	testFile := filepath.Join(repoPath, ".bashrc")
-	err = os.WriteFile(testFile, []byte("modified"), 0644)
+	err := os.WriteFile(testFile, []byte("modified"), testFilePerms)
 	require.NoError(t, err)
 
 	// Setup dry-run mode
@@ -208,36 +195,16 @@ func TestSyncCmd_DryRunShowsStatistics(t *testing.T) {
 	tmpDir := t.TempDir()
 	repoPath := filepath.Join(tmpDir, "test-repo")
 	setupTestRepo(t, repoPath)
-
-	// Create config file
-	configPath := filepath.Join(repoPath, ".sync-config.json")
-	testConfig, err := config.DefaultConfig()
-	require.NoError(t, err)
-
-	testConfig.Git.RepoPath = repoPath
-	testConfig.Git.AuthorName = "Test User"
-	testConfig.Git.AuthorEmail = "test@example.com"
-	testConfig.Git.AuthType = "none"
-	testConfig.ConfigPath = configPath
-
-	err = testConfig.SaveToFile(configPath)
-	require.NoError(t, err)
-
-	// Set config file for this test
-	oldConfigFile := getConfigFile()
-	setConfigFile(configPath)
-	t.Cleanup(func() {
-		setConfigFile(oldConfigFile)
-	})
+	setupTestConfig(t, repoPath, "")
 
 	// Create multiple files of different types
 	addedFile1 := filepath.Join(repoPath, "new1.txt")
 	addedFile2 := filepath.Join(repoPath, "new2.txt")
 	modifiedFile := filepath.Join(repoPath, ".bashrc")
 
-	require.NoError(t, os.WriteFile(addedFile1, []byte("content"), 0644))
-	require.NoError(t, os.WriteFile(addedFile2, []byte("content"), 0644))
-	require.NoError(t, os.WriteFile(modifiedFile, []byte("modified"), 0644))
+	require.NoError(t, os.WriteFile(addedFile1, []byte("content"), testFilePerms))
+	require.NoError(t, os.WriteFile(addedFile2, []byte("content"), testFilePerms))
+	require.NoError(t, os.WriteFile(modifiedFile, []byte("modified"), testFilePerms))
 
 	// Setup dry-run
 	oldDryRun := globalDryRun
@@ -259,7 +226,7 @@ func TestSyncCmd_DryRunShowsStatistics(t *testing.T) {
 	}()
 
 	cmd := &cobra.Command{}
-	err = runSync(cmd, []string{})
+	err := runSync(cmd, []string{})
 
 	_ = w.Close()
 	output := <-outputChan
@@ -276,31 +243,11 @@ func TestSyncCmd_DryRunNoFilesystemChanges(t *testing.T) {
 	tmpDir := t.TempDir()
 	repoPath := filepath.Join(tmpDir, "test-repo")
 	setupTestRepo(t, repoPath)
-
-	// Create config file
-	configPath := filepath.Join(repoPath, ".sync-config.json")
-	testConfig, err := config.DefaultConfig()
-	require.NoError(t, err)
-
-	testConfig.Git.RepoPath = repoPath
-	testConfig.Git.AuthorName = "Test User"
-	testConfig.Git.AuthorEmail = "test@example.com"
-	testConfig.Git.AuthType = "none"
-	testConfig.ConfigPath = configPath
-
-	err = testConfig.SaveToFile(configPath)
-	require.NoError(t, err)
-
-	// Set config file for this test
-	oldConfigFile := getConfigFile()
-	setConfigFile(configPath)
-	t.Cleanup(func() {
-		setConfigFile(oldConfigFile)
-	})
+	setupTestConfig(t, repoPath, "")
 
 	// Create a modified file
 	testFile := filepath.Join(repoPath, ".bashrc")
-	err = os.WriteFile(testFile, []byte("modified content"), 0644)
+	err := os.WriteFile(testFile, []byte("modified content"), testFilePerms)
 	require.NoError(t, err)
 
 	// Record file modification times before dry-run
@@ -362,20 +309,7 @@ func TestSyncCmd_DryRunHandlesCleanRepository(t *testing.T) {
 	tmpDir := t.TempDir()
 	repoPath := filepath.Join(tmpDir, "test-repo")
 	setupTestRepo(t, repoPath)
-
-	// Create config file
-	configPath := filepath.Join(repoPath, ".sync-config.json")
-	testConfig, err := config.DefaultConfig()
-	require.NoError(t, err)
-
-	testConfig.Git.RepoPath = repoPath
-	testConfig.Git.AuthorName = "Test User"
-	testConfig.Git.AuthorEmail = "test@example.com"
-	testConfig.Git.AuthType = "none"
-	testConfig.ConfigPath = configPath
-
-	err = testConfig.SaveToFile(configPath)
-	require.NoError(t, err)
+	setupTestConfig(t, repoPath, "")
 
 	// Commit the config file to ensure clean repository
 	gitCmd := exec.Command("git", "add", ".sync-config.json")
@@ -385,13 +319,6 @@ func TestSyncCmd_DryRunHandlesCleanRepository(t *testing.T) {
 	gitCmd = exec.Command("git", "commit", "-m", "Add config")
 	gitCmd.Dir = repoPath
 	require.NoError(t, gitCmd.Run())
-
-	// Set config file for this test
-	oldConfigFile := getConfigFile()
-	setConfigFile(configPath)
-	t.Cleanup(func() {
-		setConfigFile(oldConfigFile)
-	})
 
 	// Don't create any changes - repository is clean
 
@@ -416,7 +343,7 @@ func TestSyncCmd_DryRunHandlesCleanRepository(t *testing.T) {
 
 	// Execute sync
 	cmd := &cobra.Command{}
-	err = runSync(cmd, []string{})
+	err := runSync(cmd, []string{})
 
 	_ = w.Close()
 	output := <-outputChan
@@ -430,32 +357,11 @@ func TestSyncCmd_DryRunShowsRemotePushDetails(t *testing.T) {
 	tmpDir := t.TempDir()
 	repoPath := filepath.Join(tmpDir, "test-repo")
 	setupTestRepo(t, repoPath)
-
-	// Create config file with remote URL
-	configPath := filepath.Join(repoPath, ".sync-config.json")
-	testConfig, err := config.DefaultConfig()
-	require.NoError(t, err)
-
-	testConfig.Git.RepoPath = repoPath
-	testConfig.Git.AuthorName = "Test User"
-	testConfig.Git.AuthorEmail = "test@example.com"
-	testConfig.Git.AuthType = "none"
-	testConfig.Git.RemoteURL = "https://github.com/test/repo.git"
-	testConfig.ConfigPath = configPath
-
-	err = testConfig.SaveToFile(configPath)
-	require.NoError(t, err)
-
-	// Set config file for this test
-	oldConfigFile := getConfigFile()
-	setConfigFile(configPath)
-	t.Cleanup(func() {
-		setConfigFile(oldConfigFile)
-	})
+	setupTestConfig(t, repoPath, "https://github.com/test/repo.git")
 
 	// Create a modified file
 	testFile := filepath.Join(repoPath, ".bashrc")
-	err = os.WriteFile(testFile, []byte("modified"), 0644)
+	err := os.WriteFile(testFile, []byte("modified"), testFilePerms)
 	require.NoError(t, err)
 
 	// Setup dry-run mode
@@ -494,32 +400,11 @@ func TestSyncCmd_DryRunHandlesNoRemote(t *testing.T) {
 	tmpDir := t.TempDir()
 	repoPath := filepath.Join(tmpDir, "test-repo")
 	setupTestRepo(t, repoPath)
-
-	// Create config file without remote URL (local-only)
-	configPath := filepath.Join(repoPath, ".sync-config.json")
-	testConfig, err := config.DefaultConfig()
-	require.NoError(t, err)
-
-	testConfig.Git.RepoPath = repoPath
-	testConfig.Git.AuthorName = "Test User"
-	testConfig.Git.AuthorEmail = "test@example.com"
-	testConfig.Git.AuthType = "none"
-	testConfig.Git.RemoteURL = "" // No remote configured
-	testConfig.ConfigPath = configPath
-
-	err = testConfig.SaveToFile(configPath)
-	require.NoError(t, err)
-
-	// Set config file for this test
-	oldConfigFile := getConfigFile()
-	setConfigFile(configPath)
-	t.Cleanup(func() {
-		setConfigFile(oldConfigFile)
-	})
+	setupTestConfig(t, repoPath, "") // No remote configured
 
 	// Create a modified file
 	testFile := filepath.Join(repoPath, ".bashrc")
-	err = os.WriteFile(testFile, []byte("modified"), 0644)
+	err := os.WriteFile(testFile, []byte("modified"), testFilePerms)
 	require.NoError(t, err)
 
 	// Setup dry-run mode
@@ -558,31 +443,11 @@ func TestSyncCmd_DryRunCategorizesUntrackedFiles(t *testing.T) {
 	tmpDir := t.TempDir()
 	repoPath := filepath.Join(tmpDir, "test-repo")
 	setupTestRepo(t, repoPath)
-
-	// Create config file
-	configPath := filepath.Join(repoPath, ".sync-config.json")
-	testConfig, err := config.DefaultConfig()
-	require.NoError(t, err)
-
-	testConfig.Git.RepoPath = repoPath
-	testConfig.Git.AuthorName = "Test User"
-	testConfig.Git.AuthorEmail = "test@example.com"
-	testConfig.Git.AuthType = "none"
-	testConfig.ConfigPath = configPath
-
-	err = testConfig.SaveToFile(configPath)
-	require.NoError(t, err)
-
-	// Set config file for this test
-	oldConfigFile := getConfigFile()
-	setConfigFile(configPath)
-	t.Cleanup(func() {
-		setConfigFile(oldConfigFile)
-	})
+	setupTestConfig(t, repoPath, "")
 
 	// Create an untracked file (not in git yet)
 	untrackedFile := filepath.Join(repoPath, "new-untracked.txt")
-	err = os.WriteFile(untrackedFile, []byte("untracked content"), 0644)
+	err := os.WriteFile(untrackedFile, []byte("untracked content"), testFilePerms)
 	require.NoError(t, err)
 
 	// Setup dry-run mode
@@ -637,7 +502,7 @@ func TestSyncCmd_DryRunRespectsGitignore(t *testing.T) {
 	// Create .gitignore file
 	gitignorePath := filepath.Join(repoPath, ".gitignore")
 	gitignoreContent := "*.log\ntemp/\n"
-	err := os.WriteFile(gitignorePath, []byte(gitignoreContent), 0644)
+	err := os.WriteFile(gitignorePath, []byte(gitignoreContent), testFilePerms)
 	require.NoError(t, err)
 
 	// Commit .gitignore
@@ -649,35 +514,16 @@ func TestSyncCmd_DryRunRespectsGitignore(t *testing.T) {
 	gitCmd.Dir = repoPath
 	require.NoError(t, gitCmd.Run())
 
-	// Create config file
-	configPath := filepath.Join(repoPath, ".sync-config.json")
-	testConfig, err := config.DefaultConfig()
-	require.NoError(t, err)
-
-	testConfig.Git.RepoPath = repoPath
-	testConfig.Git.AuthorName = "Test User"
-	testConfig.Git.AuthorEmail = "test@example.com"
-	testConfig.Git.AuthType = "none"
-	testConfig.ConfigPath = configPath
-
-	err = testConfig.SaveToFile(configPath)
-	require.NoError(t, err)
-
-	// Set config file for this test
-	oldConfigFile := getConfigFile()
-	setConfigFile(configPath)
-	t.Cleanup(func() {
-		setConfigFile(oldConfigFile)
-	})
+	setupTestConfig(t, repoPath, "")
 
 	// Create ignored file (should be filtered out)
 	ignoredFile := filepath.Join(repoPath, "debug.log")
-	err = os.WriteFile(ignoredFile, []byte("log content"), 0644)
+	err = os.WriteFile(ignoredFile, []byte("log content"), testFilePerms)
 	require.NoError(t, err)
 
 	// Create non-ignored file (should appear in output)
 	normalFile := filepath.Join(repoPath, "data.txt")
-	err = os.WriteFile(normalFile, []byte("normal content"), 0644)
+	err = os.WriteFile(normalFile, []byte("normal content"), testFilePerms)
 	require.NoError(t, err)
 
 	// Setup dry-run mode
@@ -719,7 +565,7 @@ func TestSyncCmd_DryRunShowsDeletedFiles(t *testing.T) {
 
 	// Create and commit a file that will be deleted
 	deletedFile := filepath.Join(repoPath, "to-delete.txt")
-	err := os.WriteFile(deletedFile, []byte("will be deleted"), 0o644)
+	err := os.WriteFile(deletedFile, []byte("will be deleted"), testFilePerms)
 	require.NoError(t, err)
 
 	cmd := exec.Command("git", "add", "to-delete.txt")
@@ -736,21 +582,7 @@ func TestSyncCmd_DryRunShowsDeletedFiles(t *testing.T) {
 	err = os.Remove(deletedFile)
 	require.NoError(t, err)
 
-	// Create config file
-	configPath := filepath.Join(repoPath, ".sync-config.json")
-	testConfig, err := config.DefaultConfig()
-	require.NoError(t, err)
-	testConfig.Git.RepoPath = repoPath
-	testConfig.Git.AuthorName = "Test User"
-	testConfig.Git.AuthorEmail = "test@example.com"
-	testConfig.Git.AuthType = "none"
-	testConfig.Git.RemoteURL = ""
-	testConfig.ConfigPath = configPath
-
-	err = testConfig.SaveToFile(configPath)
-	require.NoError(t, err)
-
-	setConfigFile(configPath)
+	setupTestConfig(t, repoPath, "")
 
 	// Enable dry-run mode
 	oldDryRun := globalDryRun

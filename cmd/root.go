@@ -19,9 +19,9 @@ import (
 )
 
 var (
-	configFile  string
-	verbose     bool
-	noEmoji     bool
+	configFile   string
+	verbose      bool
+	noEmoji      bool
 	globalDryRun bool
 
 	configFileMu sync.RWMutex
