@@ -279,7 +279,6 @@ func TestInitCmd_DryRunFlagParsing(t *testing.T) {
 			})
 
 			// Parse flags on rootCmd (persistent flags)
-			rootCmd.SetArgs(append([]string{"init"}, tt.args...))
 			err := rootCmd.ParseFlags(append([]string{"init"}, tt.args...))
 			if err != nil {
 				t.Fatalf("Failed to parse flags: %v", err)
@@ -989,7 +988,7 @@ func TestInitDryRunShouldValidateDirectories(t *testing.T) {
 	// Create existing directory with content to trigger validation error
 	dir := t.TempDir()
 	existingFile := filepath.Join(dir, "existing.txt")
-	if err := os.WriteFile(existingFile, []byte("content"), 0644); err != nil {
+	if err := os.WriteFile(existingFile, []byte("content"), defaultFilePerms); err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
 

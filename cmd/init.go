@@ -73,7 +73,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Validate directory doesn't exist (unless --force is used)
 	// This validation runs in both dry-run and normal mode
+	dirExists := false
 	if _, statErr := os.Stat(repoPath); statErr == nil {
+		dirExists = true
 		if !force {
 			return fmt.Errorf(`directory %s already exists
 
@@ -90,24 +92,22 @@ Options:
 	}
 
 	// Handle --force directory removal (only in non-dry-run mode)
-	if _, statErr := os.Stat(repoPath); statErr == nil {
-		if force {
-			// Confirm before removing directory (require strong confirmation)
-			fmt.Printf("⚠️  WARNING: --force will delete the entire directory: %s\n", repoPath)
-			fmt.Printf("⚠️  This action CANNOT be undone!\n")
-			confirmation, err := promptForInput(fmt.Sprintf("Type '%s' in all caps to confirm: ", forceConfirmationKeyword), "")
-			if err != nil {
-				return fmt.Errorf("failed to read confirmation: %w", err)
-			}
-			if confirmation != forceConfirmationKeyword {
-				return fmt.Errorf("operation cancelled (you must type '%s' exactly)", forceConfirmationKeyword)
-			}
-
-			if err := os.RemoveAll(repoPath); err != nil {
-				return fmt.Errorf("failed to remove existing directory: %w", err)
-			}
-			fmt.Println("✅ Directory removed")
+	if dirExists && force {
+		// Confirm before removing directory (require strong confirmation)
+		fmt.Printf("⚠️  WARNING: --force will delete the entire directory: %s\n", repoPath)
+		fmt.Printf("⚠️  This action CANNOT be undone!\n")
+		confirmation, err := promptForInput(fmt.Sprintf("Type '%s' in all caps to confirm: ", forceConfirmationKeyword), "")
+		if err != nil {
+			return fmt.Errorf("failed to read confirmation: %w", err)
 		}
+		if confirmation != forceConfirmationKeyword {
+			return fmt.Errorf("operation cancelled (you must type '%s' exactly)", forceConfirmationKeyword)
+		}
+
+		if err := os.RemoveAll(repoPath); err != nil {
+			return fmt.Errorf("failed to remove existing directory: %w", err)
+		}
+		fmt.Println("✅ Directory removed")
 	}
 
 	// Get machine name
