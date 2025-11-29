@@ -273,8 +273,10 @@ func TestSyncCmd_DryRunNoFilesystemChanges(t *testing.T) {
 	require.NoError(t, err)
 	os.Stdout = devNull
 	t.Cleanup(func() {
+		if err := devNull.Close(); err != nil {
+			t.Logf("Warning: failed to close devNull: %v", err)
+		}
 		os.Stdout = oldStdout
-		_ = devNull.Close() // Ignore error in cleanup
 	})
 
 	// Execute sync
