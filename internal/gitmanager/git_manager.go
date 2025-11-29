@@ -53,6 +53,7 @@ func NewGitManager(ctx context.Context, cfg Config) (*GitManager, error) {
 // any mutations (no bootstrap, no remote config, no clone/init).
 // Returns an error if the repository does not exist.
 // Use this for dry-run operations that need to inspect repository state without changes.
+// Auth validation is skipped since read-only operations never communicate with remotes.
 func NewGitManagerReadOnly(ctx context.Context, cfg Config) (*GitManager, error) {
 	select {
 	case <-ctx.Done():
@@ -63,12 +64,8 @@ func NewGitManagerReadOnly(ctx context.Context, cfg Config) (*GitManager, error)
 	// Normalize config (apply defaults) before validation
 	cfg.normalize()
 
-	if err := cfg.validate(); err != nil {
-		return nil, err
-	}
-
-	auth, err := cfg.authMethod()
-	if err != nil {
+	// Skip auth validation for read-only operations - only validate essential fields
+	if err := cfg.validateReadOnly(); err != nil {
 		return nil, err
 	}
 
@@ -80,7 +77,7 @@ func NewGitManagerReadOnly(ctx context.Context, cfg Config) (*GitManager, error)
 
 	return &GitManager{
 		cfg:  cfg,
-		auth: auth,
+		auth: nil, // No auth needed for read-only local operations
 		repo: repo,
 	}, nil
 }

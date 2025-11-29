@@ -322,8 +322,13 @@ func TestSyncCmd_DryRunNoFilesystemChanges(t *testing.T) {
 
 	// Suppress output for this test
 	oldStdout := os.Stdout
-	os.Stdout = os.NewFile(0, os.DevNull)
-	t.Cleanup(func() { os.Stdout = oldStdout })
+	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	require.NoError(t, err)
+	os.Stdout = devNull
+	t.Cleanup(func() {
+		os.Stdout = oldStdout
+		_ = devNull.Close() // Ignore error in cleanup
+	})
 
 	// Execute sync
 	cobraCmd := &cobra.Command{}
