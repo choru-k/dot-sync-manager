@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
@@ -543,4 +544,79 @@ func TestSyncCmd_DryRunHandlesNoRemote(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotContains(t, output, "Would push", "Should not show push message when no remote")
 	assert.Contains(t, output, "Would modify", "Should still show file operations")
+}
+
+func TestSyncCmd_DryRunCategorizesUntrackedFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoPath := filepath.Join(tmpDir, "test-repo")
+	setupTestRepo(t, repoPath)
+
+	// Create config file
+	configPath := filepath.Join(repoPath, ".sync-config.json")
+	testConfig, err := config.DefaultConfig()
+	require.NoError(t, err)
+
+	testConfig.Git.RepoPath = repoPath
+	testConfig.Git.AuthorName = "Test User"
+	testConfig.Git.AuthorEmail = "test@example.com"
+	testConfig.Git.AuthType = "none"
+	testConfig.ConfigPath = configPath
+
+	err = testConfig.SaveToFile(configPath)
+	require.NoError(t, err)
+
+	// Set config file for this test
+	oldConfigFile := getConfigFile()
+	setConfigFile(configPath)
+	t.Cleanup(func() {
+		setConfigFile(oldConfigFile)
+	})
+
+	// Create an untracked file (not in git yet)
+	untrackedFile := filepath.Join(repoPath, "new-untracked.txt")
+	err = os.WriteFile(untrackedFile, []byte("untracked content"), 0644)
+	require.NoError(t, err)
+
+	// Setup dry-run mode
+	oldDryRun := globalDryRun
+	globalDryRun = true
+	t.Cleanup(func() { globalDryRun = oldDryRun })
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	t.Cleanup(func() { os.Stdout = oldStdout })
+
+	outputChan := make(chan string, 1)
+	go func() {
+		defer close(outputChan)
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		outputChan <- buf.String()
+	}()
+
+	// Execute sync
+	cmd := &cobra.Command{}
+	err = runSync(cmd, []string{})
+
+	_ = w.Close()
+	output := <-outputChan
+
+	// Assertions: Untracked files should be in "added" category
+	assert.NoError(t, err)
+	assert.Contains(t, output, "Would add:", "Should have added section")
+	assert.Contains(t, output, "new-untracked.txt", "Should list untracked file")
+
+	// Verify NOT in modified section (this was the bug from Gemini review)
+	addedSection := output[strings.Index(output, "Would add:"):]
+	if modIndex := strings.Index(output, "Would modify:"); modIndex != -1 {
+		modifiedSection := output[modIndex:]
+		if commitIndex := strings.Index(modifiedSection, "Would create commit:"); commitIndex != -1 {
+			modifiedSection = modifiedSection[:commitIndex]
+		}
+		assert.NotContains(t, modifiedSection, "new-untracked.txt",
+			"Untracked file should NOT be in modified section")
+	}
+	assert.Contains(t, addedSection, "new-untracked.txt", "Untracked file should be in added section")
 }
