@@ -16,6 +16,36 @@ const (
 	syncTimeout = 5 * time.Minute
 )
 
+// categorizeFilesByOperation groups files by their git operation type
+func categorizeFilesByOperation(status git.Status) (added, modified, deleted []string) {
+	for path, fileStatus := range status {
+		// Skip unmodified files
+		if fileStatus.Worktree == git.Unmodified && fileStatus.Staging == git.Unmodified {
+			continue
+		}
+
+		// Determine operation type
+		switch {
+		case fileStatus.Worktree == git.Untracked:
+			// Untracked files are new additions
+			added = append(added, path)
+		case fileStatus.Worktree == git.Added || fileStatus.Staging == git.Added:
+			added = append(added, path)
+		case fileStatus.Worktree == git.Deleted || fileStatus.Staging == git.Deleted:
+			deleted = append(deleted, path)
+		default:
+			modified = append(modified, path)
+		}
+	}
+
+	// Sort for deterministic output
+	sort.Strings(added)
+	sort.Strings(modified)
+	sort.Strings(deleted)
+
+	return added, modified, deleted
+}
+
 // syncCmd represents the sync command
 var syncCmd = &cobra.Command{
 	Use:   "sync",
@@ -76,25 +106,33 @@ func runSync(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 
-		// Collect changed paths into a slice
-		var changedPaths []string
-		for path, fileStatus := range status {
-			if fileStatus.Worktree == git.Unmodified && fileStatus.Staging == git.Unmodified {
-				continue
+		// Categorize files by operation type
+		addedFiles, modifiedFiles, deletedFiles := categorizeFilesByOperation(status)
+
+		// Display files by operation type
+		if len(addedFiles) > 0 {
+			fmt.Println("\nWould add:")
+			for _, path := range addedFiles {
+				fmt.Printf(" • %s\n", path)
 			}
-			changedPaths = append(changedPaths, path)
 		}
 
-		// Sort the paths for deterministic output
-		sort.Strings(changedPaths)
+		if len(modifiedFiles) > 0 {
+			fmt.Println("\nWould modify:")
+			for _, path := range modifiedFiles {
+				fmt.Printf(" • %s\n", path)
+			}
+		}
 
-		// Print the sorted list
-		for _, path := range changedPaths {
-			fmt.Printf(" • %s\n", path)
+		if len(deletedFiles) > 0 {
+			fmt.Println("\nWould delete:")
+			for _, path := range deletedFiles {
+				fmt.Printf(" • %s\n", path)
+			}
 		}
 
 		if cfg.Git.RemoteURL != "" {
-			fmt.Println("📤 Would push to remote repository")
+			fmt.Println("\n📤 Would push to remote repository")
 		}
 		return nil
 	}
