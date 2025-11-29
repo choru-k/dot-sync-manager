@@ -23,16 +23,10 @@ func setupTestRepo(t *testing.T, path string) {
 	err := os.MkdirAll(path, testDirPerms)
 	require.NoError(t, err)
 
-	// Initialize git repo
+	// Initialize git repository
 	cmd := exec.Command("git", "init")
 	cmd.Dir = path
-	err = cmd.Run()
-	require.NoError(t, err)
-
-	// Create initial file
-	initialFile := filepath.Join(path, ".bashrc")
-	err = os.WriteFile(initialFile, []byte("initial content"), testFilePerms)
-	require.NoError(t, err)
+	require.NoError(t, cmd.Run(), "git init failed")
 
 	// Configure git user
 	cmd = exec.Command("git", "config", "user.name", "Test User")
@@ -43,7 +37,11 @@ func setupTestRepo(t *testing.T, path string) {
 	cmd.Dir = path
 	require.NoError(t, cmd.Run(), "git config user.email failed")
 
-	// Add and commit
+	// Create initial file and commit
+	initialFile := filepath.Join(path, ".bashrc")
+	err = os.WriteFile(initialFile, []byte("initial content"), testFilePerms)
+	require.NoError(t, err)
+
 	cmd = exec.Command("git", "add", ".")
 	cmd.Dir = path
 	require.NoError(t, cmd.Run(), "git add failed")
@@ -143,31 +141,26 @@ func TestSyncCmd_DryRunShowsFileOperationTypes(t *testing.T) {
 }
 
 func TestSyncCmd_DryRunShowsCommitMessage(t *testing.T) {
-	// Setup test repo
 	tmpDir := t.TempDir()
 	repoPath := filepath.Join(tmpDir, "test-repo")
 	setupTestRepo(t, repoPath)
 	setupTestConfig(t, repoPath, "")
 
-	// Modify a file
+	// Modify a file to have changes to commit
 	testFile := filepath.Join(repoPath, ".bashrc")
-	err := os.WriteFile(testFile, []byte("modified"), testFilePerms)
+	err := os.WriteFile(testFile, []byte("changed"), testFilePerms)
 	require.NoError(t, err)
 
-	// Setup dry-run mode
+	// Setup dry-run
 	oldDryRun := globalDryRun
 	globalDryRun = true
-	t.Cleanup(func() {
-		globalDryRun = oldDryRun
-	})
+	t.Cleanup(func() { globalDryRun = oldDryRun })
 
-	// Capture stdout
+	// Capture output
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
-	t.Cleanup(func() {
-		os.Stdout = oldStdout
-	})
+	t.Cleanup(func() { os.Stdout = oldStdout })
 
 	outputChan := make(chan string, 1)
 	go func() {
@@ -177,7 +170,6 @@ func TestSyncCmd_DryRunShowsCommitMessage(t *testing.T) {
 		outputChan <- buf.String()
 	}()
 
-	// Execute sync
 	cmd := &cobra.Command{}
 	err = runSync(cmd, []string{})
 
@@ -245,15 +237,13 @@ func TestSyncCmd_DryRunNoFilesystemChanges(t *testing.T) {
 	setupTestRepo(t, repoPath)
 	setupTestConfig(t, repoPath, "")
 
-	// Create a modified file
+	// Create a test file and record its modification time
 	testFile := filepath.Join(repoPath, ".bashrc")
 	err := os.WriteFile(testFile, []byte("modified content"), testFilePerms)
 	require.NoError(t, err)
 
-	// Record file modification times before dry-run
 	beforeStat, err := os.Stat(testFile)
 	require.NoError(t, err)
-	beforeModTime := beforeStat.ModTime()
 
 	// Get initial commit count
 	cmd := exec.Command("git", "rev-list", "--count", "HEAD")
@@ -289,19 +279,17 @@ func TestSyncCmd_DryRunNoFilesystemChanges(t *testing.T) {
 	// Verify file modification time unchanged
 	afterStat, err := os.Stat(testFile)
 	require.NoError(t, err)
-	afterModTime := afterStat.ModTime()
-	assert.Equal(t, beforeModTime, afterModTime, "File modification time should not change")
+	assert.Equal(t, beforeStat.ModTime(), afterStat.ModTime(), "File should not be modified during dry-run")
 
-	// Verify no new commits created
+	// Verify commit count unchanged
 	cmd = exec.Command("git", "rev-list", "--count", "HEAD")
 	cmd.Dir = repoPath
 	output, err = cmd.Output()
 	require.NoError(t, err)
-	finalCommitCount := string(output)
-	assert.Equal(t, initialCommitCount, finalCommitCount, "No new commits should be created")
+	assert.Equal(t, initialCommitCount, string(output), "No new commits should be created in dry-run")
 
-	// Verify staging area remains clean
-	cmd = exec.Command("git", "diff", "--staged", "--quiet")
+	// Verify staging area unchanged
+	cmd = exec.Command("git", "diff", "--cached", "--name-only")
 	cmd.Dir = repoPath
 	err = cmd.Run()
 	assert.NoError(t, err, "Staging area should remain clean")
@@ -324,12 +312,12 @@ func TestSyncCmd_DryRunHandlesCleanRepository(t *testing.T) {
 
 	// Don't create any changes - repository is clean
 
-	// Setup dry-run mode
+	// Setup dry-run
 	oldDryRun := globalDryRun
 	globalDryRun = true
 	t.Cleanup(func() { globalDryRun = oldDryRun })
 
-	// Capture stdout
+	// Capture output
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
@@ -414,7 +402,7 @@ func TestSyncCmd_DryRunHandlesNoRemote(t *testing.T) {
 	globalDryRun = true
 	t.Cleanup(func() { globalDryRun = oldDryRun })
 
-	// Capture stdout
+	// Capture output
 	oldStdout := os.Stdout
 	r, w, _ := os.Pipe()
 	os.Stdout = w
@@ -435,7 +423,7 @@ func TestSyncCmd_DryRunHandlesNoRemote(t *testing.T) {
 	_ = w.Close()
 	output := <-outputChan
 
-	// Assertions: Should not show push message for local-only repo
+	// Assertions: Should indicate no remote
 	assert.NoError(t, err)
 	assert.NotContains(t, output, "Would push", "Should not show push message when no remote")
 	assert.Contains(t, output, "Would modify", "Should still show file operations")
@@ -621,4 +609,130 @@ func TestSyncCmd_DryRunShowsDeletedFiles(t *testing.T) {
 	// Verify file is still deleted (dry-run shouldn't restore it)
 	_, err = os.Stat(deletedFile)
 	assert.True(t, os.IsNotExist(err), "Deleted file should remain deleted after dry-run")
+}
+
+// TestSyncCmd_DryRunEdgeCase_StagedThenDeleted tests the AD (Added-Deleted) edge case
+// A file is staged for addition, then deleted from the worktree.
+// Expected: git add . would remove it from the index, resulting in no change (skip it)
+func TestSyncCmd_DryRunEdgeCase_StagedThenDeleted(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoPath := filepath.Join(tmpDir, "test-repo")
+	setupTestRepo(t, repoPath)
+	setupTestConfig(t, repoPath, "")
+
+	// Create a new file and stage it
+	newFile := filepath.Join(repoPath, "staged-then-deleted.txt")
+	err := os.WriteFile(newFile, []byte("content"), testFilePerms)
+	require.NoError(t, err)
+
+	cmd := exec.Command("git", "add", "staged-then-deleted.txt")
+	cmd.Dir = repoPath
+	require.NoError(t, cmd.Run(), "git add should succeed")
+
+	// Delete the file from worktree (now it's AD: staged for addition, deleted from worktree)
+	err = os.Remove(newFile)
+	require.NoError(t, err)
+
+	// Setup dry-run mode
+	oldDryRun := globalDryRun
+	globalDryRun = true
+	t.Cleanup(func() { globalDryRun = oldDryRun })
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	t.Cleanup(func() { os.Stdout = oldStdout })
+
+	outputChan := make(chan string, 1)
+	go func() {
+		defer close(outputChan)
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		outputChan <- buf.String()
+	}()
+
+	// Execute sync
+	cobraCmd := &cobra.Command{}
+	err = runSync(cobraCmd, []string{})
+
+	_ = w.Close()
+	output := <-outputChan
+
+	// Assertions: File should NOT appear in any category
+	// git add . would remove it from index, resulting in no change
+	assert.NoError(t, err)
+	assert.NotContains(t, output, "staged-then-deleted.txt", "AD file should not appear in dry-run (git add . would remove from index)")
+}
+
+// TestSyncCmd_DryRunEdgeCase_DeletedThenRecreated tests the DU (Deleted-Untracked) edge case
+// A file is deleted from the index (git rm), then recreated as untracked.
+// Expected: git add . would stage it as a modification, not addition
+func TestSyncCmd_DryRunEdgeCase_DeletedThenRecreated(t *testing.T) {
+	tmpDir := t.TempDir()
+	repoPath := filepath.Join(tmpDir, "test-repo")
+	setupTestRepo(t, repoPath)
+
+	// Create and commit a file
+	testFile := filepath.Join(repoPath, "deleted-then-recreated.txt")
+	err := os.WriteFile(testFile, []byte("original"), testFilePerms)
+	require.NoError(t, err)
+
+	cmd := exec.Command("git", "add", "deleted-then-recreated.txt")
+	cmd.Dir = repoPath
+	require.NoError(t, cmd.Run())
+
+	cmd = exec.Command("git", "commit", "-m", "Add file to be deleted")
+	cmd.Dir = repoPath
+	require.NoError(t, cmd.Run())
+
+	// Delete from index (git rm --cached to keep worktree file)
+	cmd = exec.Command("git", "rm", "--cached", "deleted-then-recreated.txt")
+	cmd.Dir = repoPath
+	require.NoError(t, cmd.Run(), "git rm --cached should succeed")
+
+	// Now the file is DU: Deleted from index, Untracked in worktree
+	setupTestConfig(t, repoPath, "")
+
+	// Setup dry-run mode
+	oldDryRun := globalDryRun
+	globalDryRun = true
+	t.Cleanup(func() { globalDryRun = oldDryRun })
+
+	// Capture stdout
+	oldStdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	t.Cleanup(func() { os.Stdout = oldStdout })
+
+	outputChan := make(chan string, 1)
+	go func() {
+		defer close(outputChan)
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		outputChan <- buf.String()
+	}()
+
+	// Execute sync
+	cobraCmd := &cobra.Command{}
+	err = runSync(cobraCmd, []string{})
+
+	_ = w.Close()
+	output := <-outputChan
+
+	// Assertions: File should appear in "modified" section, not "added"
+	// git add . would stage it as a modification (the file existed before)
+	assert.NoError(t, err)
+	assert.Contains(t, output, "Would modify:", "DU file should be in modified section")
+	assert.Contains(t, output, "deleted-then-recreated.txt", "DU file should appear in output")
+
+	// Verify it's NOT in the added section
+	if strings.Contains(output, "Would add:") {
+		addedSection := output[strings.Index(output, "Would add:"):]
+		if modIndex := strings.Index(addedSection, "Would modify:"); modIndex != -1 {
+			addedSection = addedSection[:modIndex]
+		}
+		assert.NotContains(t, addedSection, "deleted-then-recreated.txt",
+			"DU file should NOT be in added section (git add . treats it as modification)")
+	}
 }

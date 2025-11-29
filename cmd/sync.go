@@ -8,6 +8,7 @@ import (
 
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
 	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/spf13/cobra"
 )
 
@@ -39,11 +40,37 @@ func displaySyncSummary(addedCount, modifiedCount, deletedCount int) {
 //   - deleted: files staged or marked for deletion
 //
 // The returned slices are sorted alphabetically for deterministic output.
-func categorizeFilesByOperation(status git.Status) (added, modified, deleted []string) {
+func categorizeFilesByOperation(repo *git.Repository, status git.Status) (added, modified, deleted []string) {
+	// Get HEAD tree for DU case detection
+	var headTree *object.Tree
+	if head, err := repo.Head(); err == nil {
+		if commit, err := repo.CommitObject(head.Hash()); err == nil {
+			headTree, _ = commit.Tree()
+		}
+	}
+
 	for path, fileStatus := range status {
 		// Skip unmodified files
 		if fileStatus.Worktree == git.Unmodified && fileStatus.Staging == git.Unmodified {
 			continue
+		}
+
+		// Special case: A file staged for addition but then deleted from the worktree.
+		// 'git add .' will remove it from the index, resulting in no change.
+		if fileStatus.Staging == git.Added && fileStatus.Worktree == git.Deleted {
+			continue
+		}
+
+		// Special case: A file deleted from the index but an untracked file with the same name exists.
+		// Go-git reports this as Staging=Untracked, Worktree=Untracked (not Staging=Deleted).
+		// To detect: check if both are untracked AND file exists in HEAD.
+		// 'git add .' will stage it as a modification.
+		if fileStatus.Staging == git.Untracked && fileStatus.Worktree == git.Untracked && headTree != nil {
+			if _, err := headTree.File(path); err == nil {
+				// File exists in HEAD, this is the DU case
+				modified = append(modified, path)
+				continue
+			}
 		}
 
 		// Determine operation type
@@ -140,7 +167,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 		}
 
 		// Categorize files by operation type
-		addedFiles, modifiedFiles, deletedFiles := categorizeFilesByOperation(status)
+		addedFiles, modifiedFiles, deletedFiles := categorizeFilesByOperation(gitMgr.Repo(), status)
 
 		// Display files by operation type
 		if len(addedFiles) > 0 {
