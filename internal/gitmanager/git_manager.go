@@ -49,6 +49,39 @@ func NewGitManager(ctx context.Context, cfg Config) (*GitManager, error) {
 	return manager, nil
 }
 
+// NewGitManagerReadOnly opens an existing repository in read-only mode without
+// any mutations (no bootstrap, no remote config, no clone/init).
+// Returns an error if the repository does not exist.
+// Use this for dry-run operations that need to inspect repository state without changes.
+// Auth validation is skipped since read-only operations never communicate with remotes.
+func NewGitManagerReadOnly(ctx context.Context, cfg Config) (*GitManager, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+
+	// Normalize config (apply defaults) before validation
+	cfg.normalize()
+
+	// Skip auth validation for read-only operations - only validate essential fields
+	if err := cfg.validateReadOnly(); err != nil {
+		return nil, err
+	}
+
+	// Open existing repository without any mutations
+	repo, err := git.PlainOpen(cfg.RepoPath)
+	if err != nil {
+		return nil, fmt.Errorf("gitmanager: open repo (read-only): %w", err)
+	}
+
+	return &GitManager{
+		cfg:  cfg,
+		auth: nil, // No auth needed for read-only local operations
+		repo: repo,
+	}, nil
+}
+
 // bootstrapRepo ensures the working tree exists and is connected to the configured remote.
 func (gm *GitManager) bootstrapRepo(ctx context.Context) error {
 	select {
@@ -196,7 +229,7 @@ func (gm *GitManager) StageAndCommit(ctx context.Context, when time.Time) ([]str
 		return nil, fmt.Errorf("gitmanager: add --all: %w", err)
 	}
 
-	message := buildAutoCommitMessage(when, changedFiles)
+	message := BuildAutoCommitMessage(when, changedFiles)
 	_, err = worktree.Commit(message, &git.CommitOptions{
 		Author: &object.Signature{
 			Name:  gm.cfg.AuthorName,
@@ -284,8 +317,12 @@ func (gm *GitManager) PullWithStash(ctx context.Context) error {
 	return nil
 }
 
-// buildAutoCommitMessage formats the auto-sync commit message.
-func buildAutoCommitMessage(when time.Time, files []string) string {
+// BuildAutoCommitMessage formats the auto-sync commit message.
+// Exported to support dry-run preview in cmd/sync.go, which needs to display
+// the exact commit message that would be created without actually committing.
+// The function ensures the preview matches the actual sync behavior by using
+// the same message format and file sorting logic.
+func BuildAutoCommitMessage(when time.Time, files []string) string {
 	var builder strings.Builder
 	builder.WriteString(fmt.Sprintf("Auto-sync: %s\n\nChanged files:\n", when.Format("2006-01-02 15:04:05")))
 	for _, file := range files {

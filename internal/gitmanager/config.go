@@ -92,3 +92,24 @@ func (c *Config) validate() error {
 
 	return nil
 }
+
+// validateReadOnly validates config for read-only operations.
+// Unlike validate(), this skips auth validation since read-only operations
+// never communicate with remotes (used for dry-run preview).
+func (c *Config) validateReadOnly() error {
+	if c == nil {
+		return errors.New("gitmanager: config is nil")
+	}
+	if c.RepoPath == "" {
+		return errors.New("gitmanager: repo path is required")
+	}
+	if !filepath.IsAbs(c.RepoPath) {
+		return fmt.Errorf("gitmanager: repo path must be absolute (%s)", c.RepoPath)
+	}
+	if c.AuthorName == "" || c.AuthorEmail == "" {
+		return errors.New("gitmanager: author name and email are required")
+	}
+
+	// Auth validation intentionally skipped for read-only operations
+	return nil
+}
