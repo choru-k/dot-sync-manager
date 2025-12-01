@@ -262,14 +262,21 @@ func runForegroundDaemon(cfg *config.SyncConfig, logFile string) error {
 // gracefulShutdown coordinates the shutdown sequence with timeout protection
 //
 // Design strategy:
-// 1. Parallel execution: Sync service and PID cleanup run concurrently for efficiency
-// 2. Timeout hierarchy: Service timeout (10s) < Total timeout (15s) for coordination
-// 3. Error aggregation: Collect all errors, filter nils, report comprehensive status
-// 4. Graceful degradation: Continue shutdown even if individual operations fail
+//  1. Parallel execution: Sync service and PID cleanup run concurrently for efficiency
+//  2. Fresh timeout context: Uses context.Background() because signalCtx is already
+//     cancelled when this function is called. Shutdown needs its own clean 15s window.
+//  3. Service timeout hierarchy: Service timeout (10s) < Total timeout (15s)
+//  4. Error aggregation: Collect all errors, report comprehensive status
+//  5. Graceful degradation: Continue shutdown even if individual operations fail
 //
-// Context design: Uses parent signal context with timeout to ensure shutdown respects
-// both signal cancellation and time limits. This inherits cancellation from the parent
-// while adding a maximum deadline for comprehensive cleanup (15s).
+// Context design rationale:
+// This function is called AFTER <-signalCtx.Done(), so signalCtx is already cancelled.
+// Using context.WithTimeout(signalCtx, ...) would create an immediately-cancelled
+// child context, causing instant "timeout" failures. Instead, we use Background()
+// to create a fresh 15s deadline specifically for cleanup operations.
+//
+// The service stop context IS derived from shutdownCtx (not Background), ensuring
+// it respects the total shutdown deadline while having its own 10s limit.
 //
 // Coordination timing: 100ms delay before PID cleanup ensures sync service
 // starts shutting down first, preventing race conditions where PID file
@@ -277,9 +284,11 @@ func runForegroundDaemon(cfg *config.SyncConfig, logFile string) error {
 func gracefulShutdown(signalCtx context.Context, svc *syncservice.SyncService, lockManager *process.LockManager) error {
 	fmt.Println("🔄 Shutting down services...")
 
-	// Create shutdown timeout context inheriting from signal context
-	// This respects parent cancellation while providing a maximum deadline
-	shutdownCtx, shutdownCancel := context.WithTimeout(signalCtx, totalShutdownTimeout)
+	// Use context.Background() to create fresh timeout for shutdown operations.
+	// The signalCtx is already cancelled when this function is called (after <-signalCtx.Done()),
+	// so we need a fresh context with its own 15s deadline for cleanup operations.
+	// This is intentional and correct - shutdown needs its own timeout window.
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), totalShutdownTimeout)
 	defer shutdownCancel()
 
 	// Channel to collect shutdown errors (buffered to prevent blocking)
@@ -292,8 +301,10 @@ func gracefulShutdown(signalCtx context.Context, svc *syncservice.SyncService, l
 	go func() {
 		defer shutdownWG.Done()
 
-		// Create service shutdown context with 10s timeout
-		svcCtx, svcCancel := context.WithTimeout(context.Background(), serviceShutdownTimeout)
+		// Create service timeout context from shutdownCtx (not Background).
+		// This ensures service stop respects the total shutdown deadline.
+		// If shutdownCtx is cancelled (total timeout exceeded), svcCtx is also cancelled.
+		svcCtx, svcCancel := context.WithTimeout(shutdownCtx, serviceShutdownTimeout)
 		defer svcCancel()
 
 		// Stop the service (waits for watchers, debouncers, event loop)
