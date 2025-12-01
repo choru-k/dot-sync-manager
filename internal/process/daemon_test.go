@@ -1,11 +1,11 @@
 package process
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"testing"
 )
@@ -217,9 +217,9 @@ func TestLockManager(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when trying to acquire second lock, got nil")
 	}
-	// Check for any lock acquisition failure (timeout or daemon already running)
-	if !strings.Contains(err.Error(), "failed to acquire lock") {
-		t.Fatalf("expected lock acquisition error, got: %v", err)
+	// Check for daemon already running error
+	if !errors.Is(err, ErrDaemonAlreadyRunning) {
+		t.Fatalf("expected ErrDaemonAlreadyRunning, got: %v", err)
 	}
 
 	// Test successful unlock
@@ -572,5 +572,101 @@ func TestPIDFileFormatCompatibility(t *testing.T) {
 				t.Fatalf("failed to cleanup: %v", err)
 			}
 		})
+	}
+}
+
+// TestWritePIDExclusive_SecondInstanceReturnsError verifies that attempting to acquire
+// an exclusive PID lock when another instance already holds it returns ErrDaemonAlreadyRunning.
+// This ensures the singleton daemon guarantee: only one daemon can run at a time.
+func TestWritePIDExclusive_SecondInstanceReturnsError(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// Setup: First daemon acquires exclusive lock
+	lockManager1, err := WritePIDExclusive(1234)
+	if err != nil {
+		t.Fatalf("first WritePIDExclusive failed: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := lockManager1.Unlock(); err != nil {
+			t.Logf("warning: failed to unlock during cleanup: %v", err)
+		}
+	})
+
+	// Action: Second daemon attempts to acquire lock (should fail)
+	lockManager2, err := WritePIDExclusive(5678)
+
+	// Assert: Returns ErrDaemonAlreadyRunning sentinel error
+	if lockManager2 != nil {
+		if unlockErr := lockManager2.Unlock(); unlockErr != nil {
+			t.Logf("warning: failed to unlock lockManager2: %v", unlockErr)
+		}
+		t.Fatal("expected lockManager2 to be nil when lock acquisition fails")
+	}
+	if err == nil {
+		t.Fatal("expected error when second instance tries to acquire lock, got nil")
+	}
+	if !errors.Is(err, ErrDaemonAlreadyRunning) {
+		t.Errorf("expected ErrDaemonAlreadyRunning, got: %v", err)
+	}
+}
+
+// TestLockManager_UnlockRemovesBothFiles verifies that LockManager.Unlock()
+// properly cleans up both the PID file and the lock file.
+func TestLockManager_UnlockRemovesBothFiles(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	pidPath := filepath.Join(homeDir, ".dotfile-sync-manager.pid")
+	lockPath := pidPath + ".lock"
+
+	// Setup: Create lock
+	lockManager, err := WritePIDExclusive(1234)
+	if err != nil {
+		t.Fatalf("WritePIDExclusive failed: %v", err)
+	}
+
+	// Verify files exist before unlock
+	if _, err := os.Stat(pidPath); err != nil {
+		t.Fatalf("PID file should exist before unlock: %v", err)
+	}
+	if _, err := os.Stat(lockPath); err != nil {
+		t.Fatalf("lock file should exist before unlock: %v", err)
+	}
+
+	// Action: Unlock
+	if err := lockManager.Unlock(); err != nil {
+		t.Fatalf("Unlock failed: %v", err)
+	}
+
+	// Assert: Both files removed
+	if _, err := os.Stat(pidPath); !os.IsNotExist(err) {
+		t.Errorf("PID file should be removed after unlock, got error: %v", err)
+	}
+	if _, err := os.Stat(lockPath); !os.IsNotExist(err) {
+		t.Errorf("lock file should be removed after unlock, got error: %v", err)
+	}
+}
+
+// TestLockManager_DoubleUnlockSafe verifies that calling Unlock() multiple times
+// is safe and doesn't cause errors or panics (idempotent operation).
+func TestLockManager_DoubleUnlockSafe(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	// Setup: Create lock
+	lockManager, err := WritePIDExclusive(1234)
+	if err != nil {
+		t.Fatalf("WritePIDExclusive failed: %v", err)
+	}
+
+	// Action: First unlock
+	if err := lockManager.Unlock(); err != nil {
+		t.Fatalf("first Unlock failed: %v", err)
+	}
+
+	// Action: Second unlock (should be safe, no panic or error)
+	if err := lockManager.Unlock(); err != nil {
+		t.Errorf("second Unlock should be safe, got error: %v", err)
 	}
 }
