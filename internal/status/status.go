@@ -172,8 +172,15 @@ func (sm *StatusManager) Start() error {
 	return nil
 }
 
-// Stop stops the Unix socket server
-func (sm *StatusManager) Stop() error {
+// Stop stops the Unix socket server with context-aware timeout support
+func (sm *StatusManager) Stop(ctx context.Context) error {
+	// Check context before starting shutdown
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("status manager stop cancelled: %w", ctx.Err())
+	default:
+	}
+
 	if !atomic.CompareAndSwapInt32(&sm.running, 1, 0) {
 		return nil // Already stopped
 	}
@@ -182,11 +189,34 @@ func (sm *StatusManager) Stop() error {
 	sm.cancel()
 
 	if sm.socket != nil {
-		err := sm.socket.Close()
-		sm.socket = nil
-		if err != nil {
-			return fmt.Errorf("failed to close socket: %w", err)
+		// Close socket with context awareness
+		errCh := make(chan error, 1)
+		go func() {
+			err := sm.socket.Close()
+			sm.socket = nil
+			if err != nil {
+				errCh <- fmt.Errorf("failed to close socket: %w", err)
+			} else {
+				errCh <- nil
+			}
+		}()
+
+		select {
+		case err := <-errCh:
+			if err != nil {
+				return err
+			}
+		case <-ctx.Done():
+			// Context cancelled during socket close
+			return fmt.Errorf("status manager stop cancelled during socket close: %w", ctx.Err())
 		}
+	}
+
+	// Check context before final cleanup
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("status manager stop cancelled before cleanup: %w", ctx.Err())
+	default:
 	}
 
 	// Remove socket file

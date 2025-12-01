@@ -20,12 +20,12 @@ func safeUnlock(lockManager *process.LockManager) {
 	}
 }
 
-// TestGracefulShutdown_TimeoutContext tests that gracefulShutdown uses a fresh timeout context
-// and doesn't inherit cancellation from the signal context
+// TestGracefulShutdown_TimeoutContext tests that gracefulShutdown respects parent context
+// cancellation while providing its own timeout deadline
 func TestGracefulShutdown_TimeoutContext(t *testing.T) {
-	// Create a cancelled context (simulating the signal context being cancelled)
-	cancelledCtx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately
+	// Create a context with timeout (simulating normal signal context)
+	parentCtx, parentCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer parentCancel()
 
 	// Create a mock sync service and lock manager
 	gitConfig := gitmanager.Config{
@@ -66,11 +66,11 @@ func TestGracefulShutdown_TimeoutContext(t *testing.T) {
 		t.Fatalf("Failed to create lock manager: %v", err)
 	}
 
-	// Test that gracefulShutdown works even with cancelled signal context
-	// This verifies Bug Fix 1: Line 223 uses context.Background() instead of signalCtx
-	err = gracefulShutdown(cancelledCtx, svc, lockManager)
+	// Test that gracefulShutdown inherits from parent context and completes successfully
+	// The parent context has 5s timeout, which is sufficient for shutdown (needs <15s)
+	err = gracefulShutdown(parentCtx, svc, lockManager)
 	if err != nil {
-		t.Errorf("gracefulShutdown should work with cancelled signal context, got error: %v", err)
+		t.Errorf("gracefulShutdown should complete with valid parent context, got error: %v", err)
 	}
 }
 
