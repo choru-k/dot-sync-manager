@@ -90,6 +90,20 @@ var (
 	}
 )
 
+// calculateBackupPath generates a consistent timestamped backup path for a given file.
+// It respects the custom backup directory if configured, otherwise uses the default
+// .backup directory within the repository. This function is used by both previewAdd
+// and executeAddTransaction to ensure the dry-run preview matches actual execution.
+func calculateBackupPath(cfg *config.SyncConfig, filePath string) string {
+	backupDir := cfg.ConflictResolution.BackupDir
+	if backupDir == "" {
+		backupDir = filepath.Join(cfg.Git.RepoPath, defaultBackupDirName)
+	}
+	timestamp := timeNow().Format(backupTimestampFormat)
+	filename := filepath.Base(filePath)
+	return filepath.Join(backupDir, fmt.Sprintf("%s-%s", filename, timestamp))
+}
+
 // runAdd is the cobra entry point for the `dsm add` command; it orchestrates validation,
 // file relocation, symlink creation, and configuration updates for a single source file.
 func runAdd(cmd *cobra.Command, args []string) error {
@@ -106,6 +120,11 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	targetPath, err := prepareTargetPath(cfg, filePath)
 	if err != nil {
 		return fmt.Errorf("failed to prepare target path: %w", err)
+	}
+
+	// Dry-run mode: preview operations without executing
+	if isDryRun() {
+		return previewAdd(filePath, targetPath, cfg)
 	}
 
 	backupPath, backupCreated, err := executeAddTransaction(cfg, filePath, targetPath)
@@ -183,8 +202,16 @@ func confirmSensitiveAdd(cmd *cobra.Command, filePath string) error {
    - Environment files (.env, .env.local, .env.production)
    - Database credentials and API tokens
 
-Type 'yes' to continue anyway, or anything else to cancel: `, filePath)
+`, filePath)
 
+	// In dry-run mode, show warning but skip interactive prompt
+	if isDryRun() {
+		fmt.Println("(Dry-run mode: proceeding without confirmation)")
+		fmt.Println()
+		return nil
+	}
+
+	fmt.Print("Type 'yes' to continue anyway, or anything else to cancel: ")
 	reader := bufio.NewReader(cmd.InOrStdin())
 	response, err := reader.ReadString('\n')
 	if err != nil {
@@ -238,10 +265,8 @@ Hint: Only add files from outside the repository`, absPath)
 }
 
 func executeAddTransaction(cfg *config.SyncConfig, filePath, targetPath string) (string, bool, error) {
-	backupDir := cfg.ConflictResolution.BackupDir
-	if backupDir == "" {
-		backupDir = filepath.Join(cfg.Git.RepoPath, defaultBackupDirName)
-	}
+	backupPath := calculateBackupPath(cfg, filePath)
+	backupDir := filepath.Dir(backupPath)
 
 	if err := mkdirAllFunc(backupDir, dirPerms); err != nil {
 		return "", false, fmt.Errorf("failed to create backup directory: %w", err)
@@ -251,10 +276,6 @@ func executeAddTransaction(cfg *config.SyncConfig, filePath, targetPath string) 
 	if err := mkdirAllFunc(filepath.Dir(targetPath), dirPerms); err != nil {
 		return "", false, fmt.Errorf("failed to create target directory: %w", err)
 	}
-
-	timestamp := timeNow().Format(backupTimestampFormat)
-	filename := filepath.Base(filePath)
-	backupPath := filepath.Join(backupDir, fmt.Sprintf("%s-%s", filename, timestamp))
 
 	if err := copyFileFunc(filePath, backupPath); err != nil {
 		return "", false, fmt.Errorf("failed to backup original file: %w", err)
@@ -507,4 +528,29 @@ func isSensitiveFile(path string) bool {
 	}
 
 	return false
+}
+
+// previewAdd displays planned add operations in dry-run mode without executing them
+func previewAdd(filePath, targetPath string, cfg *config.SyncConfig) error {
+	PrintDryRun("Dry run mode - no changes will be made")
+
+	backupPath := calculateBackupPath(cfg, filePath)
+
+	// Calculate relative path for config mapping with error handling
+	relPath, err := filepath.Rel(cfg.Git.RepoPath, targetPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "⚠️  Warning: could not determine relative path: %v\n", err)
+		relPath = targetPath // Fallback to absolute path
+	}
+
+	fmt.Println("\nPlanned operations:")
+	fmt.Printf("Would create backup: %s\n", backupPath)
+	fmt.Printf("Would move file to repository: %s\n", targetPath)
+	fmt.Printf("Would create symlink: %s -> %s\n", filePath, targetPath)
+	fmt.Printf("Would add mapping to config: %s -> %s\n", relPath, filePath)
+
+	fmt.Printf("\n📂 Repository: %s\n", cfg.Git.RepoPath)
+	fmt.Println("\nNote: File would be staged for git commit on next sync.")
+
+	return nil
 }
