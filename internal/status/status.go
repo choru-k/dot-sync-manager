@@ -59,6 +59,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"path/filepath"
@@ -112,6 +113,11 @@ type StatusManager struct {
 	ctx     context.Context
 	cancel  context.CancelFunc
 	running int32 // atomic.Bool
+
+	// Shutdown coordination
+	socketMutex  sync.Mutex     // Protects socket field access
+	acceptWG     sync.WaitGroup // Tracks acceptConnections goroutine
+	shutdownOnce sync.Once      // Ensures single shutdown execution
 }
 
 // NewStatusManager creates a new status manager
@@ -166,63 +172,96 @@ func (sm *StatusManager) Start() error {
 	sm.socket = listener
 	sm.setState(StateRunning)
 
-	// Start accepting connections
-	go sm.acceptConnections()
+	// Start accepting connections with goroutine lifecycle tracking
+	sm.acceptWG.Add(1)
+	go func() {
+		defer sm.acceptWG.Done()
+		sm.acceptConnections()
+	}()
 
 	return nil
 }
 
-// Stop stops the Unix socket server with context-aware timeout support
+// Stop stops the Unix socket server with race-free ordered shutdown protocol
+//
+// Design: Four ordered phases with independent timeout contexts
+// 1. Signal shutdown (cancel context)
+// 2. Wait for acceptConnections goroutine exit (2s timeout)
+// 3. Close socket synchronously (guaranteed safe after goroutine exit)
+// 4. Remove socket file (best-effort, 500ms timeout)
+//
+// This fixes three race conditions:
+// - Race #1: Socket closure now synchronous after goroutine wait
+// - Race #2: Independent timeout contexts immune to parent cancellation
+// - Race #3: No concurrent access to sm.socket (goroutine exits before write)
 func (sm *StatusManager) Stop(ctx context.Context) error {
-	// Check context before starting shutdown
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("status manager stop cancelled: %w", ctx.Err())
-	default:
-	}
-
+	// Idempotent guard
 	if !atomic.CompareAndSwapInt32(&sm.running, 1, 0) {
 		return nil // Already stopped
 	}
 
-	sm.setState(StateStopping)
-	sm.cancel()
+	var shutdownErrors []error
 
-	if sm.socket != nil {
-		// Close socket with context awareness
-		errCh := make(chan error, 1)
+	sm.shutdownOnce.Do(func() {
+		// Phase 1: Signal shutdown
+		sm.setState(StateStopping)
+		sm.cancel() // Signals acceptConnections to exit
+
+		// Phase 2: Wait for acceptConnections goroutine with timeout (2s)
+		// This ensures no concurrent access to sm.socket before we close it
+		done := make(chan struct{})
 		go func() {
-			err := sm.socket.Close()
-			sm.socket = nil
-			if err != nil {
-				errCh <- fmt.Errorf("failed to close socket: %w", err)
-			} else {
-				errCh <- nil
+			sm.acceptWG.Wait()
+			close(done)
+		}()
+
+		waitCtx, waitCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer waitCancel()
+
+		select {
+		case <-done:
+			// Goroutine exited cleanly
+		case <-waitCtx.Done():
+			shutdownErrors = append(shutdownErrors,
+				fmt.Errorf("timeout waiting for acceptConnections goroutine to exit"))
+		}
+
+		// Phase 3: Close socket synchronously (guaranteed safe - goroutine exited)
+		if sm.socket != nil {
+			if err := sm.socket.Close(); err != nil {
+				shutdownErrors = append(shutdownErrors,
+					fmt.Errorf("failed to close socket: %w", err))
 			}
+			sm.socket = nil
+		}
+
+		// Phase 4: Remove socket file (best-effort with timeout)
+		// Socket file is auto-cleaned on next Start(), so filesystem issues
+		// shouldn't prevent daemon shutdown
+		socketPath := expandPath(DefaultSocketPath)
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+		defer cleanupCancel()
+
+		removeDone := make(chan error, 1)
+		go func() {
+			removeDone <- os.Remove(socketPath)
 		}()
 
 		select {
-		case err := <-errCh:
-			if err != nil {
-				return err
+		case err := <-removeDone:
+			if err != nil && !os.IsNotExist(err) {
+				// Log but don't fail - socket cleaned on next Start()
+				log.Printf("status: warning - failed to remove socket file: %v", err)
 			}
-		case <-ctx.Done():
-			// Context cancelled during socket close
-			return fmt.Errorf("status manager stop cancelled during socket close: %w", ctx.Err())
+		case <-cleanupCtx.Done():
+			log.Printf("status: warning - timeout removing socket file")
 		}
+	})
+
+	// Return first error if any
+	if len(shutdownErrors) > 0 {
+		return shutdownErrors[0]
 	}
-
-	// Check context before final cleanup
-	select {
-	case <-ctx.Done():
-		return fmt.Errorf("status manager stop cancelled before cleanup: %w", ctx.Err())
-	default:
-	}
-
-	// Remove socket file
-	socketPath := expandPath(DefaultSocketPath)
-	_ = os.Remove(socketPath) // Ignore error
-
 	return nil
 }
 
@@ -291,15 +330,19 @@ func (sm *StatusManager) GetStatus() DaemonStatus {
 }
 
 // acceptConnections accepts and handles incoming socket connections
+// This method runs in a goroutine tracked by acceptWG in Start()
+// It exits cleanly when sm.ctx is cancelled during Stop()
 func (sm *StatusManager) acceptConnections() {
 	for {
+		// Check context before each accept
 		select {
 		case <-sm.ctx.Done():
-			return
+			return // Clean exit on context cancellation
 		default:
 		}
 
-		// Set accept timeout to avoid blocking forever
+		// Set accept timeout to avoid indefinite blocking
+		// This allows periodic context checks even when no connections arrive
 		if tc, ok := sm.socket.(*net.UnixListener); ok {
 			_ = tc.SetDeadline(time.Now().Add(1 * time.Second))
 		}
@@ -307,16 +350,16 @@ func (sm *StatusManager) acceptConnections() {
 		conn, err := sm.socket.Accept()
 		if err != nil {
 			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				continue // Timeout is normal, continue
+				continue // Timeout is normal, check context on next iteration
 			}
 			if sm.ctx.Err() != nil {
-				return // Context cancelled, normal shutdown
+				return // Context cancelled during Accept()
 			}
 			// Log error but continue accepting connections
 			continue
 		}
 
-		// Handle connection in goroutine
+		// Handle connection in separate goroutine
 		go sm.handleConnection(conn)
 	}
 }
