@@ -49,9 +49,14 @@ func TestGracefulShutdown_TimeoutContext(t *testing.T) {
 		IgnoreFile:      ".syncignore",
 	}
 
-	_, err = sync.New(gitMgr, syncConfig)
+	svc, err := sync.New(gitMgr, syncConfig)
 	if err != nil {
 		t.Fatalf("Failed to create sync service: %v", err)
+	}
+
+	// Start the service so it can be stopped gracefully
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Failed to start sync service: %v", err)
 	}
 
 	// Create a mock lock manager by acquiring and immediately unlocking it
@@ -63,7 +68,7 @@ func TestGracefulShutdown_TimeoutContext(t *testing.T) {
 
 	// Test that gracefulShutdown works even with cancelled signal context
 	// This verifies Bug Fix 1: Line 223 uses context.Background() instead of signalCtx
-	err = gracefulShutdown(cancelledCtx, lockManager)
+	err = gracefulShutdown(cancelledCtx, svc, lockManager)
 	if err != nil {
 		t.Errorf("gracefulShutdown should work with cancelled signal context, got error: %v", err)
 	}
@@ -93,9 +98,14 @@ func TestGracefulShutdown_PIDLockRelease(t *testing.T) {
 		IgnoreFile:      ".syncignore",
 	}
 
-	_, err = sync.New(gitMgr, syncConfig)
+	svc, err := sync.New(gitMgr, syncConfig)
 	if err != nil {
 		t.Fatalf("Failed to create sync service: %v", err)
+	}
+
+	// Start the service so it can be stopped gracefully
+	if err := svc.Start(); err != nil {
+		t.Fatalf("Failed to start sync service: %v", err)
 	}
 
 	// Create lock manager
@@ -106,7 +116,7 @@ func TestGracefulShutdown_PIDLockRelease(t *testing.T) {
 	}
 
 	// Test graceful shutdown
-	err = gracefulShutdown(context.Background(), lockManager)
+	err = gracefulShutdown(context.Background(), svc, lockManager)
 	if err != nil {
 		t.Errorf("gracefulShutdown failed: %v", err)
 	}

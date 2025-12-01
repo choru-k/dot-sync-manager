@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
+	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
 	"github.com/choru-k/dot-sync-manager/internal/process"
+	syncservice "github.com/choru-k/dot-sync-manager/internal/sync"
 	"github.com/spf13/cobra"
 )
 
@@ -200,6 +202,31 @@ func runForegroundDaemon(cfg *config.SyncConfig, logFile string) error {
 	}
 	// PID lock is released by the gracefulShutdown function.
 
+	// Create git manager for sync service
+	gitCfg := cfg.ToGitManagerConfig()
+	if gitCfg.RepoPath == "" {
+		_ = lockManager.Unlock() // Clean up PID on failure
+		return fmt.Errorf("failed to create git manager configuration: invalid repository path")
+	}
+	gitMgr, err := gitmanager.NewGitManager(signalCtx, gitCfg)
+	if err != nil {
+		_ = lockManager.Unlock() // Clean up PID on failure
+		return fmt.Errorf("failed to initialize git manager: %w", err)
+	}
+
+	// Create and start sync service
+	syncCfg := cfg.ToSyncConfig(Version, cfg.GetConfigPath())
+	svc, err := syncservice.New(gitMgr, syncCfg)
+	if err != nil {
+		_ = lockManager.Unlock() // Clean up PID on failure
+		return fmt.Errorf("failed to create sync service: %w", err)
+	}
+
+	if err := svc.Start(); err != nil {
+		_ = lockManager.Unlock() // Clean up PID on failure
+		return fmt.Errorf("failed to start sync service: %w", err)
+	}
+
 	fmt.Printf("🚀 Watching repository: %s\n", cfg.Git.RepoPath)
 	fmt.Printf("📊 Machine: %s\n", cfg.Machine.Name)
 	fmt.Printf("⚙️  Auto-sync enabled: %v\n", cfg.Sync.AutoSyncEnabled)
@@ -209,7 +236,7 @@ func runForegroundDaemon(cfg *config.SyncConfig, logFile string) error {
 	fmt.Println("\n🛑 Signal received, initiating graceful shutdown...")
 
 	// Execute graceful shutdown with timeout protection
-	if err := gracefulShutdown(signalCtx, lockManager); err != nil {
+	if err := gracefulShutdown(signalCtx, svc, lockManager); err != nil {
 		fmt.Printf("❌ Critical: Graceful shutdown failed: %v\n", err)
 		fmt.Printf("⚠️  Daemon state may be inconsistent. Manual cleanup may be required.\n")
 		fmt.Printf("💡 Run 'dsm status' to check daemon state and 'dsm stop' to force cleanup if needed.\n")
@@ -231,7 +258,7 @@ func runForegroundDaemon(cfg *config.SyncConfig, logFile string) error {
 // Coordination timing: 100ms delay before PID cleanup ensures sync service
 // starts shutting down first, preventing race conditions where PID file
 // might be removed before service cleanup begins.
-func gracefulShutdown(_ context.Context, lockManager *process.LockManager) error {
+func gracefulShutdown(_ context.Context, svc *syncservice.SyncService, lockManager *process.LockManager) error {
 	fmt.Println("🔄 Shutting down services...")
 
 	// Create shutdown timeout context to prevent indefinite hangs
@@ -240,9 +267,26 @@ func gracefulShutdown(_ context.Context, lockManager *process.LockManager) error
 	defer shutdownCancel()
 
 	// Channel to collect shutdown errors (buffered to prevent blocking)
-	// Capacity 2: one for sync service, one for PID cleanup operation
-	shutdownErrors := make(chan error, 2)
+	// Capacity 3: sync service shutdown, PID cleanup, potential extras
+	shutdownErrors := make(chan error, 3)
 	var shutdownWG sync.WaitGroup
+
+	// Start sync service shutdown in goroutine
+	shutdownWG.Add(1)
+	go func() {
+		defer shutdownWG.Done()
+
+		// Create service shutdown context with 10s timeout
+		svcCtx, svcCancel := context.WithTimeout(context.Background(), serviceShutdownTimeout)
+		defer svcCancel()
+
+		// Stop the service (waits for watchers, debouncers, event loop)
+		if err := svc.Stop(svcCtx); err != nil {
+			shutdownErrors <- fmt.Errorf("sync service shutdown error: %w", err)
+			return
+		}
+		shutdownErrors <- nil
+	}()
 
 	// Start PID file cleanup in goroutine using LockManager
 	//

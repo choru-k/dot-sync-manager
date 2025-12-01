@@ -1,7 +1,6 @@
 package status
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -58,12 +57,12 @@ func TestStatusManager_StartStop(t *testing.T) {
 	}
 
 	// Test stop
-	if err := sm.Stop(context.Background()); err != nil {
+	if err := sm.Stop(); err != nil {
 		t.Fatalf("Stop failed: %v", err)
 	}
 
 	// Test double stop
-	if err := sm.Stop(context.Background()); err != nil {
+	if err := sm.Stop(); err != nil {
 		t.Errorf("Expected no error when stopping already stopped status manager: %v", err)
 	}
 }
@@ -127,7 +126,7 @@ func TestStatusManager_UpdateStatus(t *testing.T) {
 func TestStatusManager_ConcurrentAccess(t *testing.T) {
 	sm := NewStatusManager("1.0.0", "/test/config.json")
 	_ = sm.Start()
-	defer func() { _ = sm.Stop(context.Background()) }()
+	defer func() { _ = sm.Stop() }()
 
 	var wg sync.WaitGroup
 	numGoroutines := 10
@@ -175,7 +174,7 @@ func TestStatusManager_SocketCommunication(t *testing.T) {
 	if err := sm.Start(); err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
-	defer func() { _ = sm.Stop(context.Background()) }()
+	defer func() { _ = sm.Stop() }()
 
 	// Wait a bit for the socket to be ready
 	time.Sleep(100 * time.Millisecond)
@@ -203,7 +202,7 @@ func TestStatusManager_SocketPermissions(t *testing.T) {
 	if err := sm.Start(); err != nil {
 		t.Fatalf("Start failed: %v", err)
 	}
-	defer func() { _ = sm.Stop(context.Background()) }()
+	defer func() { _ = sm.Stop() }()
 
 	// Wait a bit for socket to be created
 	time.Sleep(100 * time.Millisecond)
@@ -274,7 +273,7 @@ func TestIsDaemonRunning(t *testing.T) {
 		t.Error("Expected IsDaemonRunning() to return true when daemon is running")
 	}
 
-	_ = sm.Stop(context.Background())
+	_ = sm.Stop()
 
 	// Should be false again after stopping
 	time.Sleep(100 * time.Millisecond)
