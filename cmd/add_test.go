@@ -835,7 +835,7 @@ func TestAddCmd_DryRunWithAlreadyTrackedFile(t *testing.T) {
 // TestCalculateBackupPath verifies backup path calculation is consistent
 func TestCalculateBackupPath(t *testing.T) {
 	cfg := &config.SyncConfig{
-		Git: config.GitConfig{RepoPath: "/home/user/dotfiles"},
+		Git:                config.GitConfig{RepoPath: "/home/user/dotfiles"},
 		ConflictResolution: config.ConflictConfig{BackupDir: ""},
 	}
 
@@ -854,7 +854,7 @@ func TestCalculateBackupPath(t *testing.T) {
 
 	// Verify custom backup directory is respected
 	cfgCustom := &config.SyncConfig{
-		Git: config.GitConfig{RepoPath: "/home/user/dotfiles"},
+		Git:                config.GitConfig{RepoPath: "/home/user/dotfiles"},
 		ConflictResolution: config.ConflictConfig{BackupDir: "/custom/backup"},
 	}
 
