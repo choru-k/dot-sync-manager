@@ -2,6 +2,7 @@ package process
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -20,6 +21,12 @@ const (
 	lockTimeout       = 5 * time.Second
 	lockRetryInterval = 100 * time.Millisecond
 )
+
+// ErrDaemonAlreadyRunning is returned when attempting to start a second daemon instance
+// while another daemon is already running with an exclusive lock on the PID file.
+// This sentinel error allows callers to distinguish between lock acquisition failures
+// and other types of errors, enabling appropriate error handling and exit codes.
+var ErrDaemonAlreadyRunning = errors.New("daemon is already running")
 
 var explicitProcessName string
 
@@ -45,10 +52,16 @@ type LockManager struct {
 	lockPath string
 }
 
-// WritePIDExclusive atomically creates the PID file with exclusive file locking.
-// This prevents TOCTOU race conditions between checking if daemon is running
-// and writing the PID file. Uses flock for cross-platform file locking.
-// Returns a LockManager that must be held for the daemon's entire lifetime.
+// WritePIDExclusive atomically creates the PID file with exclusive file locking,
+// enforcing the singleton daemon guarantee: only one daemon process can run at a time.
+//
+// This function prevents TOCTOU race conditions between checking if a daemon is running
+// and writing the PID file by using flock for cross-platform exclusive file locking.
+// If another daemon instance is already running, this function returns ErrDaemonAlreadyRunning.
+//
+// The returned LockManager must be held for the daemon's entire lifetime. When the daemon
+// shuts down, call LockManager.Unlock() to release the lock and clean up both the PID file
+// and the lock file.
 func WritePIDExclusive(pid int) (*LockManager, error) {
 	// Temporary debug: Indicate that WritePIDExclusive has started
 	debugFile, err := os.OpenFile(filepath.Join(os.Getenv("HOME"), "dsm_write_pid_exclusive_started.log"), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
@@ -77,11 +90,9 @@ func WritePIDExclusive(pid int) (*LockManager, error) {
 	defer cancel()
 
 	locked, err := fileLock.TryLockContext(ctx, lockRetryInterval)
-	if err != nil {
-		return nil, fmt.Errorf("process: write pid exclusive: failed to acquire lock: %w", err)
-	}
-	if !locked {
-		return nil, fmt.Errorf("process: daemon already running (cannot acquire lock)")
+	if err != nil || !locked {
+		// Lock acquisition failed - either timeout/error or lock held by another process
+		return nil, ErrDaemonAlreadyRunning
 	}
 
 	// Temporary debug: Indicate that lock was acquired
