@@ -104,6 +104,19 @@ func calculateBackupPath(cfg *config.SyncConfig, filePath string) string {
 	return filepath.Join(backupDir, fmt.Sprintf("%s-%s", filename, timestamp))
 }
 
+// calculateSymlinkTarget determines the target for the symlink, preferring a relative path.
+// It calculates the relative path from the symlink's parent directory to the target file.
+// If the relative path calculation fails, it falls back to using the absolute target path.
+// This function is used by both previewAdd and executeAddTransaction to ensure the dry-run
+// preview matches actual execution behavior.
+func calculateSymlinkTarget(sourcePath, targetPath string) string {
+	relPath, err := filepath.Rel(filepath.Dir(sourcePath), targetPath)
+	if err != nil {
+		return targetPath // Fallback to absolute path
+	}
+	return relPath
+}
+
 // runAdd is the cobra entry point for the `dsm add` command; it orchestrates validation,
 // file relocation, symlink creation, and configuration updates for a single source file.
 func runAdd(cmd *cobra.Command, args []string) error {
@@ -310,11 +323,7 @@ func executeAddTransaction(cfg *config.SyncConfig, filePath, targetPath string) 
 		return backupPath, backupCreated, fmt.Errorf("failed to remove original file: %w", err)
 	}
 
-	relSymlinkPath, err := filepath.Rel(filepath.Dir(filePath), targetPath)
-	symlinkTarget := relSymlinkPath
-	if err != nil {
-		symlinkTarget = targetPath
-	}
+	symlinkTarget := calculateSymlinkTarget(filePath, targetPath)
 
 	if err := symlinkFunc(symlinkTarget, filePath); err != nil {
 		restoreSuccessful := false
@@ -535,13 +544,7 @@ func previewAdd(filePath, targetPath string, cfg *config.SyncConfig) error {
 	PrintDryRun("Dry run mode - no changes will be made")
 
 	backupPath := calculateBackupPath(cfg, filePath)
-
-	// Calculate relative symlink path (matches execution behavior at line 313)
-	relSymlinkPath, symlinkErr := filepath.Rel(filepath.Dir(filePath), targetPath)
-	symlinkTarget := relSymlinkPath
-	if symlinkErr != nil {
-		symlinkTarget = targetPath
-	}
+	symlinkTarget := calculateSymlinkTarget(filePath, targetPath)
 
 	// Calculate relative path for config mapping (matches updateAndSaveConfig at line 352)
 	relPath, err := filepath.Rel(cfg.Git.RepoPath, targetPath)
