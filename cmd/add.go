@@ -536,17 +536,23 @@ func previewAdd(filePath, targetPath string, cfg *config.SyncConfig) error {
 
 	backupPath := calculateBackupPath(cfg, filePath)
 
-	// Calculate relative path for config mapping with error handling
+	// Calculate relative symlink path (matches execution behavior at line 313)
+	relSymlinkPath, symlinkErr := filepath.Rel(filepath.Dir(filePath), targetPath)
+	symlinkTarget := relSymlinkPath
+	if symlinkErr != nil {
+		symlinkTarget = targetPath
+	}
+
+	// Calculate relative path for config mapping (matches updateAndSaveConfig at line 352)
 	relPath, err := filepath.Rel(cfg.Git.RepoPath, targetPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "⚠️  Warning: could not determine relative path: %v\n", err)
-		relPath = targetPath // Fallback to absolute path
+		return fmt.Errorf("failed to compute mapping path: %w", err)
 	}
 
 	fmt.Println("\nPlanned operations:")
 	fmt.Printf("Would create backup: %s\n", backupPath)
 	fmt.Printf("Would move file to repository: %s\n", targetPath)
-	fmt.Printf("Would create symlink: %s -> %s\n", filePath, targetPath)
+	fmt.Printf("Would create symlink: %s -> %s\n", filePath, symlinkTarget)
 	fmt.Printf("Would add mapping to config: %s -> %s\n", relPath, filePath)
 
 	fmt.Printf("\n📂 Repository: %s\n", cfg.Git.RepoPath)
