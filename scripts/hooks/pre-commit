@@ -1,0 +1,33 @@
+#!/bin/bash
+# Pre-commit hook: Auto-format and lint Go code
+
+set -e
+
+# Get staged Go files
+STAGED_GO_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$' || true)
+
+if [ -z "$STAGED_GO_FILES" ]; then
+    exit 0
+fi
+
+echo "🔍 Pre-commit checks for Go files..."
+
+# 1. Auto-format with gofmt
+echo "  → Running gofmt..."
+UNFORMATTED=$(gofmt -l $STAGED_GO_FILES)
+if [ -n "$UNFORMATTED" ]; then
+    echo "  ✨ Auto-formatting files..."
+    gofmt -w $UNFORMATTED
+    git add $UNFORMATTED
+    echo "  ✅ Files formatted and re-staged"
+fi
+
+# 2. Run golangci-lint with fast mode
+echo "  → Running golangci-lint --fast..."
+if ! golangci-lint run --fast $STAGED_GO_FILES; then
+    echo "  ❌ Linting failed - please fix issues and commit again"
+    exit 1
+fi
+
+echo "✅ Pre-commit checks passed"
+exit 0

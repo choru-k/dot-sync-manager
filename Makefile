@@ -5,7 +5,7 @@
 GOLANGCI_LINT_VERSION ?= v2.6.2
 BIN_DIR := $(shell go env GOPATH)/bin
 
-.PHONY: test test-unit test-integration test-all clean build help
+.PHONY: test test-unit test-integration test-all clean build help fmt setup-hooks
 
 # Default target
 test: test-unit
@@ -82,6 +82,20 @@ setup-dev:
 	chmod +x test/scripts/*.sh
 	chmod +x test/fixtures/ssh_keys/*.sh
 
+# Format all Go files
+fmt:
+	@echo "🎨 Formatting Go files..."
+	@gofmt -w .
+	@echo "✅ Formatting complete"
+
+# Install git hooks
+setup-hooks:
+	@echo "🪝 Installing git hooks..."
+	@mkdir -p .git/hooks
+	@ln -sf ../../scripts/hooks/pre-commit .git/hooks/pre-commit
+	@chmod +x scripts/hooks/pre-commit
+	@echo "✅ Git hooks installed"
+
 # E2E tests alias (for backward compatibility)
 test-e2e: test-all
 
@@ -98,6 +112,8 @@ help:
 	@echo "  clean         - Clean build artifacts and test data"
 	@echo "  deps          - Install/update dependencies"
 	@echo "  lint          - Run code linter"
+	@echo "  fmt           - Format all Go files with gofmt"
 	@echo "  setup-dev     - Set up development environment"
+	@echo "  setup-hooks   - Install git pre-commit hooks"
 	@echo "  verify        - Run all quality checks (lint + tests + build)"
 	@echo "  help          - Show this help message"
