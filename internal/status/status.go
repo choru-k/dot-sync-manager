@@ -28,7 +28,7 @@
 //	if err := statusMgr.Start(); err != nil {
 //	    log.Fatal(err)
 //	}
-//	defer statusMgr.Stop()
+//	defer statusMgr.Stop(context.Background())
 //
 //	// Update status throughout daemon lifecycle
 //	statusMgr.SetState(status.StateRunning)

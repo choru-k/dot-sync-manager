@@ -67,7 +67,7 @@ func TestSyncService_ConcurrentManualSyncAndStop(t *testing.T) {
 
 	// Stop the service while operations are in progress
 	stopStart := time.Now()
-	err = service.Stop()
+	err = service.Stop(context.Background())
 	stopDuration := time.Since(stopStart)
 	require.NoError(t, err)
 
@@ -147,7 +147,7 @@ func TestSyncService_ConcurrentManualSyncAndStop_StressTest(t *testing.T) {
 
 	// Stop the service while many operations are in progress
 	stopStart := time.Now()
-	err = service.Stop()
+	err = service.Stop(context.Background())
 	stopDuration := time.Since(stopStart)
 	require.NoError(t, err)
 

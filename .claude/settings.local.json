@@ -40,7 +40,10 @@
       "Bash(golangci-lint:*)",
       "WebFetch(domain:github.com)",
       "mcp__zen__consensus",
-      "Bash(gh pr view:*)"
+      "Bash(gh pr view:*)",
+      "Bash(find:*)",
+      "Bash(/tmp/fix_stop_calls.sh <<'EOF'\n#!/bin/bash\n# Fix .Stop() calls to add context.Background()\n\n# For each .go file\nfind . -name \"*.go\" -type f | while read file; do\n    # Skip if file doesn't contain .Stop()\n    if ! grep -q '\\.Stop()' \"$file\"; then\n        continue\n    fi\n    \n    # Add context import if not present and file has Stop() calls needing it\n    if grep -q 'err.*\\.Stop()' \"$file\" || grep -q ':=.*\\.Stop()' \"$file\" || grep -q 'if.*\\.Stop()' \"$file\"; then\n        if ! grep -q '\"context\"' \"$file\"; then\n            # Try to add context import\n            sed -i '' '/^import ($/a\\\n\t\"context\"\n' \"$file\" 2>/dev/null || true\n        fi\n    fi\n    \n    # Replace various .Stop() patterns\n    sed -i '' -E 's/([a-zA-Z_][a-zA-Z0-9_]*)\\.Stop\\(\\)/\\1.Stop(context.Background())/g' \"$file\"\ndone\n\necho \"Fixed Stop() calls\"\nEOF)",
+      "Bash(/tmp/fix_stop_calls.sh)"
     ],
     "deny": [],
     "ask": []

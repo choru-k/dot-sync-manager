@@ -55,7 +55,7 @@ func BenchmarkSyncService_StartStop(b *testing.B) {
 		runtime.Gosched()
 
 		// Stop
-		err = service.Stop()
+		err = service.Stop(context.Background())
 		if err != nil {
 			b.Fatalf("Failed to stop service: %v", err)
 		}
@@ -110,7 +110,7 @@ func BenchmarkSyncService_ConcurrentStartStop(b *testing.B) {
 			runtime.Gosched()
 
 			// Stop
-			err = service.Stop()
+			err = service.Stop(context.Background())
 			if err != nil {
 				b.Fatalf("Failed to stop service: %v", err)
 			}
@@ -157,7 +157,7 @@ func BenchmarkSyncService_IsRunning(b *testing.B) {
 		b.Fatalf("Failed to start service: %v", err)
 	}
 	defer func() {
-		if err := service.Stop(); err != nil {
+		if err := service.Stop(context.Background()); err != nil {
 			b.Fatalf("Failed to stop service: %v", err)
 		}
 	}()
@@ -205,7 +205,7 @@ func BenchmarkSyncService_ManualSync(b *testing.B) {
 		b.Fatalf("Failed to start service: %v", err)
 	}
 	defer func() {
-		if err := service.Stop(); err != nil {
+		if err := service.Stop(context.Background()); err != nil {
 			b.Fatalf("Failed to stop service: %v", err)
 		}
 	}()
@@ -277,7 +277,7 @@ func BenchmarkSyncService_WithAdvancedDebouncer(b *testing.B) {
 		runtime.Gosched()
 
 		// Stop
-		err = service.Stop()
+		err = service.Stop(context.Background())
 		if err != nil {
 			b.Fatalf("Failed to stop service: %v", err)
 		}
@@ -335,7 +335,7 @@ func BenchmarkSyncService_StopContention(b *testing.B) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				_ = service.Stop()
+				_ = service.Stop(context.Background())
 			}()
 		}
 

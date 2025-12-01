@@ -109,7 +109,7 @@ cache/
 		t.Fatalf("Failed to start sync service: %v", err)
 	}
 	defer func() {
-		if err := service.Stop(); err != nil {
+		if err := service.Stop(context.Background()); err != nil {
 			t.Errorf("Failed to stop service: %v", err)
 		}
 	}()

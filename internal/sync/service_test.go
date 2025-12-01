@@ -316,7 +316,7 @@ func TestSyncService_DynamicDirectoryWatching(t *testing.T) {
 		t.Fatalf("Failed to start service: %v", err)
 	}
 	t.Cleanup(func() {
-		if err := service.Stop(); err != nil {
+		if err := service.Stop(context.Background()); err != nil {
 			t.Errorf("Failed to stop service: %v", err)
 		}
 	})
@@ -388,7 +388,7 @@ func TestSyncService_ConcurrentStop(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := service.Stop(); err != nil {
+			if err := service.Stop(context.Background()); err != nil {
 				// Log errors but don't fail test for concurrent shutdowns
 				t.Logf("Concurrent Stop() error: %v", err)
 			}
@@ -402,7 +402,7 @@ func TestSyncService_ConcurrentStop(t *testing.T) {
 	// Additional verification: multiple calls should be safe
 	// Call Stop a few more times sequentially
 	for i := 0; i < 3; i++ {
-		if err := service.Stop(); err != nil {
+		if err := service.Stop(context.Background()); err != nil {
 			// Log errors but don't fail test for multiple shutdowns
 			t.Logf("Multiple Stop() error: %v", err)
 		}
@@ -452,7 +452,7 @@ func TestSyncService_MultipleStopCalls(t *testing.T) {
 
 		// Test multiple sequential Stop() calls on non-started service
 		for i := 0; i < 5; i++ {
-			if err := service.Stop(); err != nil {
+			if err := service.Stop(context.Background()); err != nil {
 				// Log errors but don't fail test for stopping non-started service
 				t.Logf("Non-started service Stop() error: %v", err)
 			}
@@ -483,7 +483,7 @@ func TestSyncService_MultipleStopCalls(t *testing.T) {
 
 		// Test multiple sequential Stop() calls on running service
 		for i := 0; i < 5; i++ {
-			if err := service.Stop(); err != nil {
+			if err := service.Stop(context.Background()); err != nil {
 				// Log errors but don't fail test for multiple shutdowns
 				t.Logf("Running service Stop() error %d: %v", i, err)
 			}
@@ -535,7 +535,7 @@ func TestSyncService_StopIdempotencyInServiceFile(t *testing.T) {
 	}
 
 	// First stop should stop the service
-	if err := service.Stop(); err != nil {
+	if err := service.Stop(context.Background()); err != nil {
 		t.Fatalf("Failed to stop service: %v", err)
 	}
 
@@ -548,7 +548,7 @@ func TestSyncService_StopIdempotencyInServiceFile(t *testing.T) {
 
 	// Multiple subsequent stops should not change the state
 	for i := 0; i < 10; i++ {
-		if err := service.Stop(); err != nil {
+		if err := service.Stop(context.Background()); err != nil {
 			// Log errors but don't fail test for multiple shutdowns
 			t.Logf("Multiple subsequent Stop() error %d: %v", i, err)
 		}
@@ -599,7 +599,7 @@ func TestSyncService_PrematureStopDoesNotDisableCleanup(t *testing.T) {
 	}
 
 	// Step 1: Call Stop() before Start() - this should not burn the sync.Once
-	if err := service.Stop(); err != nil {
+	if err := service.Stop(context.Background()); err != nil {
 		// Log errors but don't fail test for premature stop
 		t.Logf("Premature Stop() error: %v", err)
 	}
@@ -616,7 +616,7 @@ func TestSyncService_PrematureStopDoesNotDisableCleanup(t *testing.T) {
 
 	// Step 3: Call Stop() after the service is actually running
 	// This should perform proper cleanup and not be blocked by the premature Stop() call
-	if err := service.Stop(); err != nil {
+	if err := service.Stop(context.Background()); err != nil {
 		t.Fatalf("Failed to stop running service: %v", err)
 	}
 
@@ -629,7 +629,7 @@ func TestSyncService_PrematureStopDoesNotDisableCleanup(t *testing.T) {
 
 	// Additional verification: Multiple Stop() calls after actual start/stop should still work
 	for i := 0; i < 3; i++ {
-		if err := service.Stop(); err != nil {
+		if err := service.Stop(context.Background()); err != nil {
 			// Log errors but don't fail test for final verification calls
 			t.Logf("Final verification Stop() error %d: %v", i, err)
 		}
@@ -691,7 +691,7 @@ func TestSyncService_GracefulShutdownCompletion(t *testing.T) {
 	shutdownStart := time.Now()
 
 	// Stop the service - this should wait for graceful shutdown
-	if err := service.Stop(); err != nil {
+	if err := service.Stop(context.Background()); err != nil {
 		t.Fatalf("Failed to stop service: %v", err)
 	}
 
@@ -808,7 +808,7 @@ func TestSyncService_EventLoopRaceConditions(t *testing.T) {
 			// Add some delay before stopping to allow file operations
 			time.Sleep(testProcessingDelay)
 
-			if err := service.Stop(); err != nil {
+			if err := service.Stop(context.Background()); err != nil {
 				t.Logf("Concurrent stop %d failed: %v", id, err)
 			} else {
 				t.Logf("Concurrent stop %d succeeded", id)
@@ -894,7 +894,7 @@ func TestSyncService_ErrorHandlingDuringGracefulShutdown(t *testing.T) {
 		time.Sleep(testProcessingDelay)
 
 		// Stop should complete without errors
-		if err := service.Stop(); err != nil {
+		if err := service.Stop(context.Background()); err != nil {
 			t.Errorf("Normal graceful shutdown should not return errors, got: %v", err)
 		}
 
@@ -925,7 +925,7 @@ func TestSyncService_ErrorHandlingDuringGracefulShutdown(t *testing.T) {
 			go func(id int) {
 				defer shutdownWG.Done()
 
-				if err := service.Stop(); err != nil {
+				if err := service.Stop(context.Background()); err != nil {
 					mu.Lock()
 					errorCount++
 					mu.Unlock()
@@ -986,7 +986,7 @@ func TestSyncService_ErrorHandlingDuringGracefulShutdown(t *testing.T) {
 		}
 
 		// Stop the service
-		if err := service.Stop(); err != nil {
+		if err := service.Stop(context.Background()); err != nil {
 			t.Logf("Service stop returned error: %v", err)
 		}
 
@@ -1022,7 +1022,7 @@ func TestSyncService_ErrorHandlingDuringGracefulShutdown(t *testing.T) {
 			time.Sleep(testTickInterval)
 
 			// Stop the service
-			if err := service.Stop(); err != nil {
+			if err := service.Stop(context.Background()); err != nil {
 				t.Logf("Stop in restart test iteration %d returned error: %v", i, err)
 			}
 

@@ -58,7 +58,7 @@ func TestSyncService_StartStopStartLifecycle(t *testing.T) {
 		}
 
 		// Stop the service
-		err = service.Stop()
+		err = service.Stop(context.Background())
 		if err != nil {
 			t.Fatalf("Failed to stop service: %v", err)
 		}
@@ -99,7 +99,7 @@ func TestSyncService_StartStopStartLifecycle(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				err := service.Stop()
+				err := service.Stop(context.Background())
 				if err != nil {
 					t.Errorf("Stop() on non-running service should not return error, got: %v", err)
 				}
@@ -152,7 +152,7 @@ func TestSyncService_StartStopStartLifecycle(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				err := newService.Stop()
+				err := newService.Stop(context.Background())
 				if err != nil {
 					t.Errorf("Concurrent Stop() failed: %v", err)
 				}
@@ -230,7 +230,7 @@ func TestSyncService_StopFromCallback(t *testing.T) {
 	// and conditional waiting in the Stop() method
 
 	// Stop the service - this validates that the basic Stop() mechanism works
-	err = service.Stop()
+	err = service.Stop(context.Background())
 	if err != nil {
 		t.Fatalf("Failed to stop service: %v", err)
 	}
@@ -241,7 +241,7 @@ func TestSyncService_StopFromCallback(t *testing.T) {
 	}
 
 	// Verify we can call Stop() again without issues (should be idempotent)
-	err = service.Stop()
+	err = service.Stop(context.Background())
 	if err != nil {
 		t.Errorf("Subsequent Stop() call failed: %v", err)
 	}
@@ -299,7 +299,7 @@ func TestSyncService_ConcurrentStartStop(t *testing.T) {
 		// Stop goroutine
 		go func(id int) {
 			defer wg.Done()
-			err := service.Stop()
+			err := service.Stop(context.Background())
 			if err != nil {
 				t.Errorf("Stop() %d failed: %v", id, err)
 			}
@@ -310,7 +310,7 @@ func TestSyncService_ConcurrentStartStop(t *testing.T) {
 
 	// Final cleanup
 	if service.IsRunning() {
-		err = service.Stop()
+		err = service.Stop(context.Background())
 		if err != nil {
 			t.Errorf("Final cleanup Stop() failed: %v", err)
 		}
@@ -355,14 +355,14 @@ func TestSyncService_StopIdempotency(t *testing.T) {
 	}
 
 	// First Stop() should succeed
-	err = service.Stop()
+	err = service.Stop(context.Background())
 	if err != nil {
 		t.Fatalf("First Stop() failed: %v", err)
 	}
 
 	// Multiple subsequent Stop() calls should also succeed (or return nil)
 	for i := 0; i < 5; i++ {
-		err = service.Stop()
+		err = service.Stop(context.Background())
 		if err != nil {
 			t.Errorf("Subsequent Stop() call %d failed: %v", i+1, err)
 		}
@@ -422,7 +422,7 @@ func TestSyncService_RapidLifecycleChanges(t *testing.T) {
 		time.Sleep(1 * time.Millisecond)
 
 		// Stop
-		err = cycleService.Stop()
+		err = cycleService.Stop(context.Background())
 		if err != nil {
 			t.Errorf("Cycle %d: Stop() failed: %v", i, err)
 		}
@@ -485,7 +485,7 @@ func TestSyncService_TOCTOURaceCondition(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		err := service.Stop()
+		err := service.Stop(context.Background())
 		if err != nil {
 			t.Errorf("Thread A: Stop() on non-running service failed: %v", err)
 		}
@@ -511,7 +511,7 @@ func TestSyncService_TOCTOURaceCondition(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		err := service.Stop()
+		err := service.Stop(context.Background())
 		if err != nil {
 			atomic.StoreInt32(&raceDetected, 1)
 			t.Errorf("Thread C: Stop() failed (race condition detected): %v", err)
