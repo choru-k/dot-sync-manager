@@ -587,11 +587,11 @@ func TestWritePIDExclusive_SecondInstanceReturnsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first WritePIDExclusive failed: %v", err)
 	}
-	defer func() {
+	t.Cleanup(func() {
 		if err := lockManager1.Unlock(); err != nil {
-			t.Logf("warning: failed to unlock in defer: %v", err)
+			t.Logf("warning: failed to unlock during cleanup: %v", err)
 		}
-	}()
+	})
 
 	// Action: Second daemon attempts to acquire lock (should fail)
 	lockManager2, err := WritePIDExclusive(5678)

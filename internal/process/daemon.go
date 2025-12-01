@@ -90,9 +90,14 @@ func WritePIDExclusive(pid int) (*LockManager, error) {
 	defer cancel()
 
 	locked, err := fileLock.TryLockContext(ctx, lockRetryInterval)
-	if err != nil || !locked {
-		// Lock acquisition failed - either timeout/error or lock held by another process
-		return nil, ErrDaemonAlreadyRunning
+	if !locked {
+		// If the context timed out, it's because the lock is held by another process.
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, ErrDaemonAlreadyRunning
+		}
+		// For other errors (e.g., filesystem permissions), wrap them to provide more context,
+		// as ErrDaemonAlreadyRunning would be misleading.
+		return nil, fmt.Errorf("failed to acquire exclusive lock: %w", err)
 	}
 
 	// Temporary debug: Indicate that lock was acquired
