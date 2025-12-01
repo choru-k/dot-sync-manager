@@ -555,7 +555,11 @@ func previewAdd(filePath, targetPath string, cfg *config.SyncConfig) error {
 	fmt.Printf("Would create symlink: %s -> %s\n", filePath, symlinkTarget)
 	fmt.Printf("Would add mapping to config: %s -> %s\n", relPath, filePath)
 
-	fmt.Printf("\n📂 Repository: %s\n", cfg.Git.RepoPath)
+	if noEmoji {
+		fmt.Printf("\nRepository: %s\n", cfg.Git.RepoPath)
+	} else {
+		fmt.Printf("\n📂 Repository: %s\n", cfg.Git.RepoPath)
+	}
 	fmt.Println("\nNote: File would be staged for git commit on next sync.")
 
 	return nil
