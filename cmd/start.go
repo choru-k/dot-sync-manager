@@ -28,6 +28,11 @@ const (
 	// totalShutdownTimeout (15s): Overall timeout including coordination overhead
 	serviceShutdownTimeout = 10 * time.Second
 	totalShutdownTimeout   = 15 * time.Second
+
+	// pidCleanupCoordinationDelay ensures sync service shutdown starts
+	// before PID file removal, preventing race where PID removal might
+	// signal "daemon not running" before service cleanup begins.
+	pidCleanupCoordinationDelay = 100 * time.Millisecond
 )
 
 // startCmd represents the start command
@@ -248,7 +253,9 @@ func runForegroundDaemon(cfg *config.SyncConfig, logFile string) error {
 	fmt.Println("\n🛑 Signal received, initiating graceful shutdown...")
 
 	// Execute graceful shutdown with timeout protection
-	if err := gracefulShutdown(signalCtx, svc, lockManager); err != nil {
+	// Note: signalCtx is already cancelled at this point (after <-signalCtx.Done()),
+	// so gracefulShutdown creates its own fresh timeout context for cleanup operations.
+	if err := gracefulShutdown(svc, lockManager); err != nil {
 		fmt.Printf("❌ Critical: Graceful shutdown failed: %v\n", err)
 		fmt.Printf("⚠️  Daemon state may be inconsistent. Manual cleanup may be required.\n")
 		fmt.Printf("💡 Run 'dsm status' to check daemon state and 'dsm stop' to force cleanup if needed.\n")
@@ -263,31 +270,19 @@ func runForegroundDaemon(cfg *config.SyncConfig, logFile string) error {
 //
 // Design strategy:
 //  1. Parallel execution: Sync service and PID cleanup run concurrently for efficiency
-//  2. Fresh timeout context: Uses context.Background() because signalCtx is already
-//     cancelled when this function is called. Shutdown needs its own clean 15s window.
+//  2. Fresh timeout context: Uses context.Background() to create a clean 15s window
+//     for shutdown operations, independent of the already-cancelled signal context
 //  3. Service timeout hierarchy: Service timeout (10s) < Total timeout (15s)
 //  4. Error aggregation: Collect all errors, report comprehensive status
 //  5. Graceful degradation: Continue shutdown even if individual operations fail
 //
-// Context design rationale:
-// This function is called AFTER <-signalCtx.Done(), so signalCtx is already cancelled.
-// Using context.WithTimeout(signalCtx, ...) would create an immediately-cancelled
-// child context, causing instant "timeout" failures. Instead, we use Background()
-// to create a fresh 15s deadline specifically for cleanup operations.
-//
-// The service stop context IS derived from shutdownCtx (not Background), ensuring
-// it respects the total shutdown deadline while having its own 10s limit.
-//
-// Coordination timing: 100ms delay before PID cleanup ensures sync service
-// starts shutting down first, preventing race conditions where PID file
-// might be removed before service cleanup begins.
-func gracefulShutdown(signalCtx context.Context, svc *syncservice.SyncService, lockManager *process.LockManager) error {
+// Coordination timing: pidCleanupCoordinationDelay ensures sync service shutdown starts
+// before PID file removal, preventing race where PID removal might signal "daemon not
+// running" before service cleanup begins.
+func gracefulShutdown(svc *syncservice.SyncService, lockManager *process.LockManager) error {
 	fmt.Println("🔄 Shutting down services...")
 
-	// Use context.Background() to create fresh timeout for shutdown operations.
-	// The signalCtx is already cancelled when this function is called (after <-signalCtx.Done()),
-	// so we need a fresh context with its own 15s deadline for cleanup operations.
-	// This is intentional and correct - shutdown needs its own timeout window.
+	// Create fresh timeout context for shutdown operations (independent of caller context).
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), totalShutdownTimeout)
 	defer shutdownCancel()
 
@@ -323,10 +318,10 @@ func gracefulShutdown(signalCtx context.Context, svc *syncservice.SyncService, l
 	go func() {
 		defer shutdownWG.Done()
 
-		// Coordination delay (100ms): Ensures sync service shutdown starts first
+		// Coordination delay: Ensures sync service shutdown starts first
 		// This timing is critical for preventing false "daemon not running" states
 		// when multiple processes check daemon status during shutdown window.
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(pidCleanupCoordinationDelay)
 
 		if err := lockManager.Unlock(); err != nil {
 			shutdownErrors <- fmt.Errorf("PID file cleanup error: %w", err)

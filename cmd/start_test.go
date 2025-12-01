@@ -3,7 +3,7 @@ package cmd
 import (
 	"context"
 	"log"
-	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -11,6 +11,16 @@ import (
 	"github.com/choru-k/dot-sync-manager/internal/process"
 	"github.com/choru-k/dot-sync-manager/internal/sync"
 )
+
+// testPIDCounter generates unique test PIDs for parallel test execution
+// Starting at 100000 keeps test PIDs out of range of normal process PIDs
+var testPIDCounter int32 = 100000
+
+// nextTestPID generates a unique test PID for this test run
+// Safe for concurrent use across parallel test execution
+func nextTestPID() int {
+	return int(atomic.AddInt32(&testPIDCounter, 1))
+}
 
 // safeUnlock safely unlocks a LockManager and logs any errors without affecting test flow
 func safeUnlock(lockManager *process.LockManager) {
@@ -21,13 +31,8 @@ func safeUnlock(lockManager *process.LockManager) {
 }
 
 // TestGracefulShutdown_TimeoutContext tests that gracefulShutdown completes successfully
-// with a valid parent context that has sufficient timeout for shutdown operations.
-// This tests the normal case where the parent context is not cancelled or expired.
+// This tests the normal case where shutdown completes cleanly.
 func TestGracefulShutdown_TimeoutContext(t *testing.T) {
-	// Create a context with timeout (simulating normal signal context with deadline)
-	// This tests that shutdown completes within the timeout when parent is still valid
-	parentCtx, parentCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer parentCancel()
 
 	// Create a mock sync service and lock manager
 	gitConfig := gitmanager.Config{
@@ -62,26 +67,22 @@ func TestGracefulShutdown_TimeoutContext(t *testing.T) {
 	}
 
 	// Create a mock lock manager by acquiring and immediately unlocking it
-	testPID := os.Getpid() + 100000 // Use test PID with offset to avoid conflicts
+	testPID := nextTestPID()
 	lockManager, err := process.WritePIDExclusive(testPID)
 	if err != nil {
 		t.Fatalf("Failed to create lock manager: %v", err)
 	}
 
-	// Test that gracefulShutdown completes successfully with valid parent context
-	err = gracefulShutdown(parentCtx, svc, lockManager)
+	// Test that gracefulShutdown completes successfully
+	err = gracefulShutdown(svc, lockManager)
 	if err != nil {
-		t.Errorf("gracefulShutdown should complete with valid parent context, got error: %v", err)
+		t.Errorf("gracefulShutdown should complete cleanly, got error: %v", err)
 	}
 }
 
 // TestGracefulShutdown_CancelledParentContext tests that gracefulShutdown works correctly
-// when called with an already-cancelled parent context (the real production scenario).
-// In production, gracefulShutdown is called AFTER <-signalCtx.Done(), so the parent is cancelled.
+// This simulates the production scenario where gracefulShutdown creates its own timeout context.
 func TestGracefulShutdown_CancelledParentContext(t *testing.T) {
-	// Create a context and cancel it immediately (simulating signal already received)
-	cancelledCtx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel before calling gracefulShutdown
 
 	// Create a mock sync service and lock manager
 	gitConfig := gitmanager.Config{
@@ -116,21 +117,20 @@ func TestGracefulShutdown_CancelledParentContext(t *testing.T) {
 	}
 
 	// Create a mock lock manager
-	testPID := os.Getpid() + 200000 // Different test PID to avoid conflicts
+	testPID := nextTestPID()
 	lockManager, err := process.WritePIDExclusive(testPID)
 	if err != nil {
 		t.Fatalf("Failed to create lock manager: %v", err)
 	}
 
-	// Test that gracefulShutdown succeeds even with cancelled parent
-	// It should create its own fresh timeout context (context.Background() with 15s deadline)
-	err = gracefulShutdown(cancelledCtx, svc, lockManager)
+	// Test that gracefulShutdown succeeds with its own timeout context
+	err = gracefulShutdown(svc, lockManager)
 	if err != nil {
-		t.Errorf("gracefulShutdown should succeed with cancelled parent, got error: %v", err)
+		t.Errorf("gracefulShutdown should succeed, got error: %v", err)
 	}
 
 	// Verify PID cleanup completed by checking if we can acquire a new lock
-	testPID2 := os.Getpid() + 300000 // Third test PID to verify cleanup
+	testPID2 := nextTestPID()
 	newLockManager, err := process.WritePIDExclusive(testPID2)
 	if err != nil {
 		t.Errorf("Failed to acquire new lock after gracefulShutdown, PID may not be cleaned up: %v", err)
@@ -174,21 +174,21 @@ func TestGracefulShutdown_PIDLockRelease(t *testing.T) {
 	}
 
 	// Create lock manager
-	testPID := os.Getpid() + 200000                        // Different test PID to avoid conflicts
-	lockManager, err := process.WritePIDExclusive(testPID) // Test PID
+	testPID := nextTestPID()
+	lockManager, err := process.WritePIDExclusive(testPID)
 	if err != nil {
 		t.Fatalf("Failed to create lock manager: %v", err)
 	}
 
 	// Test graceful shutdown
-	err = gracefulShutdown(context.Background(), svc, lockManager)
+	err = gracefulShutdown(svc, lockManager)
 	if err != nil {
 		t.Errorf("gracefulShutdown failed: %v", err)
 	}
 
 	// Verify PID file and lock are cleaned up by checking if we can acquire a new lock
-	testPID3 := os.Getpid() + 300000                           // Third test PID to verify cleanup
-	newLockManager, err := process.WritePIDExclusive(testPID3) // Verification PID
+	testPID3 := nextTestPID()
+	newLockManager, err := process.WritePIDExclusive(testPID3)
 	if err != nil {
 		t.Errorf("Failed to acquire new lock after gracefulShutdown, PID may not be cleaned up: %v", err)
 	} else {

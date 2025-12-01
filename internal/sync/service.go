@@ -335,7 +335,7 @@ func (s *SyncService) Start() error {
 	// Add the repository path to the watcher
 	if err := watcher.Add(s.config.RepoPath); err != nil {
 		s.statusManager.SetError(fmt.Errorf("failed to watch repo path: %w", err))
-		_ = s.statusManager.Stop(context.Background()) // Explicitly ignore error in cleanup context
+		_ = s.statusManager.Stop() // Explicitly ignore error in cleanup context
 		rollbackState()
 		return fmt.Errorf("sync: failed to watch repo path [%s]: %w", ErrIDWatcherAddPathFailed, err)
 	}
@@ -343,7 +343,7 @@ func (s *SyncService) Start() error {
 	// Watch subdirectories recursively
 	if err := s.watchRecursiveWithWatcher(watcher, s.config.RepoPath); err != nil {
 		s.statusManager.SetError(fmt.Errorf("failed to watch recursively: %w", err))
-		_ = s.statusManager.Stop(context.Background()) // Explicitly ignore error in cleanup context
+		_ = s.statusManager.Stop() // Explicitly ignore error in cleanup context
 		rollbackState()
 		return fmt.Errorf("sync: failed to watch recursively [%s]: %w", ErrIDRepoWatchRecursive, err)
 	}
@@ -427,7 +427,7 @@ func (s *SyncService) Stop(ctx context.Context) error {
 
 		// Stop status manager
 		if s.statusManager != nil {
-			if err := s.statusManager.Stop(ctx); err != nil {
+			if err := s.statusManager.Stop(); err != nil {
 				shutdownErrors = append(shutdownErrors, fmt.Errorf("failed to stop status manager: %w", err))
 			}
 		}

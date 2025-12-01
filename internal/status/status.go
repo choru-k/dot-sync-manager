@@ -28,7 +28,7 @@
 //	if err := statusMgr.Start(); err != nil {
 //	    log.Fatal(err)
 //	}
-//	defer statusMgr.Stop(context.Background())
+//	defer statusMgr.Stop()
 //
 //	// Update status throughout daemon lifecycle
 //	statusMgr.SetState(status.StateRunning)
@@ -115,7 +115,6 @@ type StatusManager struct {
 	running int32 // atomic.Bool
 
 	// Shutdown coordination
-	socketMutex  sync.Mutex     // Protects socket field access
 	acceptWG     sync.WaitGroup // Tracks acceptConnections goroutine
 	shutdownOnce sync.Once      // Ensures single shutdown execution
 }
@@ -194,7 +193,11 @@ func (sm *StatusManager) Start() error {
 // - Race #1: Socket closure now synchronous after goroutine wait
 // - Race #2: Independent timeout contexts immune to parent cancellation
 // - Race #3: No concurrent access to sm.socket (goroutine exits before write)
-func (sm *StatusManager) Stop(ctx context.Context) error {
+//
+// Note: Stop() uses fixed internal timeouts (2s for goroutine, 500ms for file cleanup)
+// and does not accept a context parameter. This is intentional - shutdown must complete
+// with bounded time guarantees regardless of caller context state.
+func (sm *StatusManager) Stop() error {
 	// Idempotent guard
 	if !atomic.CompareAndSwapInt32(&sm.running, 1, 0) {
 		return nil // Already stopped
