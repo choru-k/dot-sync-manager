@@ -30,10 +30,10 @@
 - Naming: `TestPackage_Feature_WhenCondition`. Use maps over loops for validation in tests to match production patterns.
 
 ## Commit & Pull Request Guidelines
-- Commit style: imperative summaries with clear scope; recent history uses “Phase X: <title> (#NN)”—stay consistent and include issue/PR refs (`Fixes #123` when applicable).
+- Commit style: imperative summaries with clear scope; recent history uses "Phase X: <title> (#NN)"—stay consistent and include issue/PR refs (`Fixes #123` when applicable).
 - Branches: `phase-x/<short-slug>` (per style guide).
-- Before pushing: run `make lint` and at least `make test-unit`; note what you ran in the PR description.
-- PRs should include: concise summary, rationale, linked issues, test evidence (commands + results), and mention of user-facing changes or CLI flags. Add screenshots only when UI differ; otherwise short output snippets are enough.
+- **CRITICAL: Before EVERY commit/PR, run `make verify`** (lint + test + build). This catches linter errors, unused imports, unchecked errors, and type mismatches that tests alone won't catch. The pre-commit hook should enforce this, but verify manually as a safety net.
+- PRs should include: concise summary, rationale, linked issues, test evidence (commands + results from `make verify`), and mention of user-facing changes or CLI flags. Add screenshots only when UI differ; otherwise short output snippets are enough.
 
 ## Workflow: Plan-First TDD
 - Always check `plan.md` first; follow the next unchecked item in order. If missing, create it with a minimal checklist before coding.
