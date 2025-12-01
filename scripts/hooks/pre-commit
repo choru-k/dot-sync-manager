@@ -22,9 +22,9 @@ if [ -n "$UNFORMATTED" ]; then
     echo "  ✅ Files formatted and re-staged"
 fi
 
-# 2. Run golangci-lint with fast mode
-echo "  → Running golangci-lint --fast..."
-if ! golangci-lint run --fast $STAGED_GO_FILES; then
+# 2. Run golangci-lint with fast linters only
+echo "  → Running golangci-lint..."
+if ! golangci-lint run --fast-only $STAGED_GO_FILES; then
     echo "  ❌ Linting failed - please fix issues and commit again"
     exit 1
 fi
