@@ -1,0 +1,42 @@
+package symlink
+
+import (
+	"fmt"
+	"path/filepath"
+	"strings"
+)
+
+// ValidateMapping validates a mapping entry for correctness.
+// repoPath must be relative (within repository), targetPath must be absolute.
+// Returns error if validation fails, nil otherwise.
+func (m *Manager) ValidateMapping(repoPath, targetPath string) error {
+	// Validation 1: repoPath must be relative (no leading /)
+	if repoPath == "" || filepath.IsAbs(repoPath) {
+		return fmt.Errorf("repoPath must be a non-empty relative path, but got: '%s'", repoPath)
+	}
+
+	// Validation 2: repoPath cannot escape repository (no ..)
+	cleanPath := filepath.Clean(repoPath)
+	if strings.HasPrefix(cleanPath, "..") {
+		return fmt.Errorf("repoPath cannot escape repository: %s", repoPath)
+	}
+
+	// Validation 3: targetPath must be absolute
+	if !filepath.IsAbs(targetPath) {
+		return fmt.Errorf("targetPath must be an absolute path, but got: '%s'", targetPath)
+	}
+
+	// Validation 4: No circular reference (target cannot be inside repo)
+	// Note: On Windows, filepath.Rel fails for cross-drive paths (e.g., C:\ vs D:\),
+	// which correctly indicates no circular reference is possible.
+	repoAbsPath := filepath.Clean(m.cfg.Git.RepoPath)
+	cleanTarget := filepath.Clean(targetPath)
+
+	relPath, err := filepath.Rel(repoAbsPath, cleanTarget)
+	if err == nil && !strings.HasPrefix(relPath, "..") {
+		return fmt.Errorf("targetPath cannot be inside repository: %s is inside %s",
+			targetPath, repoAbsPath)
+	}
+
+	return nil
+}
