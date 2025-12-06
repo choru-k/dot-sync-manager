@@ -52,5 +52,10 @@ func (m *Manager) RemoveLink(target string) error {
 		return fmt.Errorf("symlink: target is not a symlink: %s [SYMLINK_NOT_A_SYMLINK]", target)
 	}
 
+	// Remove the symlink
+	if err := os.Remove(target); err != nil {
+		return fmt.Errorf("symlink: failed to remove symlink: %w [SYMLINK_REMOVE_FAILED]", err)
+	}
+
 	return nil
 }

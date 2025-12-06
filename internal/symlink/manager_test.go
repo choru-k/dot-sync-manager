@@ -183,3 +183,38 @@ func TestManager_RemoveLink_NotSymlink(t *testing.T) {
 		t.Error("Regular file should not be removed")
 	}
 }
+
+func TestManager_RemoveLink_Success(t *testing.T) {
+	repoDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Create source file
+	sourceFile := filepath.Join(repoDir, ".bashrc")
+	if err := os.WriteFile(sourceFile, []byte("# bash"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create symlink manually
+	target := filepath.Join(targetDir, ".bashrc")
+	if err := os.Symlink(sourceFile, target); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.SyncConfig{}
+	cfg.Git.RepoPath = repoDir
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Remove link
+	err = mgr.RemoveLink(target)
+	if err != nil {
+		t.Fatalf("RemoveLink failed: %v", err)
+	}
+
+	// Verify symlink is removed
+	if _, err := os.Lstat(target); !os.IsNotExist(err) {
+		t.Error("Symlink should be removed")
+	}
+}
