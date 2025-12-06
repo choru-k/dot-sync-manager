@@ -1,5 +1,8 @@
 #!/bin/bash
-# Pre-commit hook: Auto-format and lint Go code
+# Pre-commit hook: Auto-format and run full verification
+#
+# This hook ensures ALL commits pass full quality checks before being committed.
+# It runs `make verify` which includes: lint + test + build
 
 set -e
 
@@ -10,7 +13,7 @@ if [ -z "$STAGED_GO_FILES" ]; then
     exit 0
 fi
 
-echo "🔍 Pre-commit checks for Go files..."
+echo "🔍 Pre-commit verification for Go files..."
 
 # 1. Auto-format with gofmt
 echo "  → Running gofmt..."
@@ -22,12 +25,20 @@ if [ -n "$UNFORMATTED" ]; then
     echo "  ✅ Files formatted and re-staged"
 fi
 
-# 2. Run golangci-lint with fast linters only
-echo "  → Running golangci-lint..."
-if ! golangci-lint run --fast-only $STAGED_GO_FILES; then
-    echo "  ❌ Linting failed - please fix issues and commit again"
+# 2. Run full verification suite (lint + test + build)
+# This catches:
+# - Linter errors (unused imports, unchecked errors, type mismatches)
+# - Test failures (broken functionality)
+# - Build errors (compilation issues)
+echo "  → Running make verify (lint + test + build)..."
+if ! make verify > /tmp/pre-commit-verify.log 2>&1; then
+    echo "  ❌ Verification failed - please fix issues and commit again"
+    echo "  📋 Full output in /tmp/pre-commit-verify.log"
+    echo ""
+    echo "  Last 20 lines of output:"
+    tail -20 /tmp/pre-commit-verify.log
     exit 1
 fi
 
-echo "✅ Pre-commit checks passed"
+echo "✅ Pre-commit verification passed (format + lint + test + build)"
 exit 0

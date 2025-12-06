@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -44,7 +45,7 @@ func TestSyncService_SyncOncePreventsMultipleCleanup(t *testing.T) {
 
 	for i := 0; i < numConcurrentStops; i++ {
 		go func() {
-			err := service.Stop()
+			err := service.Stop(context.Background())
 			stopDone <- err
 		}()
 	}
@@ -90,7 +91,7 @@ func TestSyncService_SyncOncePreventsMultipleCleanup(t *testing.T) {
 
 	// Verify that subsequent Stop() calls still work (idempotency)
 	for i := 0; i < 3; i++ {
-		if err := service.Stop(); err != nil {
+		if err := service.Stop(context.Background()); err != nil {
 			t.Errorf("Subsequent Stop() call %d failed: %v", i+1, err)
 		}
 	}
@@ -136,7 +137,7 @@ func TestSyncService_ShutdownOnceResetOnRestart(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// Stop service
-		if err := service.Stop(); err != nil {
+		if err := service.Stop(context.Background()); err != nil {
 			t.Logf("Cycle %d: Stop returned error (may be expected): %v", cycle+1, err)
 		}
 
@@ -146,7 +147,7 @@ func TestSyncService_ShutdownOnceResetOnRestart(t *testing.T) {
 		}
 
 		// Test that we can call Stop() again without issues (idempotency)
-		if err := service.Stop(); err != nil {
+		if err := service.Stop(context.Background()); err != nil {
 			t.Logf("Cycle %d: Additional Stop() call returned error: %v", cycle+1, err)
 		}
 
@@ -185,7 +186,7 @@ func TestSyncService_ConcurrentStopErrorHandling(t *testing.T) {
 
 	for i := 0; i < numConcurrentStops; i++ {
 		go func(_ int) {
-			err := service.Stop()
+			err := service.Stop(context.Background())
 			stopDone <- err
 		}(i)
 	}
@@ -259,7 +260,7 @@ func TestSyncService_StateTransitionWithSyncOnce(t *testing.T) {
 	}
 
 	// Stop: Running -> Stopping -> Stopped
-	if err := service.Stop(); err != nil {
+	if err := service.Stop(context.Background()); err != nil {
 		t.Logf("Stop() returned error: %v", err)
 	}
 
@@ -269,7 +270,7 @@ func TestSyncService_StateTransitionWithSyncOnce(t *testing.T) {
 
 	// Verify idempotency: multiple Stop() calls should be safe
 	for i := 0; i < 3; i++ {
-		if err := service.Stop(); err != nil {
+		if err := service.Stop(context.Background()); err != nil {
 			t.Logf("Additional Stop() call %d returned error: %v", i+1, err)
 		}
 		if service.IsRunning() {

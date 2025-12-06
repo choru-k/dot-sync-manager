@@ -385,7 +385,7 @@ func (s *SyncService) Start() error {
 // - Multiple concurrent calls to Stop() are safe due to sync.Once and atomic state management
 // - Will wait for any in-progress Stop() operations to complete before returning
 // - Uses sync.Once to ensure cleanup operations happen exactly once per lifecycle
-func (s *SyncService) Stop() error {
+func (s *SyncService) Stop(ctx context.Context) error {
 	// Early return if not running - this prevents unnecessary work
 	if !atomic.CompareAndSwapInt32(&s.state, int32(StateRunning), int32(StateStopping)) {
 		// Check the previous state after CAS fails to handle premature Stop() correctly
@@ -402,8 +402,8 @@ func (s *SyncService) Stop() error {
 			select {
 			case <-done:
 				// Shutdown completed successfully
-			case <-time.After(5 * time.Second):
-				// Timeout - don't block forever, log warning and continue
+			case <-ctx.Done():
+				// Context timeout exceeded - respect caller's deadline
 				log.Printf("sync: warning - shutdown wait timed out, this may indicate a deadlock [%s]", ErrIDShutdownTimeout)
 			}
 
@@ -473,8 +473,8 @@ func (s *SyncService) Stop() error {
 	select {
 	case <-done:
 		// Event loop completed successfully
-	case <-time.After(5 * time.Second):
-		// Timeout - don't block forever, log warning and continue
+	case <-ctx.Done():
+		// Context timeout exceeded - respect caller's deadline
 		log.Printf("sync: warning - event loop shutdown wait timed out [%s]", ErrIDShutdownTimeout)
 	}
 

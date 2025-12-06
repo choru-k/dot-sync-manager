@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -170,7 +171,7 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	lockManager, err := process.WritePIDExclusive(os.Getpid())
 	if err != nil {
 		if service != nil {
-			if stopErr := service.Stop(); stopErr != nil {
+			if stopErr := service.Stop(context.Background()); stopErr != nil {
 				return fmt.Errorf("failed to write PID file: %w; also failed to stop service: %w", err, stopErr)
 			}
 		}
@@ -187,7 +188,7 @@ func runRoot(cmd *cobra.Command, args []string) error {
 	defer func() {
 		signal.Stop(signalCh)
 		if service != nil {
-			if err := service.Stop(); err != nil {
+			if err := service.Stop(context.Background()); err != nil {
 				log.Printf("sync: warning - failed to stop service gracefully: %v", err)
 			}
 		}

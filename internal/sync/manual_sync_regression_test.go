@@ -61,7 +61,7 @@ func TestSyncService_ManualSyncWithAutoSyncDisabled(t *testing.T) {
 		t.Fatalf("Failed to start sync service: %v", err)
 	}
 	defer func() {
-		if err := syncService.Stop(); err != nil {
+		if err := syncService.Stop(context.Background()); err != nil {
 			t.Errorf("Failed to stop sync service: %v", err)
 		}
 	}()
@@ -125,7 +125,7 @@ func TestSyncService_ManualSyncAfterStop(t *testing.T) {
 	}
 
 	// Stop the service
-	if err := syncService.Stop(); err != nil {
+	if err := syncService.Stop(context.Background()); err != nil {
 		t.Errorf("Stop() failed: %v", err)
 	}
 
@@ -176,7 +176,7 @@ func TestSyncService_ManualSyncAfterStop_BasicDebouncer(t *testing.T) {
 		t.Fatalf("Failed to start sync service: %v", err)
 	}
 
-	if err := syncService.Stop(); err != nil {
+	if err := syncService.Stop(context.Background()); err != nil {
 		t.Errorf("Stop() failed: %v", err)
 	}
 

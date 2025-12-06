@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -46,7 +47,7 @@ func TestSyncService_StopStartRaceConditionRegression(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := service.Stop(); err != nil {
+			if err := service.Stop(context.Background()); err != nil {
 				t.Logf("Stop failed (iteration %d): %v", i, err)
 			}
 		}()
@@ -123,7 +124,7 @@ func TestSyncService_ConcurrentStopStartStressTest(t *testing.T) {
 			for j := 0; j < operationsPerGoroutine; j++ {
 				// Alternate between Stop and Start operations
 				if j%2 == 0 {
-					if err := service.Stop(); err != nil {
+					if err := service.Stop(context.Background()); err != nil {
 						errors <- err
 					}
 				} else {

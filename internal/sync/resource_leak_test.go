@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"runtime"
 	"testing"
 	"time"
@@ -43,7 +44,7 @@ func TestSyncService_ResourceLeakDetection(t *testing.T) {
 		time.Sleep(1 * time.Millisecond)
 
 		// Stop service
-		if err := service.Stop(); err != nil {
+		if err := service.Stop(context.Background()); err != nil {
 			t.Logf("Stop failed (cycle %d): %v", i, err)
 		}
 	}
@@ -112,7 +113,7 @@ func TestSyncService_HighFrequencyRestartCycles(t *testing.T) {
 		time.Sleep(1 * time.Millisecond)
 
 		// Stop service
-		if err := service.Stop(); err != nil {
+		if err := service.Stop(context.Background()); err != nil {
 			t.Logf("Stop failed (cycle %d): %v", i, err)
 		}
 
@@ -169,7 +170,7 @@ func TestSyncService_ConcurrentLifecycleStress(t *testing.T) {
 				time.Sleep(time.Duration(1+cycle%5) * time.Millisecond)
 
 				// Stop service
-				if err := service.Stop(); err != nil {
+				if err := service.Stop(context.Background()); err != nil {
 					t.Logf("Service %d cycle %d stop failed: %v", serviceIndex, cycle, err)
 				}
 

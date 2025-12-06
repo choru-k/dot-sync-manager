@@ -60,7 +60,7 @@ func TestSyncService_GoroutineLeakDetection(t *testing.T) {
 	}
 
 	// Stop the service
-	err = service.Stop()
+	err = service.Stop(context.Background())
 	if err != nil {
 		t.Fatalf("Failed to stop service: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestSyncService_MultipleStartStopGoroutineLeaks(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 
 		// Stop
-		err = service.Stop()
+		err = service.Stop(context.Background())
 		if err != nil {
 			t.Errorf("Cycle %d: Failed to stop service: %v", i, err)
 			continue
@@ -208,7 +208,7 @@ func TestSyncService_ConcurrentStartStopGoroutineLeaks(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 
 		// Stop the service
-		err = service.Stop()
+		err = service.Stop(context.Background())
 		if err != nil {
 			t.Errorf("Failed to stop service: %v", err)
 			return
@@ -294,7 +294,7 @@ func TestSyncService_AdvancedDebouncerGoroutineLeaks(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 
 	// Stop the service
-	err = service.Stop()
+	err = service.Stop(context.Background())
 	if err != nil {
 		t.Fatalf("Failed to stop service: %v", err)
 	}
