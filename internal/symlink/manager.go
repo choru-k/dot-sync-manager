@@ -15,5 +15,12 @@ func (m *Manager) CreateLink(source, target string) error {
 	if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
 		return fmt.Errorf("symlink: source file does not exist in repo: %s [SYMLINK_SOURCE_NOT_FOUND]", source)
 	}
-	return nil // Minimal implementation
+
+	// Validate target parent directory exists
+	targetDir := filepath.Dir(target)
+	if _, err := os.Stat(targetDir); os.IsNotExist(err) {
+		return fmt.Errorf("symlink: target parent directory does not exist: %s [SYMLINK_TARGET_PARENT_NOT_FOUND]", targetDir)
+	}
+
+	return nil
 }
