@@ -27,5 +27,10 @@ func (m *Manager) CreateLink(source, target string) error {
 		return fmt.Errorf("symlink: target already exists: %s [SYMLINK_TARGET_EXISTS]", target)
 	}
 
+	// Create symlink
+	if err := os.Symlink(sourcePath, target); err != nil {
+		return fmt.Errorf("symlink: failed to create symlink: %w [SYMLINK_CREATE_FAILED]", err)
+	}
+
 	return nil
 }

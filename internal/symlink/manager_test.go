@@ -96,3 +96,39 @@ func TestManager_CreateLink_TargetExists(t *testing.T) {
 		t.Errorf("Expected error to contain [SYMLINK_TARGET_EXISTS], got: %v", err)
 	}
 }
+
+func TestManager_CreateLink_Success(t *testing.T) {
+	// Setup temp directories
+	repoDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Create source file in repo
+	sourceFile := filepath.Join(repoDir, ".bashrc")
+	if err := os.WriteFile(sourceFile, []byte("# bash config"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create manager with config
+	cfg := &config.SyncConfig{}
+	cfg.Git.RepoPath = repoDir
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Create symlink
+	target := filepath.Join(targetDir, ".bashrc")
+	err = mgr.CreateLink(".bashrc", target)
+	if err != nil {
+		t.Fatalf("CreateLink failed: %v", err)
+	}
+
+	// Verify symlink exists and points to correct location
+	linkDest, err := os.Readlink(target)
+	if err != nil {
+		t.Fatalf("Failed to read symlink: %v", err)
+	}
+	if linkDest != sourceFile {
+		t.Errorf("Symlink points to %s, expected %s", linkDest, sourceFile)
+	}
+}
