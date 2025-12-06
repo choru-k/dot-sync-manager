@@ -132,3 +132,22 @@ func TestManager_CreateLink_Success(t *testing.T) {
 		t.Errorf("Symlink points to %s, expected %s", linkDest, sourceFile)
 	}
 }
+
+func TestManager_RemoveLink_TargetNotFound(t *testing.T) {
+	cfg := &config.SyncConfig{}
+	cfg.Git.RepoPath = t.TempDir() // Need valid path even though not used
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Try to remove non-existent symlink
+	err = mgr.RemoveLink("/nonexistent/path/.bashrc")
+
+	if err == nil {
+		t.Fatal("Expected error for non-existent target, got nil")
+	}
+	if !strings.Contains(err.Error(), "SYMLINK_TARGET_NOT_FOUND") {
+		t.Errorf("Expected error to contain [SYMLINK_TARGET_NOT_FOUND], got: %v", err)
+	}
+}
