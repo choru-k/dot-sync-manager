@@ -63,3 +63,36 @@ func TestManager_CreateLink_TargetParentNotExists(t *testing.T) {
 		t.Errorf("Expected error to contain [SYMLINK_TARGET_PARENT_NOT_FOUND], got: %v", err)
 	}
 }
+
+func TestManager_CreateLink_TargetExists(t *testing.T) {
+	repoDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Create source file in repo
+	sourceFile := filepath.Join(repoDir, ".bashrc")
+	if err := os.WriteFile(sourceFile, []byte("# bash config"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create existing file at target
+	target := filepath.Join(targetDir, ".bashrc")
+	if err := os.WriteFile(target, []byte("# existing"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.SyncConfig{}
+	cfg.Git.RepoPath = repoDir
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	err = mgr.CreateLink(".bashrc", target)
+
+	if err == nil {
+		t.Fatal("Expected error for existing target file")
+	}
+	if !strings.Contains(err.Error(), "SYMLINK_TARGET_EXISTS") {
+		t.Errorf("Expected error to contain [SYMLINK_TARGET_EXISTS], got: %v", err)
+	}
+}

@@ -22,5 +22,10 @@ func (m *Manager) CreateLink(source, target string) error {
 		return fmt.Errorf("symlink: target parent directory does not exist: %s [SYMLINK_TARGET_PARENT_NOT_FOUND]", targetDir)
 	}
 
+	// Check if target already exists (use Lstat to avoid following symlinks)
+	if _, err := os.Lstat(target); err == nil {
+		return fmt.Errorf("symlink: target already exists: %s [SYMLINK_TARGET_EXISTS]", target)
+	}
+
 	return nil
 }
