@@ -151,3 +151,35 @@ func TestManager_RemoveLink_TargetNotFound(t *testing.T) {
 		t.Errorf("Expected error to contain [SYMLINK_TARGET_NOT_FOUND], got: %v", err)
 	}
 }
+
+func TestManager_RemoveLink_NotSymlink(t *testing.T) {
+	targetDir := t.TempDir()
+
+	// Create regular file (not symlink)
+	target := filepath.Join(targetDir, ".bashrc")
+	if err := os.WriteFile(target, []byte("# regular file"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &config.SyncConfig{}
+	cfg.Git.RepoPath = t.TempDir() // Need valid path even though not used
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Try to remove regular file as symlink
+	err = mgr.RemoveLink(target)
+
+	if err == nil {
+		t.Fatal("Expected error for non-symlink target")
+	}
+	if !strings.Contains(err.Error(), "SYMLINK_NOT_A_SYMLINK") {
+		t.Errorf("Expected error to contain [SYMLINK_NOT_A_SYMLINK], got: %v", err)
+	}
+
+	// Verify file still exists (safety check - should not remove non-symlinks)
+	if _, err := os.Stat(target); os.IsNotExist(err) {
+		t.Error("Regular file should not be removed")
+	}
+}

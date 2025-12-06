@@ -39,7 +39,7 @@ func (m *Manager) CreateLink(source, target string) error {
 // Returns error if target is not a symlink.
 func (m *Manager) RemoveLink(target string) error {
 	// Check if target exists
-	_, err := os.Lstat(target)
+	info, err := os.Lstat(target)
 	if os.IsNotExist(err) {
 		return fmt.Errorf("symlink: target does not exist: %s [SYMLINK_TARGET_NOT_FOUND]", target)
 	}
@@ -47,5 +47,10 @@ func (m *Manager) RemoveLink(target string) error {
 		return fmt.Errorf("symlink: failed to stat target: %w [SYMLINK_STAT_FAILED]", err)
 	}
 
-	return nil // Minimal implementation
+	// Verify it's a symlink
+	if info.Mode()&os.ModeSymlink == 0 {
+		return fmt.Errorf("symlink: target is not a symlink: %s [SYMLINK_NOT_A_SYMLINK]", target)
+	}
+
+	return nil
 }
