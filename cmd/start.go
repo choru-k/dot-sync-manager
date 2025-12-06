@@ -296,10 +296,10 @@ func gracefulShutdown(svc *syncservice.SyncService, lockManager *process.LockMan
 	go func() {
 		defer shutdownWG.Done()
 
-		// Create service timeout context from shutdownCtx (not Background).
-		// This ensures service stop respects the total shutdown deadline.
-		// If shutdownCtx is cancelled (total timeout exceeded), svcCtx is also cancelled.
-		svcCtx, svcCancel := context.WithTimeout(shutdownCtx, serviceShutdownTimeout)
+		// Create service timeout context with independent deadline (not derived from shutdownCtx).
+		// This ensures service stop gets full 10s timeout regardless of how much time
+		// has elapsed in the parent shutdown sequence.
+		svcCtx, svcCancel := context.WithTimeout(context.Background(), serviceShutdownTimeout)
 		defer svcCancel()
 
 		// Stop the service (waits for watchers, debouncers, event loop)
