@@ -1,6 +1,7 @@
 package symlink_test
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -133,5 +134,85 @@ func TestManager_ValidateMapping(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestManager_AddMapping_Success(t *testing.T) {
+	repoDir := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), "config.json")
+
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	cfg.Git.RepoPath = repoDir
+	cfg.ConfigPath = configPath
+
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager() failed: %v", err)
+	}
+
+	// Add first mapping
+	err = mgr.AddMapping(".bashrc", "/home/user/.bashrc")
+	if err != nil {
+		t.Fatalf("AddMapping() failed: %v", err)
+	}
+
+	// Verify mapping was added
+	if cfg.Mappings[".bashrc"] != "/home/user/.bashrc" {
+		t.Errorf("Mapping not found in config: got %v", cfg.Mappings)
+	}
+
+	// Add second mapping
+	err = mgr.AddMapping(".vimrc", "/home/user/.vimrc")
+	if err != nil {
+		t.Fatalf("AddMapping() second failed: %v", err)
+	}
+
+	// Verify both mappings exist
+	if len(cfg.Mappings) != 2 {
+		t.Errorf("Expected 2 mappings, got %d", len(cfg.Mappings))
+	}
+}
+
+func TestManager_AddMapping_Conflict(t *testing.T) {
+	repoDir := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), "config.json")
+
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	cfg.Git.RepoPath = repoDir
+	cfg.ConfigPath = configPath
+
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager() failed: %v", err)
+	}
+
+	// Add initial mapping
+	err = mgr.AddMapping(".bashrc", "/home/user/.bashrc")
+	if err != nil {
+		t.Fatalf("AddMapping() setup failed: %v", err)
+	}
+
+	// Try to add duplicate repo path
+	err = mgr.AddMapping(".bashrc", "/other/path")
+	if err == nil {
+		t.Error("Expected error for duplicate repo path")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Errorf("Expected 'already exists' error, got: %v", err)
+	}
+
+	// Try to add duplicate target path
+	err = mgr.AddMapping(".other", "/home/user/.bashrc")
+	if err == nil {
+		t.Error("Expected error for duplicate target path")
+	}
+	if !strings.Contains(err.Error(), "already mapped") {
+		t.Errorf("Expected 'already mapped' error, got: %v", err)
 	}
 }

@@ -40,3 +40,14 @@ func (m *Manager) ValidateMapping(repoPath, targetPath string) error {
 
 	return nil
 }
+
+// AddMapping adds a new mapping to the configuration.
+// Both paths are validated before adding. Returns error if:
+// - Validation fails (invalid paths)
+// - Mapping already exists for repoPath
+// - Target path is already used by another mapping
+// - Config cannot be saved
+func (m *Manager) AddMapping(repoPath, targetPath string) error {
+	// TODO: implement
+	return fmt.Errorf("not implemented")
+}
