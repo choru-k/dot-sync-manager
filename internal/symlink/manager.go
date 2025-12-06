@@ -34,3 +34,28 @@ func (m *Manager) CreateLink(source, target string) error {
 
 	return nil
 }
+
+// RemoveLink removes a symlink at the target path.
+// Returns error if target is not a symlink.
+func (m *Manager) RemoveLink(target string) error {
+	// Check if target exists
+	info, err := os.Lstat(target)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("symlink: target does not exist: %s: %w [SYMLINK_TARGET_NOT_FOUND]", target, err)
+		}
+		return fmt.Errorf("symlink: failed to stat target: %w [SYMLINK_STAT_FAILED]", err)
+	}
+
+	// Verify it's a symlink
+	if info.Mode()&os.ModeSymlink == 0 {
+		return fmt.Errorf("symlink: target is not a symlink: %s [SYMLINK_NOT_A_SYMLINK]", target)
+	}
+
+	// Remove the symlink
+	if err := os.Remove(target); err != nil {
+		return fmt.Errorf("symlink: failed to remove symlink: %w [SYMLINK_REMOVE_FAILED]", err)
+	}
+
+	return nil
+}
