@@ -35,7 +35,7 @@ func TestManager_ValidateMapping(t *testing.T) {
 			repoPath:    "/etc/config",
 			targetPath:  "/home/user/.config",
 			wantErr:     true,
-			errContains: "must be relative",
+			errContains: "must be a non-empty relative path",
 		},
 
 		// Validation 2: repoPath cannot escape repository
@@ -57,7 +57,7 @@ func TestManager_ValidateMapping(t *testing.T) {
 			repoPath:    ".bashrc",
 			targetPath:  "home/user/.bashrc",
 			wantErr:     true,
-			errContains: "must be absolute",
+			errContains: "must be an absolute path",
 		},
 
 		// Validation 4: circular reference (target inside repo)
@@ -73,13 +73,13 @@ func TestManager_ValidateMapping(t *testing.T) {
 			repoPath:    "",
 			targetPath:  "/home/user/.bashrc",
 			wantErr:     true,
-			errContains: "must be relative",
+			errContains: "must be a non-empty relative path",
 		},
 		"empty targetPath": {
 			repoPath:    ".bashrc",
 			targetPath:  "",
 			wantErr:     true,
-			errContains: "must be absolute",
+			errContains: "must be an absolute path",
 		},
 		"repoPath with dot prefix": {
 			repoPath:   "./.bashrc",
