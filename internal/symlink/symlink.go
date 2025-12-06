@@ -10,15 +10,25 @@ import (
 // Manager handles symlink operations for dotfile management.
 type Manager struct {
 	cfg       *config.SyncConfig
-	backupDir string // Reserved for A.3 backup functionality - will be populated when backup features are implemented
+	backupDir string // TODO(A.3): Reserved for backup functionality - will be populated when backup features are implemented
 }
+
+// MappingState represents the state of a symlink mapping.
+type MappingState string
+
+const (
+	StateValid      MappingState = "valid"
+	StateBroken     MappingState = "broken"
+	StateMissing    MappingState = "missing"
+	StateNotSymlink MappingState = "not_symlink"
+)
 
 // MappingStatus represents the status of a symlink mapping.
 type MappingStatus struct {
-	RepoPath   string // Relative path within dotfiles repo
-	TargetPath string // Absolute path on filesystem
-	Status     string // "valid", "broken", "missing", "not_symlink"
-	Error      string // Error message if any
+	RepoPath   string       // Relative path within dotfiles repo
+	TargetPath string       // Absolute path on filesystem
+	Status     MappingState // Current mapping state
+	Error      string       // Error message if any
 }
 
 // NewManager creates a new symlink manager.
@@ -29,6 +39,6 @@ func NewManager(cfg *config.SyncConfig) (*Manager, error) {
 
 	return &Manager{
 		cfg:       cfg,
-		backupDir: "", // Reserved for A.3 backup functionality - will be populated when backup features are implemented
+		backupDir: "", // TODO(A.3): Reserved for backup functionality - will be populated when backup features are implemented
 	}, nil
 }

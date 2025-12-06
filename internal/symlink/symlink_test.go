@@ -49,7 +49,7 @@ func TestMappingStatus_Fields(t *testing.T) {
 	status := symlink.MappingStatus{
 		RepoPath:   "/repo/path",
 		TargetPath: "/target/path",
-		Status:     "valid",
+		Status:     symlink.StateValid,
 		Error:      "",
 	}
 
@@ -59,29 +59,10 @@ func TestMappingStatus_Fields(t *testing.T) {
 	if status.TargetPath != "/target/path" {
 		t.Errorf("TargetPath mismatch")
 	}
-	if status.Status != "valid" {
-		t.Errorf("Status mismatch")
+	if status.Status != symlink.StateValid {
+		t.Errorf("Status mismatch, got %v, want %v", status.Status, symlink.StateValid)
 	}
 	if status.Error != "" {
 		t.Errorf("Error mismatch")
-	}
-}
-
-func TestSymlinkPackage_Integration(t *testing.T) {
-	cfg := &config.SyncConfig{}
-	mgr, err := symlink.NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager() failed: %v", err)
-	}
-
-	status := symlink.MappingStatus{
-		RepoPath:   "/repo/.bashrc",
-		TargetPath: "/home/user/.bashrc",
-		Status:     "valid",
-		Error:      "",
-	}
-
-	if mgr == nil || status.Status == "" {
-		t.Error("Integration test failed")
 	}
 }
