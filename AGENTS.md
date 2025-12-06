@@ -34,6 +34,11 @@
 - Branches: `phase-x/<short-slug>` (per style guide).
 - **CRITICAL: Before EVERY commit/PR, run `make verify`** (lint + test + build). This catches linter errors, unused imports, unchecked errors, and type mismatches that tests alone won't catch. The pre-commit hook should enforce this, but verify manually as a safety net.
 - PRs should include: concise summary, rationale, linked issues, test evidence (commands + results from `make verify`), and mention of user-facing changes or CLI flags. Add screenshots only when UI differ; otherwise short output snippets are enough.
+- **Git Commit Rules**:
+  - **NEVER use `--no-verify`** to bypass pre-commit hooks
+  - If pre-commit hooks fail, fix the underlying issues first
+  - Pre-commit hooks exist to maintain code quality - respect them
+  - If blocking issues are unrelated to your changes, clean them up first (e.g., remove untracked directories causing lint errors)
 
 ## Workflow: Plan-First TDD
 - Always check `plan.md` first; follow the next unchecked item in order. If missing, create it with a minimal checklist before coding.
