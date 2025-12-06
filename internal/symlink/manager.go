@@ -34,3 +34,9 @@ func (m *Manager) CreateLink(source, target string) error {
 
 	return nil
 }
+
+// RemoveLink removes a symlink at the target path.
+// Returns error if target is not a symlink.
+func (m *Manager) RemoveLink(target string) error {
+	return fmt.Errorf("not implemented")
+}
