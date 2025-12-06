@@ -40,10 +40,10 @@ func (m *Manager) CreateLink(source, target string) error {
 func (m *Manager) RemoveLink(target string) error {
 	// Check if target exists
 	info, err := os.Lstat(target)
-	if os.IsNotExist(err) {
-		return fmt.Errorf("symlink: target does not exist: %s [SYMLINK_TARGET_NOT_FOUND]", target)
-	}
 	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("symlink: target does not exist: %s: %w [SYMLINK_TARGET_NOT_FOUND]", target, err)
+		}
 		return fmt.Errorf("symlink: failed to stat target: %w [SYMLINK_STAT_FAILED]", err)
 	}
 

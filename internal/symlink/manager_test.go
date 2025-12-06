@@ -133,88 +133,97 @@ func TestManager_CreateLink_Success(t *testing.T) {
 	}
 }
 
-func TestManager_RemoveLink_TargetNotFound(t *testing.T) {
-	cfg := &config.SyncConfig{}
-	cfg.Git.RepoPath = t.TempDir() // Need valid path even though not used
-	mgr, err := symlink.NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager failed: %v", err)
-	}
-
-	// Try to remove non-existent symlink
-	err = mgr.RemoveLink("/nonexistent/path/.bashrc")
-
-	if err == nil {
-		t.Fatal("Expected error for non-existent target, got nil")
-	}
-	if !strings.Contains(err.Error(), "SYMLINK_TARGET_NOT_FOUND") {
-		t.Errorf("Expected error to contain [SYMLINK_TARGET_NOT_FOUND], got: %v", err)
-	}
-}
-
-func TestManager_RemoveLink_NotSymlink(t *testing.T) {
-	targetDir := t.TempDir()
-
-	// Create regular file (not symlink)
-	target := filepath.Join(targetDir, ".bashrc")
-	if err := os.WriteFile(target, []byte("# regular file"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	cfg := &config.SyncConfig{}
-	cfg.Git.RepoPath = t.TempDir() // Need valid path even though not used
-	mgr, err := symlink.NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager failed: %v", err)
-	}
-
-	// Try to remove regular file as symlink
-	err = mgr.RemoveLink(target)
-
-	if err == nil {
-		t.Fatal("Expected error for non-symlink target")
-	}
-	if !strings.Contains(err.Error(), "SYMLINK_NOT_A_SYMLINK") {
-		t.Errorf("Expected error to contain [SYMLINK_NOT_A_SYMLINK], got: %v", err)
-	}
-
-	// Verify file still exists (safety check - should not remove non-symlinks)
-	if _, err := os.Stat(target); os.IsNotExist(err) {
-		t.Error("Regular file should not be removed")
-	}
-}
-
-func TestManager_RemoveLink_Success(t *testing.T) {
+func TestManager_RemoveLink(t *testing.T) {
+	// Setup common test resources
 	repoDir := t.TempDir()
 	targetDir := t.TempDir()
 
-	// Create source file
+	// Create source file for symlink test
 	sourceFile := filepath.Join(repoDir, ".bashrc")
 	if err := os.WriteFile(sourceFile, []byte("# bash"), 0644); err != nil {
-		t.Fatal(err)
+		t.Fatalf("Failed to write source file: %v", err)
 	}
 
-	// Create symlink manually
-	target := filepath.Join(targetDir, ".bashrc")
-	if err := os.Symlink(sourceFile, target); err != nil {
-		t.Fatal(err)
+	// Create regular file for non-symlink test
+	regularFile := filepath.Join(targetDir, ".vimrc")
+	if err := os.WriteFile(regularFile, []byte("# regular file"), 0644); err != nil {
+		t.Fatalf("Failed to write regular file: %v", err)
 	}
 
-	cfg := &config.SyncConfig{}
-	cfg.Git.RepoPath = repoDir
-	mgr, err := symlink.NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager failed: %v", err)
+	// Create symlink for success test
+	symlinkTarget := filepath.Join(targetDir, ".bashrc")
+	if err := os.Symlink(sourceFile, symlinkTarget); err != nil {
+		t.Fatalf("Failed to create symlink: %v", err)
 	}
 
-	// Remove link
-	err = mgr.RemoveLink(target)
-	if err != nil {
-		t.Fatalf("RemoveLink failed: %v", err)
+	testCases := []struct {
+		name        string
+		target      string
+		expectErr   bool
+		errContains string
+		postCheck   func(t *testing.T)
+	}{
+		{
+			name:        "TargetNotFound",
+			target:      "/nonexistent/path/.zshrc",
+			expectErr:   true,
+			errContains: "SYMLINK_TARGET_NOT_FOUND",
+		},
+		{
+			name:        "NotASymlink",
+			target:      regularFile,
+			expectErr:   true,
+			errContains: "SYMLINK_NOT_A_SYMLINK",
+			postCheck: func(t *testing.T) {
+				// Verify regular file was not removed
+				if _, err := os.Stat(regularFile); os.IsNotExist(err) {
+					t.Error("Regular file should not have been removed")
+				}
+			},
+		},
+		{
+			name:      "Success",
+			target:    symlinkTarget,
+			expectErr: false,
+			postCheck: func(t *testing.T) {
+				// Verify symlink was removed
+				if _, err := os.Lstat(symlinkTarget); !os.IsNotExist(err) {
+					t.Error("Symlink should have been removed")
+				}
+			},
+		},
 	}
 
-	// Verify symlink is removed
-	if _, err := os.Lstat(target); !os.IsNotExist(err) {
-		t.Error("Symlink should be removed")
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Use DefaultConfig as per Rule 18
+			cfg, err := config.DefaultConfig()
+			if err != nil {
+				t.Fatalf("DefaultConfig() failed: %v", err)
+			}
+			cfg.Git.RepoPath = repoDir
+
+			mgr, err := symlink.NewManager(cfg)
+			if err != nil {
+				t.Fatalf("NewManager failed: %v", err)
+			}
+
+			err = mgr.RemoveLink(tc.target)
+
+			if tc.expectErr {
+				if err == nil {
+					t.Fatal("Expected an error, but got nil")
+				}
+				if !strings.Contains(err.Error(), tc.errContains) {
+					t.Errorf("Expected error to contain '%s', but got: %v", tc.errContains, err)
+				}
+			} else if err != nil {
+				t.Fatalf("Expected no error, but got: %v", err)
+			}
+
+			if tc.postCheck != nil {
+				tc.postCheck(t)
+			}
+		})
 	}
 }
