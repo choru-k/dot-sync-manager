@@ -48,6 +48,36 @@ func (m *Manager) ValidateMapping(repoPath, targetPath string) error {
 // - Target path is already used by another mapping
 // - Config cannot be saved
 func (m *Manager) AddMapping(repoPath, targetPath string) error {
-	// TODO: implement
-	return fmt.Errorf("not implemented")
+	// Validate paths first
+	if err := m.ValidateMapping(repoPath, targetPath); err != nil {
+		return fmt.Errorf("invalid mapping: %w", err)
+	}
+
+	// Initialize mappings if needed
+	if m.cfg.Mappings == nil {
+		m.cfg.Mappings = make(map[string]string)
+	}
+
+	// Check for duplicate repoPath
+	if _, exists := m.cfg.Mappings[repoPath]; exists {
+		return fmt.Errorf("mapping already exists for: %s", repoPath)
+	}
+
+	// Check for duplicate targetPath
+	for existingRepo, existingTarget := range m.cfg.Mappings {
+		if existingTarget == targetPath {
+			return fmt.Errorf("target path already mapped by %s: %s", existingRepo, targetPath)
+		}
+	}
+
+	// Add mapping
+	m.cfg.Mappings[repoPath] = targetPath
+
+	// Save config
+	configPath := m.cfg.GetConfigPath()
+	if err := m.cfg.SaveToFile(configPath); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
 }
