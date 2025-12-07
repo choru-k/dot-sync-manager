@@ -494,3 +494,121 @@ func TestManager_RemoveMapping_NilMappings(t *testing.T) {
 		t.Errorf("Expected 'no mappings' error, got: %v", err)
 	}
 }
+
+func TestManager_ListMappings_Empty(t *testing.T) {
+	repoDir := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), "config.json")
+
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	cfg.Git.RepoPath = repoDir
+	cfg.ConfigPath = configPath
+
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager() failed: %v", err)
+	}
+
+	// List mappings when empty
+	result := mgr.ListMappings()
+
+	// Should return empty map, not nil
+	if result == nil {
+		t.Error("ListMappings() should return empty map, not nil")
+	}
+	if len(result) != 0 {
+		t.Errorf("Expected empty map, got %d entries", len(result))
+	}
+}
+
+func TestManager_ListMappings_WithMappings(t *testing.T) {
+	repoDir := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), "config.json")
+
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	cfg.Git.RepoPath = repoDir
+	cfg.ConfigPath = configPath
+
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager() failed: %v", err)
+	}
+
+	// Create cross-platform test paths
+	homeDir := t.TempDir()
+	bashrcPath := filepath.Join(homeDir, ".bashrc")
+	vimrcPath := filepath.Join(homeDir, ".vimrc")
+
+	// Add two mappings
+	err = mgr.AddMapping(".bashrc", bashrcPath)
+	if err != nil {
+		t.Fatalf("AddMapping() .bashrc failed: %v", err)
+	}
+	err = mgr.AddMapping(".vimrc", vimrcPath)
+	if err != nil {
+		t.Fatalf("AddMapping() .vimrc failed: %v", err)
+	}
+
+	// List mappings
+	result := mgr.ListMappings()
+
+	// Verify map has 2 entries
+	if len(result) != 2 {
+		t.Errorf("Expected 2 mappings, got %d", len(result))
+	}
+
+	// Verify correct repo→target mappings
+	if result[".bashrc"] != bashrcPath {
+		t.Errorf("Expected .bashrc → %s, got %s", bashrcPath, result[".bashrc"])
+	}
+	if result[".vimrc"] != vimrcPath {
+		t.Errorf("Expected .vimrc → %s, got %s", vimrcPath, result[".vimrc"])
+	}
+}
+
+func TestManager_ListMappings_ReturnsImmutableCopy(t *testing.T) {
+	repoDir := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), "config.json")
+
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	cfg.Git.RepoPath = repoDir
+	cfg.ConfigPath = configPath
+
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager() failed: %v", err)
+	}
+
+	// Create cross-platform test path
+	homeDir := t.TempDir()
+	bashrcPath := filepath.Join(homeDir, ".bashrc")
+
+	// Add mapping
+	err = mgr.AddMapping(".bashrc", bashrcPath)
+	if err != nil {
+		t.Fatalf("AddMapping() setup failed: %v", err)
+	}
+
+	// Get list and modify returned map
+	result1 := mgr.ListMappings()
+	result1[".vimrc"] = "/modified/path"
+
+	// Get list again
+	result2 := mgr.ListMappings()
+
+	// Original mappings should be unchanged (verifies copy behavior)
+	if len(result2) != 1 {
+		t.Errorf("External modification affected internal state: expected 1 mapping, got %d", len(result2))
+	}
+	if _, exists := result2[".vimrc"]; exists {
+		t.Error("External modification affected internal state: .vimrc should not exist")
+	}
+}

@@ -147,3 +147,11 @@ func (m *Manager) RemoveMapping(repoPath string) error {
 
 	return nil
 }
+
+// ListMappings returns a copy of all mappings.
+// Returns empty map (never nil) if no mappings exist.
+// Returned map is a copy to prevent external modification.
+func (m *Manager) ListMappings() map[string]string {
+	// TODO: Implement ListMappings
+	return nil
+}
