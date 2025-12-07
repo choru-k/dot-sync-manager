@@ -105,8 +105,14 @@ func (m *Manager) UpdateMapping(repoPath, newTargetPath string) error {
 	if m.cfg.Mappings == nil {
 		return fmt.Errorf("no mappings exist")
 	}
-	if _, exists := m.cfg.Mappings[repoPath]; !exists {
+	currentTarget, exists := m.cfg.Mappings[repoPath]
+	if !exists {
 		return fmt.Errorf("mapping not found: %s", repoPath)
+	}
+
+	// Early exit if target unchanged (idempotency)
+	if currentTarget == newTargetPath {
+		return nil // No-op, avoid unnecessary validation + save
 	}
 
 	// Validate new target path

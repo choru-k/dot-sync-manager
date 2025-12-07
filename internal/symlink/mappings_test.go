@@ -280,6 +280,12 @@ func TestManager_UpdateMapping(t *testing.T) {
 			wantErr:       true,
 			errContains:   "invalid",
 		},
+		"when target unchanged (idempotent)": {
+			setupMappings: map[string]string{".bashrc": bashrcPath},
+			repoPath:      ".bashrc",
+			newTargetPath: bashrcPath, // Same value - no-op update
+			wantErr:       false,
+		},
 	}
 
 	for name, tt := range tests {
