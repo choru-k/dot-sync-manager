@@ -83,3 +83,10 @@ func (m *Manager) AddMapping(repoPath, targetPath string) error {
 
 	return nil
 }
+
+// UpdateMapping updates the target path for an existing mapping.
+// Returns error if mapping doesn't exist, validation fails, or target conflicts.
+func (m *Manager) UpdateMapping(repoPath, newTargetPath string) error {
+	// TODO: Implement UpdateMapping
+	return fmt.Errorf("not implemented")
+}

@@ -238,3 +238,158 @@ func TestManager_AddMapping_Conflict(t *testing.T) {
 		t.Errorf("Expected 'already mapped' error, got: %v", err)
 	}
 }
+
+func TestManager_UpdateMapping_Success(t *testing.T) {
+	repoDir := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), "config.json")
+
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	cfg.Git.RepoPath = repoDir
+	cfg.ConfigPath = configPath
+
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager() failed: %v", err)
+	}
+
+	// Create cross-platform test paths
+	homeDir := t.TempDir()
+	bashrcPath := filepath.Join(homeDir, ".bashrc")
+	newBashrcPath := filepath.Join(homeDir, "new", ".bashrc")
+
+	// Add initial mapping
+	err = mgr.AddMapping(".bashrc", bashrcPath)
+	if err != nil {
+		t.Fatalf("AddMapping() setup failed: %v", err)
+	}
+
+	// Update mapping to new target path
+	err = mgr.UpdateMapping(".bashrc", newBashrcPath)
+	if err != nil {
+		t.Fatalf("UpdateMapping() failed: %v", err)
+	}
+
+	// Verify mapping was updated in memory
+	if cfg.Mappings[".bashrc"] != newBashrcPath {
+		t.Errorf("Mapping not updated: expected %s, got %s", newBashrcPath, cfg.Mappings[".bashrc"])
+	}
+
+	// Verify persistence by reloading from disk
+	reloadedCfg, err := config.LoadFromFile(configPath)
+	if err != nil {
+		t.Fatalf("Failed to reload config from file: %v", err)
+	}
+	if reloadedCfg.Mappings[".bashrc"] != newBashrcPath {
+		t.Errorf("Mapping not persisted: expected %s, got %s", newBashrcPath, reloadedCfg.Mappings[".bashrc"])
+	}
+}
+
+func TestManager_UpdateMapping_NotFound(t *testing.T) {
+	repoDir := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), "config.json")
+
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	cfg.Git.RepoPath = repoDir
+	cfg.ConfigPath = configPath
+
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager() failed: %v", err)
+	}
+
+	// Create cross-platform test path
+	homeDir := t.TempDir()
+	newPath := filepath.Join(homeDir, ".bashrc")
+
+	// Try to update non-existent mapping
+	err = mgr.UpdateMapping(".nonexistent", newPath)
+	if err == nil {
+		t.Error("Expected error for non-existent mapping")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("Expected 'not found' error, got: %v", err)
+	}
+}
+
+func TestManager_UpdateMapping_TargetConflict(t *testing.T) {
+	repoDir := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), "config.json")
+
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	cfg.Git.RepoPath = repoDir
+	cfg.ConfigPath = configPath
+
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager() failed: %v", err)
+	}
+
+	// Create cross-platform test paths
+	homeDir := t.TempDir()
+	bashrcPath := filepath.Join(homeDir, ".bashrc")
+	vimrcPath := filepath.Join(homeDir, ".vimrc")
+
+	// Add two mappings
+	err = mgr.AddMapping(".bashrc", bashrcPath)
+	if err != nil {
+		t.Fatalf("AddMapping() .bashrc failed: %v", err)
+	}
+	err = mgr.AddMapping(".vimrc", vimrcPath)
+	if err != nil {
+		t.Fatalf("AddMapping() .vimrc failed: %v", err)
+	}
+
+	// Try to update .vimrc to use .bashrc's target (conflict)
+	err = mgr.UpdateMapping(".vimrc", bashrcPath)
+	if err == nil {
+		t.Error("Expected error for target conflict")
+	}
+	if !strings.Contains(err.Error(), "already mapped") {
+		t.Errorf("Expected 'already mapped' error, got: %v", err)
+	}
+}
+
+func TestManager_UpdateMapping_InvalidPath(t *testing.T) {
+	repoDir := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), "config.json")
+
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	cfg.Git.RepoPath = repoDir
+	cfg.ConfigPath = configPath
+
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager() failed: %v", err)
+	}
+
+	// Create cross-platform test path
+	homeDir := t.TempDir()
+	bashrcPath := filepath.Join(homeDir, ".bashrc")
+
+	// Add initial mapping
+	err = mgr.AddMapping(".bashrc", bashrcPath)
+	if err != nil {
+		t.Fatalf("AddMapping() setup failed: %v", err)
+	}
+
+	// Try to update with invalid target (relative path)
+	err = mgr.UpdateMapping(".bashrc", "relative/path")
+	if err == nil {
+		t.Error("Expected error for invalid target path")
+	}
+	if !strings.Contains(err.Error(), "invalid") || !strings.Contains(err.Error(), "absolute") {
+		t.Errorf("Expected validation error about absolute path, got: %v", err)
+	}
+}
