@@ -126,6 +126,24 @@ func (m *Manager) UpdateMapping(repoPath, newTargetPath string) error {
 // RemoveMapping removes a mapping from the configuration.
 // Returns error if mapping doesn't exist or config can't be saved.
 func (m *Manager) RemoveMapping(repoPath string) error {
-	// TODO: Implement RemoveMapping
-	return fmt.Errorf("not implemented")
+	// Check mappings exist
+	if m.cfg.Mappings == nil {
+		return fmt.Errorf("no mappings exist")
+	}
+
+	// Check mapping exists
+	if _, exists := m.cfg.Mappings[repoPath]; !exists {
+		return fmt.Errorf("mapping not found: %s", repoPath)
+	}
+
+	// Remove mapping
+	delete(m.cfg.Mappings, repoPath)
+
+	// Save config
+	configPath := m.cfg.GetConfigPath()
+	if err := m.cfg.SaveToFile(configPath); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
 }
