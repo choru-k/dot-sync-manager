@@ -101,12 +101,12 @@ func (m *Manager) AddMapping(repoPath, targetPath string) error {
 // UpdateMapping updates the target path for an existing mapping.
 // Returns error if mapping doesn't exist, validation fails, or target conflicts.
 func (m *Manager) UpdateMapping(repoPath, newTargetPath string) error {
-	// Check mapping exists
-	if m.cfg.Mappings == nil {
-		return fmt.Errorf("no mappings exist")
-	}
+	// Check mapping exists (combine nil-check and existence check)
 	currentTarget, exists := m.cfg.Mappings[repoPath]
 	if !exists {
+		if m.cfg.Mappings == nil {
+			return fmt.Errorf("no mappings exist")
+		}
 		return fmt.Errorf("mapping not found: %s", repoPath)
 	}
 
@@ -140,13 +140,11 @@ func (m *Manager) UpdateMapping(repoPath, newTargetPath string) error {
 // RemoveMapping removes a mapping from the configuration.
 // Returns error if mapping doesn't exist or config can't be saved.
 func (m *Manager) RemoveMapping(repoPath string) error {
-	// Check mappings exist
-	if m.cfg.Mappings == nil {
-		return fmt.Errorf("no mappings exist")
-	}
-
-	// Check mapping exists
+	// Check mapping exists (combine nil-check and existence check)
 	if _, exists := m.cfg.Mappings[repoPath]; !exists {
+		if m.cfg.Mappings == nil {
+			return fmt.Errorf("no mappings exist")
+		}
 		return fmt.Errorf("mapping not found: %s", repoPath)
 	}
 
