@@ -239,376 +239,303 @@ func TestManager_AddMapping_Conflict(t *testing.T) {
 	}
 }
 
-func TestManager_UpdateMapping_Success(t *testing.T) {
-	repoDir := t.TempDir()
-	configPath := filepath.Join(t.TempDir(), "config.json")
-
-	cfg, err := config.DefaultConfig()
-	if err != nil {
-		t.Fatalf("DefaultConfig() failed: %v", err)
-	}
-	cfg.Git.RepoPath = repoDir
-	cfg.ConfigPath = configPath
-
-	mgr, err := symlink.NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager() failed: %v", err)
-	}
-
+func TestManager_UpdateMapping(t *testing.T) {
 	// Create cross-platform test paths
 	homeDir := t.TempDir()
 	bashrcPath := filepath.Join(homeDir, ".bashrc")
 	newBashrcPath := filepath.Join(homeDir, "new", ".bashrc")
+	vimrcPath := filepath.Join(homeDir, ".vimrc")
 
-	// Add initial mapping
-	err = mgr.AddMapping(".bashrc", bashrcPath)
-	if err != nil {
-		t.Fatalf("AddMapping() setup failed: %v", err)
+	tests := map[string]struct {
+		setupMappings map[string]string
+		repoPath      string
+		newTargetPath string
+		wantErr       bool
+		errContains   string
+	}{
+		"when mapping exists": {
+			setupMappings: map[string]string{".bashrc": bashrcPath},
+			repoPath:      ".bashrc",
+			newTargetPath: newBashrcPath,
+			wantErr:       false,
+		},
+		"when mapping not found": {
+			setupMappings: map[string]string{},
+			repoPath:      ".nonexistent",
+			newTargetPath: newBashrcPath,
+			wantErr:       true,
+			errContains:   "not found",
+		},
+		"when target conflicts": {
+			setupMappings: map[string]string{".bashrc": bashrcPath, ".vimrc": vimrcPath},
+			repoPath:      ".vimrc",
+			newTargetPath: bashrcPath, // Conflict with .bashrc
+			wantErr:       true,
+			errContains:   "already mapped",
+		},
+		"when path invalid": {
+			setupMappings: map[string]string{".bashrc": bashrcPath},
+			repoPath:      ".bashrc",
+			newTargetPath: "relative/path",
+			wantErr:       true,
+			errContains:   "invalid",
+		},
 	}
 
-	// Update mapping to new target path
-	err = mgr.UpdateMapping(".bashrc", newBashrcPath)
-	if err != nil {
-		t.Fatalf("UpdateMapping() failed: %v", err)
-	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			repoDir := t.TempDir()
+			configPath := filepath.Join(t.TempDir(), "config.json")
 
-	// Verify mapping was updated in memory
-	if cfg.Mappings[".bashrc"] != newBashrcPath {
-		t.Errorf("Mapping not updated: expected %s, got %s", newBashrcPath, cfg.Mappings[".bashrc"])
-	}
+			cfg, err := config.DefaultConfig()
+			if err != nil {
+				t.Fatalf("DefaultConfig() failed: %v", err)
+			}
+			cfg.Git.RepoPath = repoDir
+			cfg.ConfigPath = configPath
 
-	// Verify persistence by reloading from disk
-	reloadedCfg, err := config.LoadFromFile(configPath)
-	if err != nil {
-		t.Fatalf("Failed to reload config from file: %v", err)
-	}
-	if reloadedCfg.Mappings[".bashrc"] != newBashrcPath {
-		t.Errorf("Mapping not persisted: expected %s, got %s", newBashrcPath, reloadedCfg.Mappings[".bashrc"])
+			// Setup initial mappings
+			if len(tt.setupMappings) > 0 {
+				cfg.Mappings = make(map[string]string)
+				for repo, target := range tt.setupMappings {
+					cfg.Mappings[repo] = target
+				}
+				if err := cfg.SaveToFile(configPath); err != nil {
+					t.Fatalf("Failed to save initial config: %v", err)
+				}
+			}
+
+			mgr, err := symlink.NewManager(cfg)
+			if err != nil {
+				t.Fatalf("NewManager() failed: %v", err)
+			}
+
+			// Execute UpdateMapping
+			err = mgr.UpdateMapping(tt.repoPath, tt.newTargetPath)
+
+			// Assert error or success
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("Expected error containing %q, got nil", tt.errContains)
+				}
+				if !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("Expected error containing %q, got: %v", tt.errContains, err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("Expected no error, got: %v", err)
+				}
+
+				// Verify mapping updated in memory
+				if cfg.Mappings[tt.repoPath] != tt.newTargetPath {
+					t.Errorf("Mapping not updated: expected %s, got %s", tt.newTargetPath, cfg.Mappings[tt.repoPath])
+				}
+
+				// Verify persistence by reloading from disk
+				reloadedCfg, err := config.LoadFromFile(configPath)
+				if err != nil {
+					t.Fatalf("Failed to reload config: %v", err)
+				}
+				if reloadedCfg.Mappings[tt.repoPath] != tt.newTargetPath {
+					t.Errorf("Mapping not persisted: expected %s, got %s", tt.newTargetPath, reloadedCfg.Mappings[tt.repoPath])
+				}
+			}
+		})
 	}
 }
 
-func TestManager_UpdateMapping_NotFound(t *testing.T) {
-	repoDir := t.TempDir()
-	configPath := filepath.Join(t.TempDir(), "config.json")
-
-	cfg, err := config.DefaultConfig()
-	if err != nil {
-		t.Fatalf("DefaultConfig() failed: %v", err)
-	}
-	cfg.Git.RepoPath = repoDir
-	cfg.ConfigPath = configPath
-
-	mgr, err := symlink.NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager() failed: %v", err)
-	}
-
+func TestManager_RemoveMapping(t *testing.T) {
 	// Create cross-platform test path
 	homeDir := t.TempDir()
-	newPath := filepath.Join(homeDir, ".bashrc")
+	bashrcPath := filepath.Join(homeDir, ".bashrc")
 
-	// Try to update non-existent mapping
-	err = mgr.UpdateMapping(".nonexistent", newPath)
-	if err == nil {
-		t.Error("Expected error for non-existent mapping")
+	tests := map[string]struct {
+		setupMappings map[string]string
+		nilMappings   bool
+		repoPath      string
+		wantErr       bool
+		errContains   string
+	}{
+		"when mapping exists": {
+			setupMappings: map[string]string{".bashrc": bashrcPath},
+			repoPath:      ".bashrc",
+			wantErr:       false,
+		},
+		"when mapping not found": {
+			setupMappings: map[string]string{},
+			repoPath:      ".nonexistent",
+			wantErr:       true,
+			errContains:   "not found",
+		},
+		"when mappings nil": {
+			nilMappings: true,
+			repoPath:    ".bashrc",
+			wantErr:     true,
+			errContains: "no mappings",
+		},
 	}
-	if !strings.Contains(err.Error(), "not found") {
-		t.Errorf("Expected 'not found' error, got: %v", err)
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			repoDir := t.TempDir()
+			configPath := filepath.Join(t.TempDir(), "config.json")
+
+			cfg, err := config.DefaultConfig()
+			if err != nil {
+				t.Fatalf("DefaultConfig() failed: %v", err)
+			}
+			cfg.Git.RepoPath = repoDir
+			cfg.ConfigPath = configPath
+
+			// Setup initial mappings
+			if tt.nilMappings {
+				cfg.Mappings = nil
+			} else {
+				for repo, target := range tt.setupMappings {
+					if cfg.Mappings == nil {
+						cfg.Mappings = make(map[string]string)
+					}
+					cfg.Mappings[repo] = target
+				}
+				if len(tt.setupMappings) > 0 {
+					if err := cfg.SaveToFile(configPath); err != nil {
+						t.Fatalf("Failed to save initial config: %v", err)
+					}
+				}
+			}
+
+			mgr, err := symlink.NewManager(cfg)
+			if err != nil {
+				t.Fatalf("NewManager() failed: %v", err)
+			}
+
+			// Execute RemoveMapping
+			err = mgr.RemoveMapping(tt.repoPath)
+
+			// Assert error or success
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("Expected error containing %q, got nil", tt.errContains)
+				}
+				if !strings.Contains(err.Error(), tt.errContains) {
+					t.Errorf("Expected error containing %q, got: %v", tt.errContains, err)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("Expected no error, got: %v", err)
+				}
+
+				// Verify mapping no longer exists in memory
+				if _, exists := cfg.Mappings[tt.repoPath]; exists {
+					t.Error("Mapping should not exist after removal")
+				}
+
+				// Verify persistence by reloading from disk
+				reloadedCfg, err := config.LoadFromFile(configPath)
+				if err != nil {
+					t.Fatalf("Failed to reload config: %v", err)
+				}
+				if _, exists := reloadedCfg.Mappings[tt.repoPath]; exists {
+					t.Error("Mapping should not be persisted after removal")
+				}
+			}
+		})
 	}
 }
 
-func TestManager_UpdateMapping_TargetConflict(t *testing.T) {
-	repoDir := t.TempDir()
-	configPath := filepath.Join(t.TempDir(), "config.json")
-
-	cfg, err := config.DefaultConfig()
-	if err != nil {
-		t.Fatalf("DefaultConfig() failed: %v", err)
-	}
-	cfg.Git.RepoPath = repoDir
-	cfg.ConfigPath = configPath
-
-	mgr, err := symlink.NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager() failed: %v", err)
-	}
-
+func TestManager_ListMappings(t *testing.T) {
 	// Create cross-platform test paths
 	homeDir := t.TempDir()
 	bashrcPath := filepath.Join(homeDir, ".bashrc")
 	vimrcPath := filepath.Join(homeDir, ".vimrc")
 
-	// Add two mappings
-	err = mgr.AddMapping(".bashrc", bashrcPath)
-	if err != nil {
-		t.Fatalf("AddMapping() .bashrc failed: %v", err)
-	}
-	err = mgr.AddMapping(".vimrc", vimrcPath)
-	if err != nil {
-		t.Fatalf("AddMapping() .vimrc failed: %v", err)
-	}
-
-	// Try to update .vimrc to use .bashrc's target (conflict)
-	err = mgr.UpdateMapping(".vimrc", bashrcPath)
-	if err == nil {
-		t.Error("Expected error for target conflict")
-	}
-	if !strings.Contains(err.Error(), "already mapped") {
-		t.Errorf("Expected 'already mapped' error, got: %v", err)
-	}
-}
-
-func TestManager_UpdateMapping_InvalidPath(t *testing.T) {
-	repoDir := t.TempDir()
-	configPath := filepath.Join(t.TempDir(), "config.json")
-
-	cfg, err := config.DefaultConfig()
-	if err != nil {
-		t.Fatalf("DefaultConfig() failed: %v", err)
-	}
-	cfg.Git.RepoPath = repoDir
-	cfg.ConfigPath = configPath
-
-	mgr, err := symlink.NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager() failed: %v", err)
+	tests := map[string]struct {
+		setupMappings    map[string]string
+		testImmutability bool
+		expectedCount    int
+		expectedNonNil   bool
+	}{
+		"when mappings empty": {
+			setupMappings:  map[string]string{},
+			expectedCount:  0,
+			expectedNonNil: true, // Should return empty map, not nil
+		},
+		"when mappings exist": {
+			setupMappings: map[string]string{
+				".bashrc": bashrcPath,
+				".vimrc":  vimrcPath,
+			},
+			expectedCount: 2,
+		},
+		"when external modification attempted": {
+			setupMappings: map[string]string{
+				".bashrc": bashrcPath,
+			},
+			testImmutability: true,
+			expectedCount:    1,
+		},
 	}
 
-	// Create cross-platform test path
-	homeDir := t.TempDir()
-	bashrcPath := filepath.Join(homeDir, ".bashrc")
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			// Setup
+			repoDir := t.TempDir()
+			configPath := filepath.Join(t.TempDir(), "config.json")
 
-	// Add initial mapping
-	err = mgr.AddMapping(".bashrc", bashrcPath)
-	if err != nil {
-		t.Fatalf("AddMapping() setup failed: %v", err)
-	}
+			cfg, err := config.DefaultConfig()
+			if err != nil {
+				t.Fatalf("DefaultConfig() failed: %v", err)
+			}
+			cfg.Git.RepoPath = repoDir
+			cfg.ConfigPath = configPath
 
-	// Try to update with invalid target (relative path)
-	err = mgr.UpdateMapping(".bashrc", "relative/path")
-	if err == nil {
-		t.Error("Expected error for invalid target path")
-	}
-	if !strings.Contains(err.Error(), "invalid") || !strings.Contains(err.Error(), "absolute") {
-		t.Errorf("Expected validation error about absolute path, got: %v", err)
-	}
-}
+			mgr, err := symlink.NewManager(cfg)
+			if err != nil {
+				t.Fatalf("NewManager() failed: %v", err)
+			}
 
-func TestManager_RemoveMapping_Success(t *testing.T) {
-	repoDir := t.TempDir()
-	configPath := filepath.Join(t.TempDir(), "config.json")
+			// Add initial mappings
+			for repo, target := range tt.setupMappings {
+				err = mgr.AddMapping(repo, target)
+				if err != nil {
+					t.Fatalf("AddMapping(%s) setup failed: %v", repo, err)
+				}
+			}
 
-	cfg, err := config.DefaultConfig()
-	if err != nil {
-		t.Fatalf("DefaultConfig() failed: %v", err)
-	}
-	cfg.Git.RepoPath = repoDir
-	cfg.ConfigPath = configPath
+			// Test ListMappings
+			result := mgr.ListMappings()
 
-	mgr, err := symlink.NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager() failed: %v", err)
-	}
+			// Verify non-nil for empty case
+			if tt.expectedNonNil && result == nil {
+				t.Error("ListMappings() should return empty map, not nil")
+			}
 
-	// Create cross-platform test path
-	homeDir := t.TempDir()
-	bashrcPath := filepath.Join(homeDir, ".bashrc")
+			// Verify count
+			if len(result) != tt.expectedCount {
+				t.Errorf("Expected %d mappings, got %d", tt.expectedCount, len(result))
+			}
 
-	// Add mapping
-	err = mgr.AddMapping(".bashrc", bashrcPath)
-	if err != nil {
-		t.Fatalf("AddMapping() setup failed: %v", err)
-	}
+			// Verify correct mappings when they exist
+			if !tt.testImmutability {
+				for repo, expectedTarget := range tt.setupMappings {
+					if result[repo] != expectedTarget {
+						t.Errorf("Expected %s → %s, got %s", repo, expectedTarget, result[repo])
+					}
+				}
+			}
 
-	// Remove mapping
-	err = mgr.RemoveMapping(".bashrc")
-	if err != nil {
-		t.Fatalf("RemoveMapping() failed: %v", err)
-	}
+			// Test immutability (defensive copy)
+			if tt.testImmutability {
+				result[".vimrc"] = "/modified/path"
+				result2 := mgr.ListMappings()
 
-	// Verify mapping no longer exists in memory
-	if _, exists := cfg.Mappings[".bashrc"]; exists {
-		t.Error("Mapping should not exist after removal")
-	}
-
-	// Verify persistence by reloading from disk
-	reloadedCfg, err := config.LoadFromFile(configPath)
-	if err != nil {
-		t.Fatalf("Failed to reload config from file: %v", err)
-	}
-	if _, exists := reloadedCfg.Mappings[".bashrc"]; exists {
-		t.Error("Mapping should not be persisted after removal")
-	}
-}
-
-func TestManager_RemoveMapping_NotFound(t *testing.T) {
-	repoDir := t.TempDir()
-	configPath := filepath.Join(t.TempDir(), "config.json")
-
-	cfg, err := config.DefaultConfig()
-	if err != nil {
-		t.Fatalf("DefaultConfig() failed: %v", err)
-	}
-	cfg.Git.RepoPath = repoDir
-	cfg.ConfigPath = configPath
-
-	mgr, err := symlink.NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager() failed: %v", err)
-	}
-
-	// Try to remove non-existent mapping
-	err = mgr.RemoveMapping(".nonexistent")
-	if err == nil {
-		t.Error("Expected error for non-existent mapping")
-	}
-	if !strings.Contains(err.Error(), "not found") {
-		t.Errorf("Expected 'not found' error, got: %v", err)
-	}
-}
-
-func TestManager_RemoveMapping_NilMappings(t *testing.T) {
-	repoDir := t.TempDir()
-	configPath := filepath.Join(t.TempDir(), "config.json")
-
-	cfg, err := config.DefaultConfig()
-	if err != nil {
-		t.Fatalf("DefaultConfig() failed: %v", err)
-	}
-	cfg.Git.RepoPath = repoDir
-	cfg.ConfigPath = configPath
-	// Ensure Mappings is nil (default state)
-	cfg.Mappings = nil
-
-	mgr, err := symlink.NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager() failed: %v", err)
-	}
-
-	// Try to remove from nil mappings
-	err = mgr.RemoveMapping(".bashrc")
-	if err == nil {
-		t.Error("Expected error for nil mappings")
-	}
-	if !strings.Contains(err.Error(), "no mappings") {
-		t.Errorf("Expected 'no mappings' error, got: %v", err)
-	}
-}
-
-func TestManager_ListMappings_Empty(t *testing.T) {
-	repoDir := t.TempDir()
-	configPath := filepath.Join(t.TempDir(), "config.json")
-
-	cfg, err := config.DefaultConfig()
-	if err != nil {
-		t.Fatalf("DefaultConfig() failed: %v", err)
-	}
-	cfg.Git.RepoPath = repoDir
-	cfg.ConfigPath = configPath
-
-	mgr, err := symlink.NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager() failed: %v", err)
-	}
-
-	// List mappings when empty
-	result := mgr.ListMappings()
-
-	// Should return empty map, not nil
-	if result == nil {
-		t.Error("ListMappings() should return empty map, not nil")
-	}
-	if len(result) != 0 {
-		t.Errorf("Expected empty map, got %d entries", len(result))
-	}
-}
-
-func TestManager_ListMappings_WithMappings(t *testing.T) {
-	repoDir := t.TempDir()
-	configPath := filepath.Join(t.TempDir(), "config.json")
-
-	cfg, err := config.DefaultConfig()
-	if err != nil {
-		t.Fatalf("DefaultConfig() failed: %v", err)
-	}
-	cfg.Git.RepoPath = repoDir
-	cfg.ConfigPath = configPath
-
-	mgr, err := symlink.NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager() failed: %v", err)
-	}
-
-	// Create cross-platform test paths
-	homeDir := t.TempDir()
-	bashrcPath := filepath.Join(homeDir, ".bashrc")
-	vimrcPath := filepath.Join(homeDir, ".vimrc")
-
-	// Add two mappings
-	err = mgr.AddMapping(".bashrc", bashrcPath)
-	if err != nil {
-		t.Fatalf("AddMapping() .bashrc failed: %v", err)
-	}
-	err = mgr.AddMapping(".vimrc", vimrcPath)
-	if err != nil {
-		t.Fatalf("AddMapping() .vimrc failed: %v", err)
-	}
-
-	// List mappings
-	result := mgr.ListMappings()
-
-	// Verify map has 2 entries
-	if len(result) != 2 {
-		t.Errorf("Expected 2 mappings, got %d", len(result))
-	}
-
-	// Verify correct repo→target mappings
-	if result[".bashrc"] != bashrcPath {
-		t.Errorf("Expected .bashrc → %s, got %s", bashrcPath, result[".bashrc"])
-	}
-	if result[".vimrc"] != vimrcPath {
-		t.Errorf("Expected .vimrc → %s, got %s", vimrcPath, result[".vimrc"])
-	}
-}
-
-func TestManager_ListMappings_ReturnsImmutableCopy(t *testing.T) {
-	repoDir := t.TempDir()
-	configPath := filepath.Join(t.TempDir(), "config.json")
-
-	cfg, err := config.DefaultConfig()
-	if err != nil {
-		t.Fatalf("DefaultConfig() failed: %v", err)
-	}
-	cfg.Git.RepoPath = repoDir
-	cfg.ConfigPath = configPath
-
-	mgr, err := symlink.NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager() failed: %v", err)
-	}
-
-	// Create cross-platform test path
-	homeDir := t.TempDir()
-	bashrcPath := filepath.Join(homeDir, ".bashrc")
-
-	// Add mapping
-	err = mgr.AddMapping(".bashrc", bashrcPath)
-	if err != nil {
-		t.Fatalf("AddMapping() setup failed: %v", err)
-	}
-
-	// Get list and modify returned map
-	result1 := mgr.ListMappings()
-	result1[".vimrc"] = "/modified/path"
-
-	// Get list again
-	result2 := mgr.ListMappings()
-
-	// Original mappings should be unchanged (verifies copy behavior)
-	if len(result2) != 1 {
-		t.Errorf("External modification affected internal state: expected 1 mapping, got %d", len(result2))
-	}
-	if _, exists := result2[".vimrc"]; exists {
-		t.Error("External modification affected internal state: .vimrc should not exist")
+				if len(result2) != tt.expectedCount {
+					t.Errorf("External modification affected internal state: expected %d mapping, got %d", tt.expectedCount, len(result2))
+				}
+				if _, exists := result2[".vimrc"]; exists {
+					t.Error("External modification affected internal state: .vimrc should not exist")
+				}
+			}
+		})
 	}
 }
