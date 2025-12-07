@@ -6,6 +6,24 @@ import (
 	"strings"
 )
 
+// checkTargetConflict checks if targetPath is already mapped by another repo.
+// excludeRepoPath allows excluding a specific repo (for updates).
+// Returns the conflicting repo path and true if conflict exists, empty string and false otherwise.
+func (m *Manager) checkTargetConflict(targetPath, excludeRepoPath string) (string, bool) {
+	if m.cfg.Mappings == nil {
+		return "", false
+	}
+
+	targetPathMap := make(map[string]string, len(m.cfg.Mappings))
+	for repo, target := range m.cfg.Mappings {
+		if repo != excludeRepoPath {
+			targetPathMap[target] = repo
+		}
+	}
+	existingRepo, exists := targetPathMap[targetPath]
+	return existingRepo, exists
+}
+
 // ValidateMapping validates a mapping entry for correctness.
 // repoPath must be relative (within repository), targetPath must be absolute.
 // Returns error if validation fails, nil otherwise.
@@ -63,12 +81,8 @@ func (m *Manager) AddMapping(repoPath, targetPath string) error {
 		return fmt.Errorf("mapping already exists for: %s", repoPath)
 	}
 
-	// Check for duplicate targetPath (use map for O(1) lookup per style guide Rule 12)
-	targetPathMap := make(map[string]string, len(m.cfg.Mappings))
-	for repo, target := range m.cfg.Mappings {
-		targetPathMap[target] = repo
-	}
-	if existingRepo, exists := targetPathMap[targetPath]; exists {
+	// Check for duplicate targetPath
+	if existingRepo, exists := m.checkTargetConflict(targetPath, ""); exists {
 		return fmt.Errorf("target path already mapped by %s: %s", existingRepo, targetPath)
 	}
 
@@ -82,4 +96,83 @@ func (m *Manager) AddMapping(repoPath, targetPath string) error {
 	}
 
 	return nil
+}
+
+// UpdateMapping updates the target path for an existing mapping.
+// Returns error if mapping doesn't exist, validation fails, or target conflicts.
+func (m *Manager) UpdateMapping(repoPath, newTargetPath string) error {
+	// Check mapping exists (combine nil-check and existence check)
+	currentTarget, exists := m.cfg.Mappings[repoPath]
+	if !exists {
+		if m.cfg.Mappings == nil {
+			return fmt.Errorf("no mappings exist")
+		}
+		return fmt.Errorf("mapping not found: %s", repoPath)
+	}
+
+	// Early exit if target unchanged (idempotency)
+	if currentTarget == newTargetPath {
+		return nil // No-op, avoid unnecessary validation + save
+	}
+
+	// Validate new target path
+	if err := m.ValidateMapping(repoPath, newTargetPath); err != nil {
+		return fmt.Errorf("invalid target path: %w", err)
+	}
+
+	// Check target not used by another mapping
+	if existingRepo, exists := m.checkTargetConflict(newTargetPath, repoPath); exists {
+		return fmt.Errorf("target path already mapped by %s: %s", existingRepo, newTargetPath)
+	}
+
+	// Update mapping
+	m.cfg.Mappings[repoPath] = newTargetPath
+
+	// Save config
+	configPath := m.cfg.GetConfigPath()
+	if err := m.cfg.SaveToFile(configPath); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+// RemoveMapping removes a mapping from the configuration.
+// Returns error if mapping doesn't exist or config can't be saved.
+func (m *Manager) RemoveMapping(repoPath string) error {
+	// Check mapping exists (combine nil-check and existence check)
+	if _, exists := m.cfg.Mappings[repoPath]; !exists {
+		if m.cfg.Mappings == nil {
+			return fmt.Errorf("no mappings exist")
+		}
+		return fmt.Errorf("mapping not found: %s", repoPath)
+	}
+
+	// Remove mapping
+	delete(m.cfg.Mappings, repoPath)
+
+	// Save config
+	configPath := m.cfg.GetConfigPath()
+	if err := m.cfg.SaveToFile(configPath); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
+}
+
+// ListMappings returns a copy of all mappings.
+// Returns empty map (never nil) if no mappings exist.
+// Returned map is a copy to prevent external modification.
+func (m *Manager) ListMappings() map[string]string {
+	// Handle nil or empty mappings
+	if m.cfg.Mappings == nil {
+		return make(map[string]string)
+	}
+
+	// Return copy to prevent modification
+	result := make(map[string]string, len(m.cfg.Mappings))
+	for k, v := range m.cfg.Mappings {
+		result[k] = v
+	}
+	return result
 }
