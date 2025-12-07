@@ -122,3 +122,10 @@ func (m *Manager) UpdateMapping(repoPath, newTargetPath string) error {
 
 	return nil
 }
+
+// RemoveMapping removes a mapping from the configuration.
+// Returns error if mapping doesn't exist or config can't be saved.
+func (m *Manager) RemoveMapping(repoPath string) error {
+	// TODO: Implement RemoveMapping
+	return fmt.Errorf("not implemented")
+}

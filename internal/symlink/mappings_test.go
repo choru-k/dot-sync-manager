@@ -393,3 +393,104 @@ func TestManager_UpdateMapping_InvalidPath(t *testing.T) {
 		t.Errorf("Expected validation error about absolute path, got: %v", err)
 	}
 }
+
+func TestManager_RemoveMapping_Success(t *testing.T) {
+	repoDir := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), "config.json")
+
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	cfg.Git.RepoPath = repoDir
+	cfg.ConfigPath = configPath
+
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager() failed: %v", err)
+	}
+
+	// Create cross-platform test path
+	homeDir := t.TempDir()
+	bashrcPath := filepath.Join(homeDir, ".bashrc")
+
+	// Add mapping
+	err = mgr.AddMapping(".bashrc", bashrcPath)
+	if err != nil {
+		t.Fatalf("AddMapping() setup failed: %v", err)
+	}
+
+	// Remove mapping
+	err = mgr.RemoveMapping(".bashrc")
+	if err != nil {
+		t.Fatalf("RemoveMapping() failed: %v", err)
+	}
+
+	// Verify mapping no longer exists in memory
+	if _, exists := cfg.Mappings[".bashrc"]; exists {
+		t.Error("Mapping should not exist after removal")
+	}
+
+	// Verify persistence by reloading from disk
+	reloadedCfg, err := config.LoadFromFile(configPath)
+	if err != nil {
+		t.Fatalf("Failed to reload config from file: %v", err)
+	}
+	if _, exists := reloadedCfg.Mappings[".bashrc"]; exists {
+		t.Error("Mapping should not be persisted after removal")
+	}
+}
+
+func TestManager_RemoveMapping_NotFound(t *testing.T) {
+	repoDir := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), "config.json")
+
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	cfg.Git.RepoPath = repoDir
+	cfg.ConfigPath = configPath
+
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager() failed: %v", err)
+	}
+
+	// Try to remove non-existent mapping
+	err = mgr.RemoveMapping(".nonexistent")
+	if err == nil {
+		t.Error("Expected error for non-existent mapping")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("Expected 'not found' error, got: %v", err)
+	}
+}
+
+func TestManager_RemoveMapping_NilMappings(t *testing.T) {
+	repoDir := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), "config.json")
+
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	cfg.Git.RepoPath = repoDir
+	cfg.ConfigPath = configPath
+	// Ensure Mappings is nil (default state)
+	cfg.Mappings = nil
+
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager() failed: %v", err)
+	}
+
+	// Try to remove from nil mappings
+	err = mgr.RemoveMapping(".bashrc")
+	if err == nil {
+		t.Error("Expected error for nil mappings")
+	}
+	if !strings.Contains(err.Error(), "no mappings") {
+		t.Errorf("Expected 'no mappings' error, got: %v", err)
+	}
+}
