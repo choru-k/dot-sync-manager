@@ -152,6 +152,15 @@ func (m *Manager) RemoveMapping(repoPath string) error {
 // Returns empty map (never nil) if no mappings exist.
 // Returned map is a copy to prevent external modification.
 func (m *Manager) ListMappings() map[string]string {
-	// TODO: Implement ListMappings
-	return nil
+	// Handle nil or empty mappings
+	if m.cfg.Mappings == nil {
+		return make(map[string]string)
+	}
+
+	// Return copy to prevent modification
+	result := make(map[string]string, len(m.cfg.Mappings))
+	for k, v := range m.cfg.Mappings {
+		result[k] = v
+	}
+	return result
 }
