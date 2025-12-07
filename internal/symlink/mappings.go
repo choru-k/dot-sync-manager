@@ -63,11 +63,13 @@ func (m *Manager) AddMapping(repoPath, targetPath string) error {
 		return fmt.Errorf("mapping already exists for: %s", repoPath)
 	}
 
-	// Check for duplicate targetPath
-	for existingRepo, existingTarget := range m.cfg.Mappings {
-		if existingTarget == targetPath {
-			return fmt.Errorf("target path already mapped by %s: %s", existingRepo, targetPath)
-		}
+	// Check for duplicate targetPath (use map for O(1) lookup per style guide Rule 12)
+	targetPathMap := make(map[string]string, len(m.cfg.Mappings))
+	for repo, target := range m.cfg.Mappings {
+		targetPathMap[target] = repo
+	}
+	if existingRepo, exists := targetPathMap[targetPath]; exists {
+		return fmt.Errorf("target path already mapped by %s: %s", existingRepo, targetPath)
 	}
 
 	// Add mapping
