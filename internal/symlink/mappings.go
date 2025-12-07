@@ -6,6 +6,24 @@ import (
 	"strings"
 )
 
+// checkTargetConflict checks if targetPath is already mapped by another repo.
+// excludeRepoPath allows excluding a specific repo (for updates).
+// Returns the conflicting repo path and true if conflict exists, empty string and false otherwise.
+func (m *Manager) checkTargetConflict(targetPath, excludeRepoPath string) (string, bool) {
+	if m.cfg.Mappings == nil {
+		return "", false
+	}
+
+	targetPathMap := make(map[string]string, len(m.cfg.Mappings))
+	for repo, target := range m.cfg.Mappings {
+		if repo != excludeRepoPath {
+			targetPathMap[target] = repo
+		}
+	}
+	existingRepo, exists := targetPathMap[targetPath]
+	return existingRepo, exists
+}
+
 // ValidateMapping validates a mapping entry for correctness.
 // repoPath must be relative (within repository), targetPath must be absolute.
 // Returns error if validation fails, nil otherwise.
@@ -63,12 +81,8 @@ func (m *Manager) AddMapping(repoPath, targetPath string) error {
 		return fmt.Errorf("mapping already exists for: %s", repoPath)
 	}
 
-	// Check for duplicate targetPath (use map for O(1) lookup per style guide Rule 12)
-	targetPathMap := make(map[string]string, len(m.cfg.Mappings))
-	for repo, target := range m.cfg.Mappings {
-		targetPathMap[target] = repo
-	}
-	if existingRepo, exists := targetPathMap[targetPath]; exists {
+	// Check for duplicate targetPath
+	if existingRepo, exists := m.checkTargetConflict(targetPath, ""); exists {
 		return fmt.Errorf("target path already mapped by %s: %s", existingRepo, targetPath)
 	}
 
@@ -100,14 +114,8 @@ func (m *Manager) UpdateMapping(repoPath, newTargetPath string) error {
 		return fmt.Errorf("invalid target path: %w", err)
 	}
 
-	// Check target not used by another mapping (O(1) lookup per style guide)
-	targetPathMap := make(map[string]string, len(m.cfg.Mappings))
-	for repo, target := range m.cfg.Mappings {
-		if repo != repoPath { // Exclude current mapping
-			targetPathMap[target] = repo
-		}
-	}
-	if existingRepo, exists := targetPathMap[newTargetPath]; exists {
+	// Check target not used by another mapping
+	if existingRepo, exists := m.checkTargetConflict(newTargetPath, repoPath); exists {
 		return fmt.Errorf("target path already mapped by %s: %s", existingRepo, newTargetPath)
 	}
 
