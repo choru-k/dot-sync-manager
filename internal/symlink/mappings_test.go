@@ -1,6 +1,7 @@
 package symlink_test
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -133,5 +134,107 @@ func TestManager_ValidateMapping(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestManager_AddMapping_Success(t *testing.T) {
+	repoDir := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), "config.json")
+
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	cfg.Git.RepoPath = repoDir
+	cfg.ConfigPath = configPath
+
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager() failed: %v", err)
+	}
+
+	// Create cross-platform test paths
+	homeDir := t.TempDir()
+	bashrcPath := filepath.Join(homeDir, ".bashrc")
+	vimrcPath := filepath.Join(homeDir, ".vimrc")
+
+	// Add first mapping
+	err = mgr.AddMapping(".bashrc", bashrcPath)
+	if err != nil {
+		t.Fatalf("AddMapping() failed: %v", err)
+	}
+
+	// Verify mapping was added in memory
+	if cfg.Mappings[".bashrc"] != bashrcPath {
+		t.Errorf("Mapping not found in config: got %v", cfg.Mappings)
+	}
+
+	// Add second mapping
+	err = mgr.AddMapping(".vimrc", vimrcPath)
+	if err != nil {
+		t.Fatalf("AddMapping() second failed: %v", err)
+	}
+
+	// Verify both mappings exist in memory
+	if len(cfg.Mappings) != 2 {
+		t.Errorf("Expected 2 mappings in memory, got %d", len(cfg.Mappings))
+	}
+
+	// Verify persistence by reloading from disk
+	reloadedCfg, err := config.LoadFromFile(configPath)
+	if err != nil {
+		t.Fatalf("Failed to reload config from file: %v", err)
+	}
+	if len(reloadedCfg.Mappings) != 2 {
+		t.Errorf("Expected 2 mappings after reloading from file, got %d", len(reloadedCfg.Mappings))
+	}
+	if reloadedCfg.Mappings[".vimrc"] != vimrcPath {
+		t.Errorf("Second mapping not found after reloading")
+	}
+}
+
+func TestManager_AddMapping_Conflict(t *testing.T) {
+	repoDir := t.TempDir()
+	configPath := filepath.Join(t.TempDir(), "config.json")
+
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	cfg.Git.RepoPath = repoDir
+	cfg.ConfigPath = configPath
+
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager() failed: %v", err)
+	}
+
+	// Create cross-platform test paths
+	homeDir := t.TempDir()
+	bashrcPath := filepath.Join(homeDir, ".bashrc")
+	otherPath := filepath.Join(homeDir, "other", "path")
+
+	// Add initial mapping
+	err = mgr.AddMapping(".bashrc", bashrcPath)
+	if err != nil {
+		t.Fatalf("AddMapping() setup failed: %v", err)
+	}
+
+	// Try to add duplicate repo path
+	err = mgr.AddMapping(".bashrc", otherPath)
+	if err == nil {
+		t.Error("Expected error for duplicate repo path")
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Errorf("Expected 'already exists' error, got: %v", err)
+	}
+
+	// Try to add duplicate target path
+	err = mgr.AddMapping(".other", bashrcPath)
+	if err == nil {
+		t.Error("Expected error for duplicate target path")
+	}
+	if !strings.Contains(err.Error(), "already mapped") {
+		t.Errorf("Expected 'already mapped' error, got: %v", err)
 	}
 }
