@@ -87,6 +87,38 @@ func (m *Manager) AddMapping(repoPath, targetPath string) error {
 // UpdateMapping updates the target path for an existing mapping.
 // Returns error if mapping doesn't exist, validation fails, or target conflicts.
 func (m *Manager) UpdateMapping(repoPath, newTargetPath string) error {
-	// TODO: Implement UpdateMapping
-	return fmt.Errorf("not implemented")
+	// Check mapping exists
+	if m.cfg.Mappings == nil {
+		return fmt.Errorf("no mappings exist")
+	}
+	if _, exists := m.cfg.Mappings[repoPath]; !exists {
+		return fmt.Errorf("mapping not found: %s", repoPath)
+	}
+
+	// Validate new target path
+	if err := m.ValidateMapping(repoPath, newTargetPath); err != nil {
+		return fmt.Errorf("invalid target path: %w", err)
+	}
+
+	// Check target not used by another mapping (O(1) lookup per style guide)
+	targetPathMap := make(map[string]string, len(m.cfg.Mappings))
+	for repo, target := range m.cfg.Mappings {
+		if repo != repoPath { // Exclude current mapping
+			targetPathMap[target] = repo
+		}
+	}
+	if existingRepo, exists := targetPathMap[newTargetPath]; exists {
+		return fmt.Errorf("target path already mapped by %s: %s", existingRepo, newTargetPath)
+	}
+
+	// Update mapping
+	m.cfg.Mappings[repoPath] = newTargetPath
+
+	// Save config
+	configPath := m.cfg.GetConfigPath()
+	if err := m.cfg.SaveToFile(configPath); err != nil {
+		return fmt.Errorf("failed to save config: %w", err)
+	}
+
+	return nil
 }
