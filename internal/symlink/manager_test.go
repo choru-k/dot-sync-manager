@@ -10,6 +10,11 @@ import (
 	"github.com/choru-k/dot-sync-manager/internal/symlink"
 )
 
+const (
+	// testFilePerms allows owner write, all read (standard test files)
+	testFilePerms os.FileMode = 0644 // -rw-r--r--
+)
+
 func TestManager_CreateLink_SourceNotExists(t *testing.T) {
 	// Setup temp directories
 	repoDir := t.TempDir()
@@ -41,7 +46,7 @@ func TestManager_CreateLink_TargetParentNotExists(t *testing.T) {
 
 	// Create source file in repo
 	sourceFile := filepath.Join(repoDir, ".bashrc")
-	if err := os.WriteFile(sourceFile, []byte("# bash config"), 0644); err != nil {
+	if err := os.WriteFile(sourceFile, []byte("# bash config"), testFilePerms); err != nil {
 		t.Fatal(err)
 	}
 
@@ -70,13 +75,13 @@ func TestManager_CreateLink_TargetExists(t *testing.T) {
 
 	// Create source file in repo
 	sourceFile := filepath.Join(repoDir, ".bashrc")
-	if err := os.WriteFile(sourceFile, []byte("# bash config"), 0644); err != nil {
+	if err := os.WriteFile(sourceFile, []byte("# bash config"), testFilePerms); err != nil {
 		t.Fatal(err)
 	}
 
 	// Create existing file at target
 	target := filepath.Join(targetDir, ".bashrc")
-	if err := os.WriteFile(target, []byte("# existing"), 0644); err != nil {
+	if err := os.WriteFile(target, []byte("# existing"), testFilePerms); err != nil {
 		t.Fatal(err)
 	}
 
@@ -104,7 +109,7 @@ func TestManager_CreateLink_Success(t *testing.T) {
 
 	// Create source file in repo
 	sourceFile := filepath.Join(repoDir, ".bashrc")
-	if err := os.WriteFile(sourceFile, []byte("# bash config"), 0644); err != nil {
+	if err := os.WriteFile(sourceFile, []byte("# bash config"), testFilePerms); err != nil {
 		t.Fatal(err)
 	}
 
@@ -140,13 +145,13 @@ func TestManager_RemoveLink(t *testing.T) {
 
 	// Create source file for symlink test
 	sourceFile := filepath.Join(repoDir, ".bashrc")
-	if err := os.WriteFile(sourceFile, []byte("# bash"), 0644); err != nil {
+	if err := os.WriteFile(sourceFile, []byte("# bash"), testFilePerms); err != nil {
 		t.Fatalf("Failed to write source file: %v", err)
 	}
 
 	// Create regular file for non-symlink test
 	regularFile := filepath.Join(targetDir, ".vimrc")
-	if err := os.WriteFile(regularFile, []byte("# regular file"), 0644); err != nil {
+	if err := os.WriteFile(regularFile, []byte("# regular file"), testFilePerms); err != nil {
 		t.Fatalf("Failed to write regular file: %v", err)
 	}
 
@@ -235,10 +240,10 @@ func TestManager_VerifyMappings_AllValid(t *testing.T) {
 	// Create source files in repo
 	bashrc := filepath.Join(repoDir, ".bashrc")
 	vimrc := filepath.Join(repoDir, ".vimrc")
-	if err := os.WriteFile(bashrc, []byte("# bash"), 0644); err != nil {
+	if err := os.WriteFile(bashrc, []byte("# bash"), testFilePerms); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(vimrc, []byte("# vim"), 0644); err != nil {
+	if err := os.WriteFile(vimrc, []byte("# vim"), testFilePerms); err != nil {
 		t.Fatal(err)
 	}
 
@@ -287,7 +292,7 @@ func TestManager_VerifyMappings_BrokenLink(t *testing.T) {
 
 	// Create source file in repo
 	bashrc := filepath.Join(repoDir, ".bashrc")
-	if err := os.WriteFile(bashrc, []byte("# bash"), 0644); err != nil {
+	if err := os.WriteFile(bashrc, []byte("# bash"), testFilePerms); err != nil {
 		t.Fatal(err)
 	}
 
@@ -363,7 +368,7 @@ func TestManager_VerifyMappings_NotSymlink(t *testing.T) {
 
 	// Create regular file at target (not a symlink)
 	target := filepath.Join(targetDir, ".bashrc")
-	if err := os.WriteFile(target, []byte("# regular file"), 0644); err != nil {
+	if err := os.WriteFile(target, []byte("# regular file"), testFilePerms); err != nil {
 		t.Fatal(err)
 	}
 
@@ -399,7 +404,7 @@ func TestManager_VerifyMappings_RelativeSymlink(t *testing.T) {
 
 	// Create source file in repo
 	bashrc := filepath.Join(repoDir, ".bashrc")
-	if err := os.WriteFile(bashrc, []byte("# bash"), 0644); err != nil {
+	if err := os.WriteFile(bashrc, []byte("# bash"), testFilePerms); err != nil {
 		t.Fatal(err)
 	}
 
