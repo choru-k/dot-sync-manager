@@ -37,8 +37,23 @@ func NewManager(cfg *config.SyncConfig) (*Manager, error) {
 		return nil, fmt.Errorf("symlink: config is required [SYMLINK_CONFIG_REQUIRED]")
 	}
 
+	backupDir, err := DefaultBackupDir()
+	if err != nil {
+		return nil, fmt.Errorf("symlink: failed to initialize backup directory: %w", err)
+	}
+
 	return &Manager{
 		cfg:       cfg,
-		backupDir: "", // TODO(A.3): Reserved for backup functionality - will be populated when backup features are implemented
+		backupDir: backupDir,
 	}, nil
+}
+
+// SetBackupDir sets a custom backup directory (useful for testing).
+func (m *Manager) SetBackupDir(dir string) {
+	m.backupDir = dir
+}
+
+// GetBackupDir returns the current backup directory.
+func (m *Manager) GetBackupDir() string {
+	return m.backupDir
 }
