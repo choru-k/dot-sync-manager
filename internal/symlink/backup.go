@@ -6,10 +6,14 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/choru-k/dot-sync-manager/internal/util"
 )
 
 const (
-	defaultDirPerms os.FileMode = 0o755 // drwxr-xr-x - standard directory permissions
+	defaultDirPerms       os.FileMode = 0o755                    // drwxr-xr-x - standard directory permissions
+	backupTimestampFormat             = "20060102_150405.000000" // Microsecond precision format
+	backupFilePrefix                  = "backup"                 // Prefix for backup filenames
 )
 
 // BackupExisting creates a timestamped backup of the file or directory at targetPath
@@ -43,8 +47,8 @@ func (m *Manager) BackupExisting(targetPath string) (string, error) {
 
 	// Generate backup filename
 	filename := filepath.Base(targetPath)
-	timestamp := time.Now().Format("20060102_150405.000000") // Microsecond precision prevents race conditions
-	backupName := fmt.Sprintf("backup_%s_%s", timestamp, filename)
+	timestamp := time.Now().Format(backupTimestampFormat) // Microsecond precision prevents race conditions
+	backupName := fmt.Sprintf("%s_%s_%s", backupFilePrefix, timestamp, filename)
 	backupPath := filepath.Join(m.backupDir, backupName)
 
 	// Copy file to backup location
@@ -76,21 +80,13 @@ func copyFile(src, dst string) (err error) {
 	if err != nil {
 		return fmt.Errorf("copyFile: open source failed: %w", err)
 	}
-	defer func() {
-		if closeErr := srcFile.Close(); closeErr != nil && err == nil {
-			err = fmt.Errorf("copyFile: close source failed: %w", closeErr)
-		}
-	}()
+	defer util.CloseAndCaptureErr(srcFile, &err)
 
 	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, srcInfo.Mode())
 	if err != nil {
 		return fmt.Errorf("copyFile: open destination failed: %w", err)
 	}
-	defer func() {
-		if closeErr := dstFile.Close(); closeErr != nil && err == nil {
-			err = fmt.Errorf("copyFile: close destination failed: %w", closeErr)
-		}
-	}()
+	defer util.CloseAndCaptureErr(dstFile, &err)
 
 	if _, err = io.Copy(dstFile, srcFile); err != nil {
 		return fmt.Errorf("copyFile: io.Copy failed: %w", err)
@@ -132,9 +128,9 @@ func copyDir(src, dst string) error {
 			if err != nil {
 				return fmt.Errorf("copyDir: Readlink %s failed: %w", srcPath, err)
 			}
-			// If the link is relative, make it absolute relative to the symlink's directory
+			// If the link is relative, make it absolute and clean the path
 			if !filepath.IsAbs(target) {
-				target = filepath.Join(filepath.Dir(srcPath), target)
+				target = filepath.Clean(filepath.Join(filepath.Dir(srcPath), target))
 			}
 			if err := os.Symlink(target, dstPath); err != nil {
 				return fmt.Errorf("copyDir: Symlink %s failed: %w", dstPath, err)
