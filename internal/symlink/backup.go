@@ -11,10 +11,69 @@ import (
 )
 
 const (
-	defaultDirPerms       os.FileMode = 0o755                    // drwxr-xr-x - standard directory permissions
+	defaultDirPerms       os.FileMode = 0o755                    // drwxr-xr-x; standard for created directories, allowing owner to modify and all users to read/enter
 	backupTimestampFormat             = "20060102_150405.000000" // Microsecond precision format
 	backupFilePrefix                  = "backup"                 // Prefix for backup filenames
 )
+
+// generateUniqueBackupPath creates a unique backup path using atomic checks
+// to prevent race conditions. If a path already exists, it retries with an
+// incremented counter suffix until finding an available name.
+func generateUniqueBackupPath(backupDir, targetPath string, isDir bool) (string, error) {
+	filename := filepath.Base(targetPath)
+	baseTimestamp := time.Now().Format(backupTimestampFormat)
+
+	// Try with timestamp alone first
+	attempt := 0
+	maxAttempts := 100 // Prevent infinite loops
+
+	for attempt < maxAttempts {
+		var backupName string
+		if attempt == 0 {
+			backupName = fmt.Sprintf("%s_%s_%s", backupFilePrefix, baseTimestamp, filename)
+		} else {
+			// Add collision counter: backup_20250101_120000.000000_001_file
+			backupName = fmt.Sprintf("%s_%s_%03d_%s", backupFilePrefix, baseTimestamp, attempt, filename)
+		}
+
+		backupPath := filepath.Join(backupDir, backupName)
+
+		// Atomic check: try to create placeholder to claim the name
+		if isDir {
+			// For directories, attempt os.Mkdir (not MkdirAll) with placeholder
+			// We'll remove this and create real directory in copyDir
+			placeholderPath := backupPath + ".placeholder"
+			err := os.Mkdir(placeholderPath, defaultDirPerms)
+			if err == nil {
+				// Successfully claimed the name
+				_ = os.Remove(placeholderPath) // Clean up placeholder
+				return backupPath, nil
+			}
+			// If error is NOT "exists", it's a real error
+			if !os.IsExist(err) {
+				return "", fmt.Errorf("failed to check directory availability: %w", err)
+			}
+		} else {
+			// For files, use O_EXCL to atomically claim the name
+			f, err := os.OpenFile(backupPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+			if err == nil {
+				// Successfully claimed the name
+				_ = f.Close()
+				_ = os.Remove(backupPath) // Clean up placeholder file
+				return backupPath, nil
+			}
+			// If error is NOT "exists", it's a real error
+			if !os.IsExist(err) {
+				return "", fmt.Errorf("failed to check file availability: %w", err)
+			}
+		}
+
+		// Path exists, increment and retry
+		attempt++
+	}
+
+	return "", fmt.Errorf("failed to generate unique backup path after %d attempts", maxAttempts)
+}
 
 // BackupExisting creates a timestamped backup of the file or directory at targetPath
 // before symlinking operations. The backup is stored in the backup directory with
@@ -45,11 +104,11 @@ func (m *Manager) BackupExisting(targetPath string) (string, error) {
 		return "", fmt.Errorf("symlink: failed to create backup directory: %w [BACKUP_DIR_CREATE_FAILED]", err)
 	}
 
-	// Generate backup filename
-	filename := filepath.Base(targetPath)
-	timestamp := time.Now().Format(backupTimestampFormat) // Microsecond precision prevents race conditions
-	backupName := fmt.Sprintf("%s_%s_%s", backupFilePrefix, timestamp, filename)
-	backupPath := filepath.Join(m.backupDir, backupName)
+	// Generate unique backup path atomically
+	backupPath, err := generateUniqueBackupPath(m.backupDir, targetPath, info.IsDir())
+	if err != nil {
+		return "", fmt.Errorf("symlink: failed to generate backup path: %w [BACKUP_COPY_FAILED]", err)
+	}
 
 	// Copy file to backup location
 	if info.IsDir() {

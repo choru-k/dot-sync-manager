@@ -104,7 +104,8 @@ func TestBackup_BackupExisting_NotExists(t *testing.T) {
 	mgr := newTestManager(t)
 	mgr.SetBackupDir(t.TempDir())
 
-	_, err := mgr.BackupExisting("/nonexistent/file")
+	// Use cross-platform path construction
+	_, err := mgr.BackupExisting(filepath.Join(t.TempDir(), "nonexistent-file"))
 	if err == nil {
 		t.Fatal("Expected error for non-existent file, got nil")
 	}
@@ -261,5 +262,66 @@ func TestBackup_BackupExisting_TimestampUniqueness(t *testing.T) {
 	}
 	if _, err := os.Stat(backup2); os.IsNotExist(err) {
 		t.Error("Second backup doesn't exist")
+	}
+}
+
+func TestBackup_BackupExisting_ConcurrentSafety(t *testing.T) {
+	backupDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Create test file
+	targetFile := filepath.Join(targetDir, ".bashrc")
+	content := []byte("# test")
+	if err := os.WriteFile(targetFile, content, testFilePerms); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := newTestManager(t)
+	mgr.SetBackupDir(backupDir)
+
+	// Launch 10 concurrent backups
+	const numBackups = 10
+	results := make(chan string, numBackups)
+	errors := make(chan error, numBackups)
+
+	for i := 0; i < numBackups; i++ {
+		go func() {
+			path, err := mgr.BackupExisting(targetFile)
+			if err != nil {
+				errors <- err
+				return
+			}
+			results <- path
+		}()
+	}
+
+	// Collect results
+	var backupPaths []string
+	for i := 0; i < numBackups; i++ {
+		select {
+		case path := <-results:
+			backupPaths = append(backupPaths, path)
+		case err := <-errors:
+			t.Fatalf("Backup failed: %v", err)
+		}
+	}
+
+	// Verify all paths are unique (no overwrites)
+	pathSet := make(map[string]bool)
+	for _, path := range backupPaths {
+		if pathSet[path] {
+			t.Errorf("Duplicate backup path detected: %s", path)
+		}
+		pathSet[path] = true
+
+		// Verify file exists
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			t.Errorf("Backup file doesn't exist: %s", path)
+		}
+	}
+
+	// Verify we have all 10 unique backups
+	if len(pathSet) != numBackups {
+		t.Errorf("Expected %d unique backups, got %d", numBackups, len(pathSet))
 	}
 }
