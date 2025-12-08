@@ -112,8 +112,14 @@ func (m *Manager) VerifyMappings() []MappingStatus {
 			continue
 		}
 
+		// Resolve relative symlinks (Rule 52: Relative symlinks must be resolved)
+		resolvedLinkDest := linkDest
+		if !filepath.IsAbs(linkDest) {
+			resolvedLinkDest = filepath.Clean(filepath.Join(filepath.Dir(targetPath), linkDest))
+		}
+
 		expectedSource := filepath.Join(m.cfg.Git.RepoPath, repoPath)
-		if linkDest != expectedSource {
+		if resolvedLinkDest != expectedSource {
 			status.Status = StateBroken
 			status.Error = fmt.Sprintf("symlink points to %s, expected %s", linkDest, expectedSource)
 			results = append(results, status)
