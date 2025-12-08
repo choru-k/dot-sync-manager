@@ -392,3 +392,50 @@ func TestManager_VerifyMappings_NotSymlink(t *testing.T) {
 		t.Errorf("Expected not_symlink status, got %s", results[0].Status)
 	}
 }
+
+func TestManager_VerifyMappings_RelativeSymlink(t *testing.T) {
+	repoDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Create source file in repo
+	bashrc := filepath.Join(repoDir, ".bashrc")
+	if err := os.WriteFile(bashrc, []byte("# bash"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create RELATIVE symlink (not absolute)
+	bashrcTarget := filepath.Join(targetDir, ".bashrc")
+	relPath, err := filepath.Rel(targetDir, bashrc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(relPath, bashrcTarget); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create config with mapping
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	cfg.Git.RepoPath = repoDir
+	cfg.Mappings = map[string]string{
+		".bashrc": bashrcTarget,
+	}
+
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	results := mgr.VerifyMappings()
+
+	if len(results) != 1 {
+		t.Fatalf("Expected 1 result, got %d", len(results))
+	}
+
+	if results[0].Status != symlink.StateValid {
+		t.Errorf("Expected valid status for relative symlink, got %s: %s",
+			results[0].Status, results[0].Error)
+	}
+}
