@@ -16,11 +16,12 @@ const (
 	backupFilePrefix                  = "backup"                 // Prefix for backup filenames
 )
 
-// generateUniqueBackupPath creates a unique backup path using placeholder files
-// to detect collisions. Uses retry loop with counter suffix if name conflicts occur.
-// While not fully atomic (TOCTOU between placeholder removal and actual copy),
-// microsecond precision timestamps combined with retries provide sufficient uniqueness
-// for practical purposes. Maximum 100 retry attempts before returning error.
+// generateUniqueBackupPath creates a unique backup path by atomically claiming a name.
+// Uses OS-level atomic operations (O_EXCL for files, Mkdir for directories) to ensure
+// only one process can claim each path. The created placeholder remains in place and
+// is reused as the actual backup location (copyFile overwrites with O_TRUNC, copyDir
+// uses MkdirAll). If collision occurs, retries with incremented counter suffix.
+// Maximum 100 retry attempts before returning error.
 func generateUniqueBackupPath(backupDir, targetPath string, isDir bool) (string, error) {
 	filename := filepath.Base(targetPath)
 	baseTimestamp := time.Now().Format(backupTimestampFormat)
@@ -42,13 +43,11 @@ func generateUniqueBackupPath(backupDir, targetPath string, isDir bool) (string,
 
 		// Atomic check: try to create placeholder to claim the name
 		if isDir {
-			// For directories, attempt os.Mkdir (not MkdirAll) with placeholder
-			// We'll remove this and create real directory in copyDir
-			placeholderPath := backupPath + ".placeholder"
-			err := os.Mkdir(placeholderPath, defaultDirPerms)
+			// Create directory at actual backup path (not .placeholder suffix)
+			// Don't remove it - copyDir() will use MkdirAll which succeeds on existing dirs
+			err := os.Mkdir(backupPath, defaultDirPerms)
 			if err == nil {
-				// Successfully claimed the name
-				_ = os.Remove(placeholderPath) // Clean up placeholder
+				// Successfully claimed the name - leave directory in place
 				return backupPath, nil
 			}
 			// If error is NOT "exists", it's a real error
@@ -56,13 +55,17 @@ func generateUniqueBackupPath(backupDir, targetPath string, isDir bool) (string,
 				return "", fmt.Errorf("failed to check directory availability: %w", err)
 			}
 		} else {
-			// For files, use O_EXCL to atomically claim the name
+			// Create empty file at actual backup path
+			// Don't remove it - copyFile() will open with O_TRUNC to overwrite
 			f, err := os.OpenFile(backupPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
 			if err == nil {
-				// Successfully claimed the name
+				// Successfully claimed the name - leave file in place
 				_ = f.Close()
-				_ = os.Remove(backupPath) // Clean up placeholder file
 				return backupPath, nil
+			}
+			// Defensive close (f is always nil when err != nil in Go stdlib, but be explicit)
+			if f != nil {
+				_ = f.Close()
 			}
 			// If error is NOT "exists", it's a real error
 			if !os.IsExist(err) {
