@@ -10,9 +10,23 @@ import (
 )
 
 const (
-	testFilePerms os.FileMode = 0644  // -rw-r--r--
+	testFilePerms os.FileMode = 0o644 // -rw-r--r--
 	testDirPerms  os.FileMode = 0o755 // drwxr-xr-x
 )
+
+// newTestManager creates a Manager instance for testing
+func newTestManager(t *testing.T) *Manager {
+	t.Helper()
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	mgr, err := NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager() failed: %v", err)
+	}
+	return mgr
+}
 
 func TestBackup_BackupExisting_File(t *testing.T) {
 	backupDir := t.TempDir()
@@ -25,14 +39,7 @@ func TestBackup_BackupExisting_File(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg, err := config.DefaultConfig()
-	if err != nil {
-		t.Fatalf("DefaultConfig() failed: %v", err)
-	}
-	mgr, err := NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager() failed: %v", err)
-	}
+	mgr := newTestManager(t)
 	mgr.SetBackupDir(backupDir)
 
 	// Backup
@@ -77,14 +84,7 @@ func TestBackup_BackupExisting_Directory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg, err := config.DefaultConfig()
-	if err != nil {
-		t.Fatalf("DefaultConfig() failed: %v", err)
-	}
-	mgr, err := NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager() failed: %v", err)
-	}
+	mgr := newTestManager(t)
 	mgr.SetBackupDir(backupDir)
 
 	// Backup
@@ -101,17 +101,10 @@ func TestBackup_BackupExisting_Directory(t *testing.T) {
 }
 
 func TestBackup_BackupExisting_NotExists(t *testing.T) {
-	cfg, err := config.DefaultConfig()
-	if err != nil {
-		t.Fatalf("DefaultConfig() failed: %v", err)
-	}
-	mgr, err := NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager() failed: %v", err)
-	}
+	mgr := newTestManager(t)
 	mgr.SetBackupDir(t.TempDir())
 
-	_, err = mgr.BackupExisting("/nonexistent/file")
+	_, err := mgr.BackupExisting("/nonexistent/file")
 	if err == nil {
 		t.Fatal("Expected error for non-existent file, got nil")
 	}
@@ -144,14 +137,7 @@ func TestBackup_BackupExisting_WithSymlinks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg, err := config.DefaultConfig()
-	if err != nil {
-		t.Fatalf("DefaultConfig() failed: %v", err)
-	}
-	mgr, err := NewManager(cfg)
-	if err != nil {
-		t.Fatalf("NewManager() failed: %v", err)
-	}
+	mgr := newTestManager(t)
 	mgr.SetBackupDir(backupDir)
 
 	// Backup directory containing symlink
@@ -177,5 +163,103 @@ func TestBackup_BackupExisting_WithSymlinks(t *testing.T) {
 	}
 	if target != actualDir {
 		t.Errorf("Symlink target mismatch: got %s, want %s", target, actualDir)
+	}
+}
+
+func TestBackup_BackupExisting_WithRelativeSymlink(t *testing.T) {
+	backupDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Create directory structure: targetDir/.config/link -> ../actual/file.txt
+	configDir := filepath.Join(targetDir, ".config")
+	if err := os.MkdirAll(configDir, testDirPerms); err != nil {
+		t.Fatal(err)
+	}
+
+	actualDir := filepath.Join(targetDir, "actual")
+	if err := os.MkdirAll(actualDir, testDirPerms); err != nil {
+		t.Fatal(err)
+	}
+	testFile := filepath.Join(actualDir, "file.txt")
+	if err := os.WriteFile(testFile, []byte("content"), testFilePerms); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create RELATIVE symlink: .config/link -> ../actual
+	symlinkPath := filepath.Join(configDir, "link")
+	if err := os.Symlink("../actual", symlinkPath); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := newTestManager(t)
+	mgr.SetBackupDir(backupDir)
+
+	// Backup directory containing relative symlink
+	backupPath, err := mgr.BackupExisting(configDir)
+	if err != nil {
+		t.Fatalf("BackupExisting failed: %v", err)
+	}
+
+	// Verify symlink was preserved and target is now absolute
+	backupSymlink := filepath.Join(backupPath, "link")
+	linkInfo, err := os.Lstat(backupSymlink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if linkInfo.Mode()&os.ModeSymlink == 0 {
+		t.Error("Backup should preserve symlink")
+	}
+
+	// Verify target is absolute (converted from relative)
+	target, err := os.Readlink(backupSymlink)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsAbs(target) {
+		t.Errorf("Relative symlink should be converted to absolute, got: %s", target)
+	}
+
+	// Verify target points to correct location
+	expectedTarget := actualDir // Should resolve to absolute path
+	if target != expectedTarget {
+		t.Errorf("Symlink target mismatch: got %s, want %s", target, expectedTarget)
+	}
+}
+
+func TestBackup_BackupExisting_TimestampUniqueness(t *testing.T) {
+	backupDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Create test file
+	targetFile := filepath.Join(targetDir, ".bashrc")
+	content := []byte("# test")
+	if err := os.WriteFile(targetFile, content, testFilePerms); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := newTestManager(t)
+	mgr.SetBackupDir(backupDir)
+
+	// Create two rapid backups
+	backup1, err := mgr.BackupExisting(targetFile)
+	if err != nil {
+		t.Fatalf("First backup failed: %v", err)
+	}
+
+	backup2, err := mgr.BackupExisting(targetFile)
+	if err != nil {
+		t.Fatalf("Second backup failed: %v", err)
+	}
+
+	// Verify both backups exist (no overwrite)
+	if backup1 == backup2 {
+		t.Error("Rapid backups should have different paths")
+	}
+
+	if _, err := os.Stat(backup1); os.IsNotExist(err) {
+		t.Error("First backup was overwritten")
+	}
+	if _, err := os.Stat(backup2); os.IsNotExist(err) {
+		t.Error("Second backup doesn't exist")
 	}
 }

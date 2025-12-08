@@ -14,11 +14,14 @@ const (
 
 // BackupExisting creates a timestamped backup of the file or directory at targetPath
 // before symlinking operations. The backup is stored in the backup directory with
-// format: backup_YYYYMMDD_HHMMSS_filename
+// format: backup_YYYYMMDD_HHMMSS.microseconds_filename
 //
 // For files, permissions are preserved via os.FileMode.
 // For directories, the entire structure is copied recursively with permissions preserved.
-// Symlinks within directories are preserved as symlinks.
+// Symlinks within directories are preserved, with relative symlinks converted to absolute
+// paths to ensure backup integrity. Absolute symlinks are preserved as-is.
+//
+// SECURITY NOTE: Symlink targets are not validated. Ensure source directories are trusted.
 //
 // Returns the absolute path to the backup file/directory and any error encountered.
 // Returns BACKUP_SOURCE_NOT_FOUND if targetPath doesn't exist.
@@ -40,17 +43,19 @@ func (m *Manager) BackupExisting(targetPath string) (string, error) {
 
 	// Generate backup filename
 	filename := filepath.Base(targetPath)
-	timestamp := time.Now().Format("20060102_150405")
+	timestamp := time.Now().Format("20060102_150405.000000") // Microsecond precision prevents race conditions
 	backupName := fmt.Sprintf("backup_%s_%s", timestamp, filename)
 	backupPath := filepath.Join(m.backupDir, backupName)
 
 	// Copy file to backup location
 	if info.IsDir() {
 		if err := copyDir(targetPath, backupPath); err != nil {
+			_ = os.RemoveAll(backupPath) // Best-effort cleanup of partial backup
 			return "", fmt.Errorf("symlink: failed to backup directory: %w [BACKUP_COPY_FAILED]", err)
 		}
 	} else {
 		if err := copyFile(targetPath, backupPath); err != nil {
+			_ = os.RemoveAll(backupPath) // Best-effort cleanup of partial backup
 			return "", fmt.Errorf("symlink: failed to backup file: %w [BACKUP_COPY_FAILED]", err)
 		}
 	}
@@ -121,11 +126,15 @@ func copyDir(src, dst string) error {
 			return fmt.Errorf("copyDir: Lstat %s failed: %w", srcPath, err)
 		}
 
-		// Handle symlinks by preserving them
+		// Handle symlinks by preserving them (convert relative to absolute)
 		if entryInfo.Mode()&os.ModeSymlink != 0 {
 			target, err := os.Readlink(srcPath)
 			if err != nil {
 				return fmt.Errorf("copyDir: Readlink %s failed: %w", srcPath, err)
+			}
+			// If the link is relative, make it absolute relative to the symlink's directory
+			if !filepath.IsAbs(target) {
+				target = filepath.Join(filepath.Dir(srcPath), target)
 			}
 			if err := os.Symlink(target, dstPath); err != nil {
 				return fmt.Errorf("copyDir: Symlink %s failed: %w", dstPath, err)
