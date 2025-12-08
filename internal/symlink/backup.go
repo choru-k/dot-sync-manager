@@ -16,9 +16,11 @@ const (
 	backupFilePrefix                  = "backup"                 // Prefix for backup filenames
 )
 
-// generateUniqueBackupPath creates a unique backup path using atomic checks
-// to prevent race conditions. If a path already exists, it retries with an
-// incremented counter suffix until finding an available name.
+// generateUniqueBackupPath creates a unique backup path using placeholder files
+// to detect collisions. Uses retry loop with counter suffix if name conflicts occur.
+// While not fully atomic (TOCTOU between placeholder removal and actual copy),
+// microsecond precision timestamps combined with retries provide sufficient uniqueness
+// for practical purposes. Maximum 100 retry attempts before returning error.
 func generateUniqueBackupPath(backupDir, targetPath string, isDir bool) (string, error) {
 	filename := filepath.Base(targetPath)
 	baseTimestamp := time.Now().Format(backupTimestampFormat)
@@ -113,12 +115,16 @@ func (m *Manager) BackupExisting(targetPath string) (string, error) {
 	// Copy file to backup location
 	if info.IsDir() {
 		if err := copyDir(targetPath, backupPath); err != nil {
-			_ = os.RemoveAll(backupPath) // Best-effort cleanup of partial backup
+			if cleanupErr := os.RemoveAll(backupPath); cleanupErr != nil {
+				return "", fmt.Errorf("symlink: failed to backup directory: %w (cleanup also failed: %v) [BACKUP_COPY_FAILED]", err, cleanupErr)
+			}
 			return "", fmt.Errorf("symlink: failed to backup directory: %w [BACKUP_COPY_FAILED]", err)
 		}
 	} else {
 		if err := copyFile(targetPath, backupPath); err != nil {
-			_ = os.RemoveAll(backupPath) // Best-effort cleanup of partial backup
+			if cleanupErr := os.RemoveAll(backupPath); cleanupErr != nil {
+				return "", fmt.Errorf("symlink: failed to backup file: %w (cleanup also failed: %v) [BACKUP_COPY_FAILED]", err, cleanupErr)
+			}
 			return "", fmt.Errorf("symlink: failed to backup file: %w [BACKUP_COPY_FAILED]", err)
 		}
 	}
@@ -187,7 +193,14 @@ func copyDir(src, dst string) error {
 			if err != nil {
 				return fmt.Errorf("copyDir: Readlink %s failed: %w", srcPath, err)
 			}
-			// If the link is relative, make it absolute and clean the path
+			// Convert relative symlinks to absolute to ensure backup integrity.
+			// Relative symlinks like "../actual" would break when the backup directory
+			// is moved to a different location (e.g., ~/.dsm/backups/).
+			// Trade-offs:
+			// - Pros: Backup preserves what symlink points to, restoration will work
+			// - Cons: Absolute paths may contain machine-specific info, less portable
+			// TODO(A3-03): RestoreBackup will need to handle absolute paths appropriately
+			//              for cross-machine restoration scenarios.
 			if !filepath.IsAbs(target) {
 				target = filepath.Clean(filepath.Join(filepath.Dir(srcPath), target))
 			}
