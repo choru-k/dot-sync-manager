@@ -37,9 +37,14 @@ func NewManager(cfg *config.SyncConfig) (*Manager, error) {
 		return nil, fmt.Errorf("symlink: config is required [SYMLINK_CONFIG_REQUIRED]")
 	}
 
+	backupDir, err := DefaultBackupDir()
+	if err != nil {
+		return nil, fmt.Errorf("symlink: failed to initialize backup directory: %w", err)
+	}
+
 	return &Manager{
 		cfg:       cfg,
-		backupDir: DefaultBackupDir(),
+		backupDir: backupDir,
 	}, nil
 }
 

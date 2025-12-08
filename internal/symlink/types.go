@@ -1,6 +1,7 @@
 package symlink
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -16,10 +17,10 @@ type BackupInfo struct {
 
 // DefaultBackupDir returns the default backup directory path.
 // Returns ~/.dsm/backups/symlink/
-func DefaultBackupDir() string {
+func DefaultBackupDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("failed to get user home directory: %w", err)
 	}
-	return filepath.Join(home, ".dsm", "backups", "symlink")
+	return filepath.Join(home, ".dsm", "backups", "symlink"), nil
 }
