@@ -227,3 +227,168 @@ func TestManager_RemoveLink(t *testing.T) {
 		})
 	}
 }
+
+func TestManager_VerifyMappings_AllValid(t *testing.T) {
+	repoDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Create source files in repo
+	bashrc := filepath.Join(repoDir, ".bashrc")
+	vimrc := filepath.Join(repoDir, ".vimrc")
+	if err := os.WriteFile(bashrc, []byte("# bash"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(vimrc, []byte("# vim"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create symlinks at targets
+	bashrcTarget := filepath.Join(targetDir, ".bashrc")
+	vimrcTarget := filepath.Join(targetDir, ".vimrc")
+	if err := os.Symlink(bashrc, bashrcTarget); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(vimrc, vimrcTarget); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create config with mappings
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	cfg.Git.RepoPath = repoDir
+	cfg.Mappings = map[string]string{
+		".bashrc": bashrcTarget,
+		".vimrc":  vimrcTarget,
+	}
+
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	results := mgr.VerifyMappings()
+
+	if len(results) != 2 {
+		t.Fatalf("Expected 2 results, got %d", len(results))
+	}
+
+	for _, r := range results {
+		if r.Status != symlink.StateValid {
+			t.Errorf("Expected valid status for %s, got %s: %s", r.RepoPath, r.Status, r.Error)
+		}
+	}
+}
+
+func TestManager_VerifyMappings_BrokenLink(t *testing.T) {
+	repoDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Create source file in repo
+	bashrc := filepath.Join(repoDir, ".bashrc")
+	if err := os.WriteFile(bashrc, []byte("# bash"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create symlink at target
+	bashrcTarget := filepath.Join(targetDir, ".bashrc")
+	if err := os.Symlink(bashrc, bashrcTarget); err != nil {
+		t.Fatal(err)
+	}
+
+	// Now delete source file to make broken link
+	if err := os.Remove(bashrc); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create config with mapping
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	cfg.Git.RepoPath = repoDir
+	cfg.Mappings = map[string]string{
+		".bashrc": bashrcTarget,
+	}
+
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	results := mgr.VerifyMappings()
+
+	if len(results) != 1 {
+		t.Fatalf("Expected 1 result, got %d", len(results))
+	}
+
+	if results[0].Status != symlink.StateBroken {
+		t.Errorf("Expected broken status, got %s", results[0].Status)
+	}
+}
+
+func TestManager_VerifyMappings_MissingSymlink(t *testing.T) {
+	repoDir := t.TempDir()
+
+	// Create config with mapping, but no symlink exists
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	cfg.Git.RepoPath = repoDir
+	cfg.Mappings = map[string]string{
+		".bashrc": "/nonexistent/.bashrc",
+	}
+
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	results := mgr.VerifyMappings()
+
+	if len(results) != 1 {
+		t.Fatalf("Expected 1 result, got %d", len(results))
+	}
+
+	if results[0].Status != symlink.StateMissing {
+		t.Errorf("Expected missing status, got %s", results[0].Status)
+	}
+}
+
+func TestManager_VerifyMappings_NotSymlink(t *testing.T) {
+	repoDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Create regular file at target (not a symlink)
+	target := filepath.Join(targetDir, ".bashrc")
+	if err := os.WriteFile(target, []byte("# regular file"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create config with mapping
+	cfg, err := config.DefaultConfig()
+	if err != nil {
+		t.Fatalf("DefaultConfig() failed: %v", err)
+	}
+	cfg.Git.RepoPath = repoDir
+	cfg.Mappings = map[string]string{
+		".bashrc": target,
+	}
+
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	results := mgr.VerifyMappings()
+
+	if len(results) != 1 {
+		t.Fatalf("Expected 1 result, got %d", len(results))
+	}
+
+	if results[0].Status != symlink.StateNotSymlink {
+		t.Errorf("Expected not_symlink status, got %s", results[0].Status)
+	}
+}

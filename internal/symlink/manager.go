@@ -59,3 +59,79 @@ func (m *Manager) RemoveLink(target string) error {
 
 	return nil
 }
+
+// VerifyMappings checks all configured mappings and returns their status.
+// Returns slice of MappingStatus showing state of each mapping:
+// - "valid": Symlink exists, points to correct source, source file exists
+// - "broken": Symlink exists but source missing or points to wrong location
+// - "missing": Symlink doesn't exist at target path
+// - "not_symlink": Regular file exists at target path instead of symlink
+func (m *Manager) VerifyMappings() []MappingStatus {
+	// Handle nil or empty mappings
+	if m.cfg.Mappings == nil {
+		return nil
+	}
+
+	results := make([]MappingStatus, 0, len(m.cfg.Mappings))
+
+	for repoPath, targetPath := range m.cfg.Mappings {
+		status := MappingStatus{
+			RepoPath:   repoPath,
+			TargetPath: targetPath,
+		}
+
+		// Check if target exists (use Lstat to avoid following symlinks)
+		info, err := os.Lstat(targetPath)
+		if os.IsNotExist(err) {
+			status.Status = StateMissing
+			status.Error = "symlink does not exist"
+			results = append(results, status)
+			continue
+		}
+		if err != nil {
+			status.Status = StateBroken
+			status.Error = err.Error()
+			results = append(results, status)
+			continue
+		}
+
+		// Check if it's a symlink
+		if info.Mode()&os.ModeSymlink == 0 {
+			status.Status = StateNotSymlink
+			status.Error = "target exists but is not a symlink"
+			results = append(results, status)
+			continue
+		}
+
+		// Check if symlink points to correct source
+		linkDest, err := os.Readlink(targetPath)
+		if err != nil {
+			status.Status = StateBroken
+			status.Error = fmt.Sprintf("cannot read symlink: %v", err)
+			results = append(results, status)
+			continue
+		}
+
+		expectedSource := filepath.Join(m.cfg.Git.RepoPath, repoPath)
+		if linkDest != expectedSource {
+			status.Status = StateBroken
+			status.Error = fmt.Sprintf("symlink points to %s, expected %s", linkDest, expectedSource)
+			results = append(results, status)
+			continue
+		}
+
+		// Check if source file exists in repo
+		if _, err := os.Stat(expectedSource); os.IsNotExist(err) {
+			status.Status = StateBroken
+			status.Error = "source file does not exist in repo"
+			results = append(results, status)
+			continue
+		}
+
+		// All checks passed
+		status.Status = StateValid
+		results = append(results, status)
+	}
+
+	return results
+}
