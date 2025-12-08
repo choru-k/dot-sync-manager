@@ -39,6 +39,16 @@ func NewManager(cfg *config.SyncConfig) (*Manager, error) {
 
 	return &Manager{
 		cfg:       cfg,
-		backupDir: "", // TODO(A.3): Reserved for backup functionality - will be populated when backup features are implemented
+		backupDir: DefaultBackupDir(),
 	}, nil
+}
+
+// SetBackupDir sets a custom backup directory (useful for testing).
+func (m *Manager) SetBackupDir(dir string) {
+	m.backupDir = dir
+}
+
+// GetBackupDir returns the current backup directory.
+func (m *Manager) GetBackupDir() string {
+	return m.backupDir
 }
