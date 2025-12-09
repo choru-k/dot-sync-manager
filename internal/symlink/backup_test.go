@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
 )
@@ -473,5 +474,122 @@ func TestBackup_RestoreFromBackup_Directory(t *testing.T) {
 	}
 	if string(content) != string(nestedContent) {
 		t.Error("Restored nested file content doesn't match backup")
+	}
+}
+
+func TestBackup_CleanupOldBackups(t *testing.T) {
+	backupDir := t.TempDir()
+
+	mgr := newTestManager(t)
+	mgr.SetBackupDir(backupDir)
+
+	// Create old backup (modify time to be old)
+	oldBackup := filepath.Join(backupDir, "backup_20231201_120000_.bashrc")
+	if err := os.WriteFile(oldBackup, []byte("old"), testFilePerms); err != nil {
+		t.Fatal(err)
+	}
+	oldTime := time.Now().AddDate(0, 0, -10) // 10 days ago
+	if err := os.Chtimes(oldBackup, oldTime, oldTime); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create recent backup
+	newBackup := filepath.Join(backupDir, "backup_20251201_120000_.vimrc")
+	if err := os.WriteFile(newBackup, []byte("new"), testFilePerms); err != nil {
+		t.Fatal(err)
+	}
+
+	// Cleanup with 7 day retention
+	deleted, err := mgr.CleanupOldBackups(7)
+	if err != nil {
+		t.Fatalf("CleanupOldBackups failed: %v", err)
+	}
+
+	if deleted != 1 {
+		t.Errorf("Expected 1 deleted, got %d", deleted)
+	}
+
+	// Old backup should be gone
+	if _, err := os.Stat(oldBackup); !os.IsNotExist(err) {
+		t.Error("Old backup should be deleted")
+	}
+
+	// New backup should remain
+	if _, err := os.Stat(newBackup); os.IsNotExist(err) {
+		t.Error("New backup should remain")
+	}
+}
+
+func TestBackup_CleanupOldBackups_NoBackupDir(t *testing.T) {
+	mgr := newTestManager(t)
+	mgr.SetBackupDir("/nonexistent/backup/dir")
+
+	// Should not error if backup dir doesn't exist
+	deleted, err := mgr.CleanupOldBackups(7)
+	if err != nil {
+		t.Errorf("Expected no error, got: %v", err)
+	}
+	if deleted != 0 {
+		t.Errorf("Expected 0 deleted, got %d", deleted)
+	}
+}
+
+func TestBackup_ListBackups(t *testing.T) {
+	backupDir := t.TempDir()
+
+	mgr := newTestManager(t)
+	mgr.SetBackupDir(backupDir)
+
+	// Create backups
+	backup1 := filepath.Join(backupDir, "backup_20251201_100000_.bashrc")
+	backup2 := filepath.Join(backupDir, "backup_20251201_120000_.vimrc")
+	if err := os.WriteFile(backup1, []byte("bash"), testFilePerms); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(backup2, []byte("vimrc content here"), testFilePerms); err != nil {
+		t.Fatal(err)
+	}
+
+	// Set different modification times
+	time1 := time.Now().Add(-2 * time.Hour)
+	time2 := time.Now().Add(-1 * time.Hour)
+	if err := os.Chtimes(backup1, time1, time1); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(backup2, time2, time2); err != nil {
+		t.Fatal(err)
+	}
+
+	backups, err := mgr.ListBackups()
+	if err != nil {
+		t.Fatalf("ListBackups failed: %v", err)
+	}
+
+	if len(backups) != 2 {
+		t.Fatalf("Expected 2 backups, got %d", len(backups))
+	}
+
+	// Should be sorted newest first
+	if backups[0].OriginalPath != ".vimrc" {
+		t.Error("Newest backup should be first")
+	}
+
+	// Check size is captured
+	if backups[0].Size == 0 {
+		t.Error("Backup size should be captured")
+	}
+}
+
+func TestBackup_ListBackups_Empty(t *testing.T) {
+	mgr := newTestManager(t)
+	mgr.SetBackupDir(t.TempDir())
+
+	backups, err := mgr.ListBackups()
+	if err != nil {
+		t.Fatalf("ListBackups failed: %v", err)
+	}
+
+	if len(backups) != 0 {
+		t.Errorf("Expected empty list, got %d", len(backups))
 	}
 }
