@@ -325,3 +325,153 @@ func TestBackup_BackupExisting_ConcurrentSafety(t *testing.T) {
 		t.Errorf("Expected %d unique backups, got %d", numBackups, len(pathSet))
 	}
 }
+
+func TestBackup_RestoreFromBackup_Success(t *testing.T) {
+	backupDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Create backup file
+	backupFile := filepath.Join(backupDir, "backup_20251201_120000_.bashrc")
+	originalContent := []byte("# backup content")
+	if err := os.WriteFile(backupFile, originalContent, testFilePerms); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := newTestManager(t)
+	mgr.SetBackupDir(backupDir)
+
+	// Restore
+	targetPath := filepath.Join(targetDir, ".bashrc")
+	err := mgr.RestoreFromBackup(backupFile, targetPath)
+	if err != nil {
+		t.Fatalf("RestoreFromBackup failed: %v", err)
+	}
+
+	// Verify restored content
+	restoredContent, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(restoredContent) != string(originalContent) {
+		t.Error("Restored content doesn't match backup")
+	}
+}
+
+func TestBackup_RestoreFromBackup_OverwritesExisting(t *testing.T) {
+	backupDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Create backup
+	backupFile := filepath.Join(backupDir, "backup_20251201_120000_.bashrc")
+	backupContent := []byte("# backup content")
+	if err := os.WriteFile(backupFile, backupContent, testFilePerms); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create existing file at target
+	targetPath := filepath.Join(targetDir, ".bashrc")
+	if err := os.WriteFile(targetPath, []byte("# will be overwritten"), testFilePerms); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := newTestManager(t)
+
+	// Restore should overwrite
+	err := mgr.RestoreFromBackup(backupFile, targetPath)
+	if err != nil {
+		t.Fatalf("RestoreFromBackup failed: %v", err)
+	}
+
+	// Verify content is from backup
+	content, _ := os.ReadFile(targetPath)
+	if string(content) != string(backupContent) {
+		t.Error("Target should have backup content")
+	}
+}
+
+func TestBackup_RestoreFromBackup_RemovesSymlink(t *testing.T) {
+	backupDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Create backup
+	backupFile := filepath.Join(backupDir, "backup_20251201_120000_.bashrc")
+	if err := os.WriteFile(backupFile, []byte("# backup"), testFilePerms); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create symlink at target
+	targetPath := filepath.Join(targetDir, ".bashrc")
+	dummyFile := filepath.Join(targetDir, "dummy")
+	if err := os.WriteFile(dummyFile, []byte("dummy"), testFilePerms); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(dummyFile, targetPath); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := newTestManager(t)
+
+	// Restore should remove symlink and create file
+	err := mgr.RestoreFromBackup(backupFile, targetPath)
+	if err != nil {
+		t.Fatalf("RestoreFromBackup failed: %v", err)
+	}
+
+	// Verify it's a regular file now, not symlink
+	info, _ := os.Lstat(targetPath)
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Error("Target should not be a symlink after restore")
+	}
+}
+
+func TestBackup_RestoreFromBackup_NotExists(t *testing.T) {
+	mgr := newTestManager(t)
+
+	err := mgr.RestoreFromBackup("/nonexistent/backup", "/some/target")
+	if err == nil {
+		t.Error("Expected error for non-existent backup")
+	}
+	if !strings.Contains(err.Error(), "[RESTORE_BACKUP_NOT_FOUND]") {
+		t.Errorf("Expected error to contain [RESTORE_BACKUP_NOT_FOUND], got: %v", err)
+	}
+}
+
+func TestBackup_RestoreFromBackup_Directory(t *testing.T) {
+	backupDir := t.TempDir()
+	targetDir := t.TempDir()
+
+	// Create backup directory with nested files
+	backupSrc := filepath.Join(backupDir, "backup_20251201_120000_.config")
+	if err := os.MkdirAll(filepath.Join(backupSrc, "nvim"), testDirPerms); err != nil {
+		t.Fatal(err)
+	}
+	nestedFile := filepath.Join(backupSrc, "nvim", "init.vim")
+	nestedContent := []byte("# vim config")
+	if err := os.WriteFile(nestedFile, nestedContent, testFilePerms); err != nil {
+		t.Fatal(err)
+	}
+
+	mgr := newTestManager(t)
+
+	// Restore directory
+	targetPath := filepath.Join(targetDir, ".config")
+	err := mgr.RestoreFromBackup(backupSrc, targetPath)
+	if err != nil {
+		t.Fatalf("RestoreFromBackup directory failed: %v", err)
+	}
+
+	// Verify directory structure is restored
+	restoredFile := filepath.Join(targetPath, "nvim", "init.vim")
+	if _, err := os.Stat(restoredFile); os.IsNotExist(err) {
+		t.Error("Nested file should exist in restored directory")
+	}
+
+	// Verify nested file content
+	content, err := os.ReadFile(restoredFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != string(nestedContent) {
+		t.Error("Restored nested file content doesn't match backup")
+	}
+}
