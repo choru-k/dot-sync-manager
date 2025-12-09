@@ -135,6 +135,51 @@ func (m *Manager) BackupExisting(targetPath string) (string, error) {
 	return backupPath, nil
 }
 
+// RestoreFromBackup restores a file or directory from a backup to the target path.
+// If the target already exists (file, directory, or symlink), it will be removed first.
+// Parent directories are created if they don't exist. Permissions are preserved.
+//
+// Returns RESTORE_BACKUP_NOT_FOUND if the backup doesn't exist.
+// Returns RESTORE_TARGET_REMOVE_FAILED if removing existing target fails.
+// Returns RESTORE_DIR_CREATE_FAILED if creating parent directories fails.
+// Returns RESTORE_COPY_FAILED if copying the backup content fails.
+func (m *Manager) RestoreFromBackup(backupPath, targetPath string) error {
+	// Check backup exists
+	backupInfo, err := os.Stat(backupPath)
+	if os.IsNotExist(err) {
+		return fmt.Errorf("symlink: backup does not exist: %s [RESTORE_BACKUP_NOT_FOUND]", backupPath)
+	}
+	if err != nil {
+		return fmt.Errorf("symlink: failed to stat backup: %w [RESTORE_BACKUP_NOT_FOUND]", err)
+	}
+
+	// Remove existing target if present (use Lstat to detect symlinks without following)
+	if _, err := os.Lstat(targetPath); err == nil {
+		if err := os.RemoveAll(targetPath); err != nil {
+			return fmt.Errorf("symlink: failed to remove existing target: %w [RESTORE_TARGET_REMOVE_FAILED]", err)
+		}
+	}
+
+	// Create target parent directory if needed
+	targetDir := filepath.Dir(targetPath)
+	if err := os.MkdirAll(targetDir, defaultDirPerms); err != nil {
+		return fmt.Errorf("symlink: failed to create target directory: %w [RESTORE_DIR_CREATE_FAILED]", err)
+	}
+
+	// Copy backup to target
+	if backupInfo.IsDir() {
+		if err := copyDir(backupPath, targetPath); err != nil {
+			return fmt.Errorf("symlink: failed to restore directory: %w [RESTORE_COPY_FAILED]", err)
+		}
+	} else {
+		if err := copyFile(backupPath, targetPath); err != nil {
+			return fmt.Errorf("symlink: failed to restore file: %w [RESTORE_COPY_FAILED]", err)
+		}
+	}
+
+	return nil
+}
+
 // copyFile copies a single file from src to dst, preserving the source file's permissions.
 // This is used during backup operations to ensure backed-up files maintain their original
 // permission settings for accurate restoration.
