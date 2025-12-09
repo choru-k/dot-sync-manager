@@ -5,6 +5,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/util"
@@ -15,6 +17,10 @@ const (
 	backupTimestampFormat             = "20060102_150405.000000" // Microsecond precision format
 	backupFilePrefix                  = "backup"                 // Prefix for backup filenames
 )
+
+// backupPattern matches backup filenames: backup_YYYYMMDD_HHMMSS.microseconds_filename
+// Accounts for microsecond timestamps, optional collision counter (_001, _002), and original filename
+var backupPattern = regexp.MustCompile(`^backup_(\d{8}_\d{6}(?:\.\d{6})?)(?:_\d{3})?_(.+)$`)
 
 // generateUniqueBackupPath creates a unique backup path by atomically claiming a name.
 // Uses OS-level atomic operations (O_EXCL for files, Mkdir for directories) to ensure
@@ -178,6 +184,89 @@ func (m *Manager) RestoreFromBackup(backupPath, targetPath string) error {
 	}
 
 	return nil
+}
+
+// CleanupOldBackups removes backups older than retentionDays.
+// Returns the number of backups deleted and any error encountered.
+// If the backup directory doesn't exist, returns (0, nil).
+// Individual deletion failures are silently skipped to allow partial cleanup.
+func (m *Manager) CleanupOldBackups(retentionDays int) (int, error) {
+	if retentionDays < 0 {
+		return 0, fmt.Errorf("symlink: retention days must be non-negative [CLEANUP_INVALID_RETENTION]")
+	}
+
+	cutoff := time.Now().AddDate(0, 0, -retentionDays)
+	deleted := 0
+
+	entries, err := os.ReadDir(m.backupDir)
+	if os.IsNotExist(err) {
+		return 0, nil // No backup dir yet
+	}
+	if err != nil {
+		return 0, fmt.Errorf("symlink: failed to read backup directory: %w [CLEANUP_DIR_READ_FAILED]", err)
+	}
+
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil {
+			continue // Skip entries we can't stat
+		}
+
+		if info.ModTime().Before(cutoff) {
+			backupPath := filepath.Join(m.backupDir, entry.Name())
+			if err := os.RemoveAll(backupPath); err != nil {
+				continue // Skip deletion failures but continue cleanup
+			}
+			deleted++
+		}
+	}
+
+	return deleted, nil
+}
+
+// ListBackups returns metadata for all backups in the backup directory.
+// Backups are sorted by timestamp (newest first).
+// If the backup directory doesn't exist, returns (nil, nil).
+// Individual entry errors are silently skipped.
+func (m *Manager) ListBackups() ([]BackupInfo, error) {
+	entries, err := os.ReadDir(m.backupDir)
+	if os.IsNotExist(err) {
+		return nil, nil // No backups yet
+	}
+	if err != nil {
+		return nil, fmt.Errorf("symlink: failed to read backup directory: %w [LIST_DIR_READ_FAILED]", err)
+	}
+
+	backups := make([]BackupInfo, 0, len(entries))
+
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil {
+			continue // Skip entries we can't stat
+		}
+
+		backupPath := filepath.Join(m.backupDir, entry.Name())
+
+		// Parse backup name for original filename
+		originalPath := ""
+		if matches := backupPattern.FindStringSubmatch(entry.Name()); len(matches) == 3 {
+			originalPath = matches[2] // The filename part
+		}
+
+		backups = append(backups, BackupInfo{
+			OriginalPath: originalPath,
+			BackupPath:   backupPath,
+			Timestamp:    info.ModTime(),
+			Size:         info.Size(),
+		})
+	}
+
+	// Sort by timestamp (newest first)
+	sort.Slice(backups, func(i, j int) bool {
+		return backups[i].Timestamp.After(backups[j].Timestamp)
+	})
+
+	return backups, nil
 }
 
 // copyFile copies a single file from src to dst, preserving the source file's permissions.
