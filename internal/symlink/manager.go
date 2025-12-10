@@ -13,7 +13,11 @@ func (m *Manager) CreateLink(source, target string) error {
 	// Validate source exists in repo
 	sourcePath := filepath.Join(m.cfg.Git.RepoPath, source)
 	if _, err := os.Stat(sourcePath); os.IsNotExist(err) {
-		return fmt.Errorf("symlink: source file does not exist in repo: %s [SYMLINK_SOURCE_NOT_FOUND]", source)
+		return fmt.Errorf(
+			"symlink: source file does not exist in repo: %s\n"+
+				"Expected full path: %s\n"+
+				"Hint: Use 'dsm list' to see available files [SYMLINK_SOURCE_NOT_FOUND]",
+			source, sourcePath)
 	}
 
 	// Validate target parent directory exists
