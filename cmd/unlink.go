@@ -75,7 +75,16 @@ func runUnlink(cmd *cobra.Command, args []string) error {
 
 	if repoPath == "" {
 		// Not in mappings - still try to remove if it's a symlink, but warn the user.
-		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: target not found in mappings\n")
+		_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+			"Warning: target not found in mappings: %s\n"+
+				"The symlink will be removed if it exists, but it's not tracked in config.\n"+
+				"Possible reasons:\n"+
+				"  - Symlink created manually (not via 'dsm link')\n"+
+				"  - Config mappings were modified or corrupted\n"+
+				"Next steps:\n"+
+				"  - Use 'dsm list' to see tracked mappings\n"+
+				"  - Use 'dsm check' to verify symlink status\n",
+			targetPath)
 	}
 
 	// Remove the symlink
