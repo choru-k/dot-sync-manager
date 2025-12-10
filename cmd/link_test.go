@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
@@ -16,7 +17,7 @@ func TestLinkCmd_Success(t *testing.T) {
 
 	// Create source file in repo
 	sourceFile := filepath.Join(repoDir, ".bashrc")
-	if err := os.WriteFile(sourceFile, []byte("# bash config"), 0644); err != nil {
+	if err := os.WriteFile(sourceFile, []byte("# bash config"), testFilePerms); err != nil {
 		t.Fatal(err)
 	}
 
@@ -70,13 +71,13 @@ func TestLinkCmd_ForceOverwrite(t *testing.T) {
 
 	// Create source file
 	sourceFile := filepath.Join(repoDir, ".bashrc")
-	if err := os.WriteFile(sourceFile, []byte("# bash config"), 0644); err != nil {
+	if err := os.WriteFile(sourceFile, []byte("# bash config"), testFilePerms); err != nil {
 		t.Fatal(err)
 	}
 
 	// Create existing file at target
 	targetPath := filepath.Join(targetDir, ".bashrc")
-	if err := os.WriteFile(targetPath, []byte("# existing"), 0644); err != nil {
+	if err := os.WriteFile(targetPath, []byte("# existing"), testFilePerms); err != nil {
 		t.Fatal(err)
 	}
 
@@ -132,7 +133,14 @@ func TestLinkCmd_ExpandsTilde(t *testing.T) {
 
 	// This will fail because config doesn't exist, but validates arg parsing
 	rootCmd.SetArgs([]string{"link", ".bashrc", "~/.test-link-tilde"})
-	_ = rootCmd.Execute()
+	err = rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected an error due to missing config, but got nil")
+	}
+	// Optionally, check for a specific error message
+	if !strings.Contains(err.Error(), "configuration file not found") {
+		t.Errorf("expected config not found error, but got: %v", err)
+	}
 
 	// Cleanup
 	_ = os.Remove(targetPath)
@@ -144,7 +152,7 @@ func TestUnlinkCmd_Success(t *testing.T) {
 
 	// Create source file
 	sourceFile := filepath.Join(repoDir, ".bashrc")
-	if err := os.WriteFile(sourceFile, []byte("# bash"), 0644); err != nil {
+	if err := os.WriteFile(sourceFile, []byte("# bash"), testFilePerms); err != nil {
 		t.Fatal(err)
 	}
 
@@ -200,7 +208,7 @@ func TestUnlinkCmd_NotSymlink(t *testing.T) {
 
 	// Create regular file (not symlink)
 	targetPath := filepath.Join(targetDir, ".bashrc")
-	if err := os.WriteFile(targetPath, []byte("# regular file"), 0644); err != nil {
+	if err := os.WriteFile(targetPath, []byte("# regular file"), testFilePerms); err != nil {
 		t.Fatal(err)
 	}
 

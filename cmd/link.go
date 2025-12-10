@@ -3,9 +3,9 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/choru-k/dot-sync-manager/internal/symlink"
+	"github.com/choru-k/dot-sync-manager/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -39,24 +39,11 @@ func runLink(cmd *cobra.Command, args []string) error {
 	repoFile := args[0]
 	targetPath := args[1]
 
-	// Expand ~ in target path
-	if len(targetPath) > 0 && targetPath[0] == '~' {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("failed to get home directory: %w", err)
-		}
-		if len(targetPath) == 1 {
-			targetPath = home
-		} else if targetPath[1] == filepath.Separator {
-			targetPath = filepath.Join(home, targetPath[2:])
-		}
-	}
-
-	// Make target absolute
+	// Expand ~ in target path and make absolute
 	var err error
-	targetPath, err = filepath.Abs(targetPath)
+	targetPath, err = util.ExpandPath(targetPath)
 	if err != nil {
-		return fmt.Errorf("failed to resolve target path: %w", err)
+		return fmt.Errorf("failed to expand target path: %w", err)
 	}
 
 	// Load config

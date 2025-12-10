@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/choru-k/dot-sync-manager/internal/symlink"
+	"github.com/choru-k/dot-sync-manager/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -17,7 +17,11 @@ var unlinkCmd = &cobra.Command{
 	Long: `Remove a symlink that was created by 'dsm link'.
 
 The target-path should be the location of the symlink to remove.
+
 If a backup exists and --restore is used, the original file will be restored.
+Note: --restore matches backups by filename only. If you have multiple linked
+files with the same name in different directories, ensure you restore the
+correct one by checking the timestamp.
 
 Example:
   dsm unlink ~/.bashrc
@@ -34,24 +38,11 @@ func init() {
 func runUnlink(cmd *cobra.Command, args []string) error {
 	targetPath := args[0]
 
-	// Expand ~ in target path
-	if len(targetPath) > 0 && targetPath[0] == '~' {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("failed to get home directory: %w", err)
-		}
-		if len(targetPath) == 1 {
-			targetPath = home
-		} else if targetPath[1] == filepath.Separator {
-			targetPath = filepath.Join(home, targetPath[2:])
-		}
-	}
-
-	// Make target absolute
+	// Expand ~ in target path and make absolute
 	var err error
-	targetPath, err = filepath.Abs(targetPath)
+	targetPath, err = util.ExpandPath(targetPath)
 	if err != nil {
-		return fmt.Errorf("failed to resolve target path: %w", err)
+		return fmt.Errorf("failed to expand target path: %w", err)
 	}
 
 	// Load config
@@ -76,17 +67,7 @@ func runUnlink(cmd *cobra.Command, args []string) error {
 	}
 
 	if repoPath == "" {
-		// Not in mappings - still try to remove if it's a symlink
-		info, err := os.Lstat(targetPath)
-		if os.IsNotExist(err) {
-			return fmt.Errorf("target does not exist: %s", targetPath)
-		}
-		if err != nil {
-			return fmt.Errorf("failed to check target: %w", err)
-		}
-		if info.Mode()&os.ModeSymlink == 0 {
-			return fmt.Errorf("target is not a symlink: %s", targetPath)
-		}
+		// Not in mappings - still try to remove if it's a symlink, but warn the user.
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: target not found in mappings\n")
 	}
 
@@ -102,14 +83,29 @@ func runUnlink(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to list backups: %w", err)
 		}
 
+		// NOTE: Backup matching limitation
+		// Currently matches by basename only (filepath.Base), which could
+		// incorrectly match backups from different directories with the same filename.
+		// Example: ~/project1/config.yaml and ~/project2/config.yaml both create
+		// backups named "config.yaml" and could be mixed up during restore.
+		// TODO(Phase B): Fix backup system to match by full target path.
+		// See PR #100 review feedback for details.
+
 		// Find most recent backup for this target
 		targetName := filepath.Base(targetPath)
 		var backupPath string
+		matchCount := 0
 		for _, b := range backups {
 			if b.OriginalPath == targetName {
-				backupPath = b.BackupPath
-				break // Already sorted by newest first
+				if matchCount == 0 {
+					backupPath = b.BackupPath
+				}
+				matchCount++
 			}
+		}
+
+		if matchCount > 1 {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: found %d backups for '%s', using most recent\n", matchCount, targetName)
 		}
 
 		if backupPath == "" {
