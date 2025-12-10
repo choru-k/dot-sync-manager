@@ -119,25 +119,23 @@ func TestLinkCmd_ForceOverwrite(t *testing.T) {
 	}
 }
 
-func TestLinkCmd_ExpandsTilde(t *testing.T) {
-	// This test verifies ~ expansion doesn't cause panic
-	// Actual functionality tested by integration tests
+func TestLinkCmd_MissingConfig(t *testing.T) {
+	// This test verifies graceful error handling when config doesn't exist
 	home, err := os.UserHomeDir()
 	if err != nil {
 		t.Skipf("Cannot get home directory: %v", err)
 	}
 
-	targetPath := filepath.Join(home, ".test-link-tilde")
+	targetPath := filepath.Join(home, ".test-link-missing-config")
 	// Clean up if exists from previous test
 	_ = os.Remove(targetPath)
 
-	// This will fail because config doesn't exist, but validates arg parsing
-	rootCmd.SetArgs([]string{"link", ".bashrc", "~/.test-link-tilde"})
+	// This will fail because config doesn't exist, but validates error handling
+	rootCmd.SetArgs([]string{"link", ".bashrc", targetPath})
 	err = rootCmd.Execute()
 	if err == nil {
 		t.Fatal("expected an error due to missing config, but got nil")
 	}
-	// Optionally, check for a specific error message
 	if !strings.Contains(err.Error(), "configuration file not found") {
 		t.Errorf("expected config not found error, but got: %v", err)
 	}
@@ -199,7 +197,8 @@ func TestUnlinkCmd_Success(t *testing.T) {
 }
 
 func TestUnlinkCmd_RestoreBackup(t *testing.T) {
-	// Backup restore test requires integration test with real backup directory setup
+	// TODO(A4R2-06): Backup restore test requires integration test with real backup directory setup
+	// Should verify: backup discovery, full path matching, basename fallback, restore success
 	t.Skip("Backup restore test requires integration test with real backup directory setup")
 }
 

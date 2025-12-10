@@ -1,8 +1,11 @@
+// Package cmd implements CLI commands for the dotfile sync manager.
+// This file defines the link command for creating symlinks from repository files to target locations.
 package cmd
 
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/choru-k/dot-sync-manager/internal/symlink"
 	"github.com/choru-k/dot-sync-manager/internal/util"
@@ -46,6 +49,11 @@ func runLink(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to expand target path: %w", err)
 	}
 
+	// Validate result is absolute (per CODING_RULES.md)
+	if !filepath.IsAbs(targetPath) {
+		return fmt.Errorf("target path must be absolute: %s", targetPath)
+	}
+
 	// Load config
 	cfg, err := getConfig()
 	if err != nil {
@@ -62,7 +70,13 @@ func runLink(cmd *cobra.Command, args []string) error {
 	info, err := os.Lstat(targetPath)
 	if err == nil {
 		if !linkForce {
-			return fmt.Errorf("target already exists: %s (use --force to overwrite)", targetPath)
+			typeStr := "file"
+			if info.IsDir() {
+				typeStr = "directory"
+			} else if info.Mode()&os.ModeSymlink != 0 {
+				typeStr = "symlink"
+			}
+			return fmt.Errorf("target already exists (%s): %s (use --force to overwrite)", typeStr, targetPath)
 		}
 
 		// Backup existing file unless --no-backup

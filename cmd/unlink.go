@@ -1,3 +1,5 @@
+// Package cmd implements CLI commands for the dotfile sync manager.
+// This file defines the unlink command for removing symlinks with optional backup restoration.
 package cmd
 
 import (
@@ -45,6 +47,11 @@ func runUnlink(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to expand target path: %w", err)
 	}
 
+	// Validate result is absolute (per CODING_RULES.md)
+	if !filepath.IsAbs(targetPath) {
+		return fmt.Errorf("target path must be absolute: %s", targetPath)
+	}
+
 	// Load config
 	cfg, err := getConfig()
 	if err != nil {
@@ -83,29 +90,35 @@ func runUnlink(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to list backups: %w", err)
 		}
 
-		// NOTE: Backup matching limitation
-		// Currently matches by basename only (filepath.Base), which could
-		// incorrectly match backups from different directories with the same filename.
-		// Example: ~/project1/config.yaml and ~/project2/config.yaml both create
-		// backups named "config.yaml" and could be mixed up during restore.
-		// TODO(Phase B): Fix backup system to match by full target path.
-		// See PR #100 review feedback for details.
-
-		// Find most recent backup for this target
+		// Find backup for this target
+		// Try full path match first (new format), fall back to basename (old format)
 		targetName := filepath.Base(targetPath)
 		var backupPath string
+		var matchedByBasename bool
 		matchCount := 0
+
 		for _, b := range backups {
+			// Prefer exact full path match
+			if b.OriginalPath == targetPath {
+				backupPath = b.BackupPath
+				matchedByBasename = false
+				matchCount = 1
+				break // Exact match, stop searching
+			}
+
+			// Fall back to basename match for old backups
 			if b.OriginalPath == targetName {
 				if matchCount == 0 {
 					backupPath = b.BackupPath
+					matchedByBasename = true
 				}
 				matchCount++
 			}
 		}
 
-		if matchCount > 1 {
-			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: found %d backups for '%s', using most recent\n", matchCount, targetName)
+		// Warn if basename match found multiple candidates
+		if matchedByBasename && matchCount > 1 {
+			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: found %d backups for '%s', using most recent (old backup format)\n", matchCount, targetName)
 		}
 
 		if backupPath == "" {

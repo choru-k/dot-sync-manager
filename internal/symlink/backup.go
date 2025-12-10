@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/util"
@@ -18,8 +19,10 @@ const (
 	backupFilePrefix                  = "backup"                 // Prefix for backup filenames
 )
 
-// backupPattern matches backup filenames: backup_YYYYMMDD_HHMMSS.microseconds_filename
-// Accounts for microsecond timestamps, optional collision counter (_001, _002), and original filename
+// backupPattern matches backup filenames in both old and new formats:
+// Old format: backup_YYYYMMDD_HHMMSS.microseconds_filename (basename only)
+// New format: backup_YYYYMMDD_HHMMSS.microseconds_/full/path/to/file (encoded full path)
+// Accounts for microsecond timestamps, optional collision counter (_001, _002), and path
 var backupPattern = regexp.MustCompile(`^backup_(\d{8}_\d{6}(?:\.\d{6})?)(?:_\d{3})?_(.+)$`)
 
 // generateUniqueBackupPath creates a unique backup path by atomically claiming a name.
@@ -29,7 +32,10 @@ var backupPattern = regexp.MustCompile(`^backup_(\d{8}_\d{6}(?:\.\d{6})?)(?:_\d{
 // uses MkdirAll). If collision occurs, retries with incremented counter suffix.
 // Maximum 100 retry attempts before returning error.
 func generateUniqueBackupPath(backupDir, targetPath string, isDir bool) (string, error) {
-	filename := filepath.Base(targetPath)
+	// Encode full target path for backup filename
+	// Replace path separator with underscore to avoid directory creation
+	encodedPath := strings.ReplaceAll(targetPath, string(filepath.Separator), "_")
+
 	baseTimestamp := time.Now().Format(backupTimestampFormat)
 
 	// Try with timestamp alone first
@@ -39,10 +45,10 @@ func generateUniqueBackupPath(backupDir, targetPath string, isDir bool) (string,
 	for attempt < maxAttempts {
 		var backupName string
 		if attempt == 0 {
-			backupName = fmt.Sprintf("%s_%s_%s", backupFilePrefix, baseTimestamp, filename)
+			backupName = fmt.Sprintf("%s_%s_%s", backupFilePrefix, baseTimestamp, encodedPath)
 		} else {
-			// Add collision counter: backup_20250101_120000.000000_001_file
-			backupName = fmt.Sprintf("%s_%s_%03d_%s", backupFilePrefix, baseTimestamp, attempt, filename)
+			// Add collision counter: backup_20250101_120000.000000_001_/path/to/file
+			backupName = fmt.Sprintf("%s_%s_%03d_%s", backupFilePrefix, baseTimestamp, attempt, encodedPath)
 		}
 
 		backupPath := filepath.Join(backupDir, backupName)
@@ -247,10 +253,18 @@ func (m *Manager) ListBackups() ([]BackupInfo, error) {
 
 		backupPath := filepath.Join(m.backupDir, entry.Name())
 
-		// Parse backup name for original filename
+		// Parse backup name for original path
 		originalPath := ""
 		if matches := backupPattern.FindStringSubmatch(entry.Name()); len(matches) == 3 {
-			originalPath = matches[2] // The filename part
+			// Decode path: reverse the encoding from generateUniqueBackupPath
+			encodedPath := matches[2]
+			originalPath = strings.ReplaceAll(encodedPath, "_", string(filepath.Separator))
+
+			// If path doesn't start with separator, it's old format (basename only)
+			// Keep it as-is for backward compatibility
+			if !filepath.IsAbs(originalPath) {
+				originalPath = encodedPath // Keep basename for old backups
+			}
 		}
 
 		backups = append(backups, BackupInfo{
