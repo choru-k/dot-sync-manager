@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
+	"github.com/choru-k/dot-sync-manager/internal/symlink"
 	"github.com/choru-k/dot-sync-manager/internal/util"
 	"github.com/spf13/cobra"
 )
@@ -90,33 +91,6 @@ var (
 	}
 )
 
-// calculateBackupPath generates a consistent timestamped backup path for a given file.
-// It respects the custom backup directory if configured, otherwise uses the default
-// .backup directory within the repository. This function is used by both previewAdd
-// and executeAddTransaction to ensure the dry-run preview matches actual execution.
-func calculateBackupPath(cfg *config.SyncConfig, filePath string) string {
-	backupDir := cfg.ConflictResolution.BackupDir
-	if backupDir == "" {
-		backupDir = filepath.Join(cfg.Git.RepoPath, defaultBackupDirName)
-	}
-	timestamp := timeNow().Format(backupTimestampFormat)
-	filename := filepath.Base(filePath)
-	return filepath.Join(backupDir, fmt.Sprintf("%s-%s", filename, timestamp))
-}
-
-// calculateSymlinkTarget determines the target for the symlink, preferring a relative path.
-// It calculates the relative path from the symlink's parent directory to the target file.
-// If the relative path calculation fails, it falls back to using the absolute target path.
-// This function is used by both previewAdd and executeAddTransaction to ensure the dry-run
-// preview matches actual execution behavior.
-func calculateSymlinkTarget(sourcePath, targetPath string) string {
-	relPath, err := filepath.Rel(filepath.Dir(sourcePath), targetPath)
-	if err != nil {
-		return targetPath // Fallback to absolute path
-	}
-	return relPath
-}
-
 // runAdd is the cobra entry point for the `dsm add` command; it orchestrates validation,
 // file relocation, symlink creation, and configuration updates for a single source file.
 func runAdd(cmd *cobra.Command, args []string) error {
@@ -130,6 +104,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
+	// Create symlink manager once for all operations
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create symlink manager: %w", err)
+	}
+
 	targetPath, err := prepareTargetPath(cfg, filePath)
 	if err != nil {
 		return fmt.Errorf("failed to prepare target path: %w", err)
@@ -140,20 +120,17 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return previewAdd(filePath, targetPath, cfg)
 	}
 
-	backupPath, backupCreated, err := executeAddTransaction(cfg, filePath, targetPath)
+	backupPath, backupCreated, err := executeAddTransaction(mgr, cfg, filePath, targetPath)
 	if err != nil {
 		return fmt.Errorf("failed to execute add transaction: %w", err)
 	}
 
-	if err := updateAndSaveConfig(cfg, targetPath, filePath, backupPath, backupCreated); err != nil {
+	if err := updateAndSaveConfig(mgr, cfg, targetPath, filePath, backupPath, backupCreated); err != nil {
 		return fmt.Errorf("failed to update configuration: %w", err)
 	}
 
-	if backupCreated && backupPath != "" {
-		if err := removeFunc(backupPath); err != nil {
-			fmt.Printf("⚠️  Warning: failed to remove backup file %s: %v\n", backupPath, err)
-		}
-	}
+	// Note: With symlink.Manager, backups are retained for recovery.
+	// The Manager handles backup lifecycle and cleanup via CleanupOldBackups().
 
 	fmt.Printf("✅ Added file to dotfiles\n")
 	fmt.Printf("📄 Source: %s\n", targetPath)
@@ -277,39 +254,31 @@ Hint: Only add files from outside the repository`, absPath)
 	return targetPath, nil
 }
 
-func executeAddTransaction(cfg *config.SyncConfig, filePath, targetPath string) (string, bool, error) {
-	backupPath := calculateBackupPath(cfg, filePath)
-	backupDir := filepath.Dir(backupPath)
+func executeAddTransaction(mgr *symlink.Manager, cfg *config.SyncConfig, filePath, targetPath string) (string, bool, error) {
 
-	if err := mkdirAllFunc(backupDir, dirPerms); err != nil {
-		return "", false, fmt.Errorf("failed to create backup directory: %w", err)
-	}
-
-	// Create target directory to follow style guide separation of concerns
-	if err := mkdirAllFunc(filepath.Dir(targetPath), dirPerms); err != nil {
-		return "", false, fmt.Errorf("failed to create target directory: %w", err)
-	}
-
-	if err := copyFileFunc(filePath, backupPath); err != nil {
+	// Backup existing file using Manager
+	backupPath, err := mgr.BackupExisting(filePath)
+	if err != nil {
 		return "", false, fmt.Errorf("failed to backup original file: %w", err)
 	}
 	backupCreated := true
 	fmt.Printf("📦 Backed up original file to: %s\n", backupPath)
 
+	// Create target directory to follow style guide separation of concerns
+	if err := mkdirAllFunc(filepath.Dir(targetPath), dirPerms); err != nil {
+		return backupPath, backupCreated, fmt.Errorf("failed to create target directory: %w", err)
+	}
+
 	// Read source file content for atomic creation
 	sourceData, err := readFileFunc(filePath)
 	if err != nil {
-		if backupCreated {
-			fmt.Printf("⚠️  Failed to read source file. Backup of original file retained at: %s\n", backupPath)
-		}
+		fmt.Printf("⚠️  Failed to read source file. Backup of original file retained at: %s\n", backupPath)
 		return backupPath, backupCreated, fmt.Errorf("failed to read source file: %w", err)
 	}
 
 	// Use CreateFileSecurely for atomic file creation to prevent TOCTOU attacks
-	if err := util.CreateFileSecurely(targetPath, sourceData, 0644); err != nil {
-		if backupCreated {
-			fmt.Printf("⚠️  Failed to create file in dotfiles. Backup of original file retained at: %s\n", backupPath)
-		}
+	if err := util.CreateFileSecurely(targetPath, sourceData, filePerms); err != nil {
+		fmt.Printf("⚠️  Failed to create file in dotfiles. Backup of original file retained at: %s\n", backupPath)
 		return backupPath, backupCreated, fmt.Errorf("failed to create file in dotfiles: %w", err)
 	}
 
@@ -317,73 +286,60 @@ func executeAddTransaction(cfg *config.SyncConfig, filePath, targetPath string) 
 		if removeErr := removeFunc(targetPath); removeErr != nil {
 			fmt.Printf("❌ Failed to remove copied file during rollback: %v\n", removeErr)
 		}
-		if backupCreated {
-			fmt.Printf("⚠️  Failed to remove original file. The file was copied to the repository, but the original was not removed. Backup retained at: %s for manual recovery.\n", backupPath)
-		}
+		fmt.Printf("⚠️  Failed to remove original file. The file was copied to the repository, but the original was not removed. Backup retained at: %s for manual recovery.\n", backupPath)
 		return backupPath, backupCreated, fmt.Errorf("failed to remove original file: %w", err)
 	}
 
-	symlinkTarget := calculateSymlinkTarget(filePath, targetPath)
+	// Calculate repo-relative path for Manager.CreateLink
+	sourceRelative, err := filepath.Rel(cfg.Git.RepoPath, targetPath)
+	if err != nil {
+		if removeErr := removeFunc(targetPath); removeErr != nil {
+			fmt.Printf("⚠️  Warning: failed to remove file from dotfiles during rollback: %v\n", removeErr)
+		}
+		// Restore from backup on failure
+		if restoreErr := mgr.RestoreFromBackup(backupPath, filePath); restoreErr != nil {
+			fmt.Printf("❌ Failed to restore from backup: %v\n", restoreErr)
+			fmt.Printf("⚠️  Backup retained at %s for manual recovery\n", backupPath)
+			return backupPath, backupCreated, fmt.Errorf("failed to compute relative path: %w\nBackup available at %s", err, backupPath)
+		}
+		backupCreated = false
+		return backupPath, backupCreated, fmt.Errorf("failed to compute relative path: %w\nOriginal file restored to %s", err, filePath)
+	}
 
-	if err := symlinkFunc(symlinkTarget, filePath); err != nil {
-		restoreSuccessful := false
-		if backupCreated {
-			if restoreErr := copyFileFunc(backupPath, filePath); restoreErr != nil {
-				fmt.Printf("❌ Failed to restore from backup: %v\n", restoreErr)
-				fmt.Printf("⚠️  Backup retained at %s for manual recovery\n", backupPath)
-			} else {
-				restoreSuccessful = true
-				backupCreated = false
-				if removeErr := removeFunc(backupPath); removeErr != nil {
-					fmt.Printf("⚠️  Warning: failed to remove backup file %s after restore: %v\n", backupPath, removeErr)
-					backupCreated = true
-				}
-			}
+	// Create symlink using Manager (creates absolute symlinks)
+	if err := mgr.CreateLink(sourceRelative, filePath); err != nil {
+		// Rollback: restore from backup
+		if restoreErr := mgr.RestoreFromBackup(backupPath, filePath); restoreErr != nil {
+			fmt.Printf("❌ Failed to restore from backup: %v\n", restoreErr)
+			fmt.Printf("⚠️  Backup retained at %s for manual recovery\n", backupPath)
+		} else {
+			backupCreated = false
 		}
 
 		if removeErr := removeFunc(targetPath); removeErr != nil {
 			fmt.Printf("⚠️  Warning: failed to remove file from dotfiles during rollback: %v\n", removeErr)
 		}
 
-		if restoreSuccessful {
+		if !backupCreated {
 			return backupPath, backupCreated, fmt.Errorf("failed to create symlink: %w\nOriginal file restored to %s", err, filePath)
 		}
-		if backupCreated {
-			return backupPath, backupCreated, fmt.Errorf("failed to create symlink: %w\nBackup available at %s", err, backupPath)
-		}
-		return backupPath, backupCreated, fmt.Errorf("failed to create symlink: %w", err)
+		return backupPath, backupCreated, fmt.Errorf("failed to create symlink: %w\nBackup available at %s", err, backupPath)
 	}
 
 	return backupPath, backupCreated, nil
 }
 
-func updateAndSaveConfig(cfg *config.SyncConfig, targetPath, filePath, backupPath string, backupCreated bool) error {
+func updateAndSaveConfig(mgr *symlink.Manager, cfg *config.SyncConfig, targetPath, filePath, backupPath string, backupCreated bool) error {
 	sourceRelative, err := filepath.Rel(cfg.Git.RepoPath, targetPath)
 	if err != nil {
 		return fmt.Errorf("failed to compute mapping path: %w", err)
 	}
 
-	if cfg.Mappings == nil {
-		cfg.Mappings = make(map[string]string)
-	}
-	cfg.Mappings[sourceRelative] = filePath
-
-	configPath := cfg.GetConfigPath()
-	tempConfigPath := configPath + tempConfigSuffix
-	if err := saveConfigFn(cfg, tempConfigPath); err != nil {
+	// Use Manager.AddMapping which handles both mapping update and atomic config save
+	if err := mgr.AddMapping(sourceRelative, filePath); err != nil {
 		restoredOriginal, backupRetained := rollbackAfterConfigFailure(filePath, targetPath, backupPath, backupCreated)
-		if removeErr := removeFunc(tempConfigPath); removeErr != nil && !os.IsNotExist(removeErr) {
-			fmt.Printf("⚠️  Warning: failed to remove temp config file %s: %v\n", tempConfigPath, removeErr)
-		}
-		return fmt.Errorf("file moved and symlinked, but failed to prepare configuration update: %w.%s Please check %s for correctness", err, rollbackOutcomeMessage(restoredOriginal, backupRetained, backupPath), configPath)
-	}
-
-	if err := renameFunc(tempConfigPath, configPath); err != nil {
-		restoredOriginal, backupRetained := rollbackAfterConfigFailure(filePath, targetPath, backupPath, backupCreated)
-		if removeErr := removeFunc(tempConfigPath); removeErr != nil && !os.IsNotExist(removeErr) {
-			fmt.Printf("⚠️  Warning: failed to remove temp config file %s: %v\n", tempConfigPath, removeErr)
-		}
-		return fmt.Errorf("file moved and symlinked, but failed to finalize configuration: %w.%s Please check %s for correctness", err, rollbackOutcomeMessage(restoredOriginal, backupRetained, backupPath), configPath)
+		configPath := cfg.GetConfigPath()
+		return fmt.Errorf("file moved and symlinked, but failed to update configuration: %w.%s Please check %s for correctness", err, rollbackOutcomeMessage(restoredOriginal, backupRetained, backupPath), configPath)
 	}
 
 	return nil
@@ -543,19 +499,29 @@ func isSensitiveFile(path string) bool {
 func previewAdd(filePath, targetPath string, cfg *config.SyncConfig) error {
 	PrintDryRun("Dry run mode - no changes will be made")
 
-	backupPath := calculateBackupPath(cfg, filePath)
-	symlinkTarget := calculateSymlinkTarget(filePath, targetPath)
+	// Show representative backup path (Manager uses ~/.dsm/backups/symlink/)
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+	// Manager encodes full path with underscores and adds timestamp
+	encodedPath := strings.ReplaceAll(filePath, string(filepath.Separator), "_")
+	backupPath := filepath.Join(homeDir, ".dsm", "backups", "symlink",
+		fmt.Sprintf("backup_<timestamp>_%s", encodedPath))
 
-	// Calculate relative path for config mapping (matches updateAndSaveConfig at line 352)
+	// Calculate relative path for config mapping
 	relPath, err := filepath.Rel(cfg.Git.RepoPath, targetPath)
 	if err != nil {
 		return fmt.Errorf("failed to compute mapping path: %w", err)
 	}
 
+	// Manager creates absolute symlinks
+	sourcePath := filepath.Join(cfg.Git.RepoPath, relPath)
+
 	fmt.Println("\nPlanned operations:")
 	fmt.Printf("Would create backup: %s\n", backupPath)
 	fmt.Printf("Would move file to repository: %s\n", targetPath)
-	fmt.Printf("Would create symlink: %s -> %s\n", filePath, symlinkTarget)
+	fmt.Printf("Would create symlink: %s -> %s\n", filePath, sourcePath)
 	fmt.Printf("Would add mapping to config: %s -> %s\n", relPath, filePath)
 
 	if noEmoji {
