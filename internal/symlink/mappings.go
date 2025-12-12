@@ -92,6 +92,8 @@ func (m *Manager) AddMapping(repoPath, targetPath string) error {
 	// Save config
 	configPath := m.cfg.GetConfigPath()
 	if err := m.cfg.SaveToFile(configPath); err != nil {
+		// Revert in-memory mapping on save failure to maintain consistency
+		delete(m.cfg.Mappings, repoPath)
 		return fmt.Errorf("failed to save config: %w", err)
 	}
 
