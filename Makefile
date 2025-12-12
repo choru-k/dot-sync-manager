@@ -5,7 +5,7 @@
 GOLANGCI_LINT_VERSION ?= v2.6.2
 BIN_DIR := $(shell go env GOPATH)/bin
 
-.PHONY: test test-unit test-integration test-all clean build help fmt setup-hooks
+.PHONY: test test-unit test-integration test-scenarios test-all clean build help fmt setup-hooks
 
 # Default target
 test: test-unit
@@ -21,8 +21,13 @@ test-integration:
 	@echo "🧪 Running unit + integration tests..."
 	go test -v -tags=integration $(go list ./... | grep -v test/scenarios)
 
+# Scenario tests (critical user flow tests)
+test-scenarios:
+	@echo "🧪 Running scenario tests..."
+	go test -v ./test/scenarios/...
+
 # All tests including E2E (<15 minutes)
-test-all: test-integration
+test-all: test-integration test-scenarios
 	@echo "🧪 Running all E2E tests..."
 	./test/scripts/run-e2e.sh -s all
 
@@ -67,6 +72,7 @@ verify:
 	$(MAKE) lint
 	$(MAKE) test-unit
 	$(MAKE) test-integration
+	$(MAKE) test-scenarios
 	$(MAKE) build
 	@echo "✅ All quality checks passed"
 
@@ -88,13 +94,15 @@ fmt:
 	@gofmt -w .
 	@echo "✅ Formatting complete"
 
-# Install git hooks
+# Install git hooks (pre-commit and pre-push)
 setup-hooks:
 	@echo "🪝 Installing git hooks..."
 	@mkdir -p .git/hooks
 	@ln -sf ../../scripts/hooks/pre-commit .git/hooks/pre-commit
+	@ln -sf ../../scripts/hooks/pre-push .git/hooks/pre-push
 	@chmod +x scripts/hooks/pre-commit
-	@echo "✅ Git hooks installed"
+	@chmod +x scripts/hooks/pre-push
+	@echo "✅ Git hooks installed (pre-commit + pre-push)"
 
 # E2E tests alias (for backward compatibility)
 test-e2e: test-all
@@ -105,6 +113,7 @@ help:
 	@echo "  test          - Run unit tests only (default)"
 	@echo "  test-unit     - Run unit tests only"
 	@echo "  test-integration - Run unit + integration tests"
+	@echo "  test-scenarios   - Run scenario tests (critical user flows)"
 	@echo "  test-all      - Run all tests including E2E"
 	@echo "  test-e2e      - Run all tests including E2E (alias for test-all)"
 	@echo "  test-quick    - Quick test for development"
@@ -114,6 +123,6 @@ help:
 	@echo "  lint          - Run code linter"
 	@echo "  fmt           - Format all Go files with gofmt"
 	@echo "  setup-dev     - Set up development environment"
-	@echo "  setup-hooks   - Install git pre-commit hooks"
-	@echo "  verify        - Run all quality checks (lint + tests + build)"
+	@echo "  setup-hooks   - Install git hooks (pre-commit + pre-push)"
+	@echo "  verify        - Run all quality checks (lint + tests + scenarios + build)"
 	@echo "  help          - Show this help message"

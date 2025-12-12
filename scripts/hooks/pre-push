@@ -1,0 +1,25 @@
+#!/bin/bash
+# Pre-push hook: Run full test suite including E2E before pushing
+#
+# This hook ensures all tests pass before pushing to remote.
+# It runs `make test-all` which includes: unit + integration + scenarios + E2E
+#
+# To bypass in emergencies: git push --no-verify (use sparingly!)
+
+set -e
+
+echo "🔍 Pre-push verification (full test suite)..."
+echo "   This may take several minutes for E2E tests..."
+
+# Run full test suite
+if ! make test-all > /tmp/pre-push-verify.log 2>&1; then
+    echo "❌ Full test suite failed - please fix issues before pushing"
+    echo "📋 Full output in /tmp/pre-push-verify.log"
+    echo ""
+    echo "Last 30 lines of output:"
+    tail -30 /tmp/pre-push-verify.log
+    exit 1
+fi
+
+echo "✅ Pre-push verification passed (full test suite)"
+exit 0

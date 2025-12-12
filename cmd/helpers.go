@@ -56,19 +56,12 @@ func getMachineNameFromOS() string {
 func isTestMode() bool {
 	testMode := os.Getenv("DSM_TEST_MODE")
 	// DSM_TEST_MODE takes precedence - explicit "false" or "0" disables test mode
-	if testMode == "false" || testMode == "0" {
-		return false
-	}
-	// DSM_TEST_MODE set to any other value enables test mode
 	if testMode != "" {
-		return true
+		return testMode != "false" && testMode != "0"
 	}
 	// CI environment variable (only if not explicitly false)
 	ciMode := os.Getenv("CI")
-	if ciMode != "" && ciMode != "false" && ciMode != "0" {
-		return true
-	}
-	return false
+	return ciMode != "" && ciMode != "false" && ciMode != "0"
 }
 
 // Print helper functions for consistent output formatting
@@ -227,18 +220,17 @@ func validateEditorCommand(editor string) (string, error) {
 // getDefaultEditorForFile returns the default editor for a given file type.
 // Currently uses platform-agnostic logic, but filePath parameter is reserved
 // for future file-type-specific editor selection based on file extension.
+// If EDITOR/VISUAL contains malicious content, logs a warning and returns platform default.
 func getDefaultEditorForFile(filePath string) string {
 	// TODO: Implement file-type-specific editor selection based on filePath extension
 	// For now, we use the same logic as getDefaultEditor regardless of file type
 	_ = filePath // Suppress unused parameter warning
 
-	return getDefaultEditorCommon()
-}
-
-// getDefaultEditorCommon contains the common editor selection logic
-// shared between getDefaultEditor and getDefaultEditorForFile.
-func getDefaultEditorCommon() string {
-	editor, _ := getDefaultEditorSafe()
+	editor, err := getDefaultEditorSafe()
+	if err != nil {
+		printWarning("Invalid editor configuration: %v. Using platform default.", err)
+		return getPlatformDefaultEditor()
+	}
 	return editor
 }
 
@@ -246,46 +238,61 @@ func getDefaultEditorCommon() string {
 // environment variables contain potentially dangerous content.
 // This is useful when explicit rejection of malicious editors is preferred over silent fallback.
 func getDefaultEditorSafe() (string, error) {
-	// Check environment variables first
-	if editor := os.Getenv("EDITOR"); editor != "" {
-		validatedEditor, err := validateEditorCommand(editor)
-		if err != nil {
-			return "", fmt.Errorf("EDITOR environment variable contains invalid content: %w", err)
+	// Helper to check and validate an environment variable
+	checkEnvEditor := func(envName string) (string, bool, error) {
+		if editor := os.Getenv(envName); editor != "" {
+			validatedEditor, err := validateEditorCommand(editor)
+			if err != nil {
+				return "", true, fmt.Errorf("%s environment variable contains invalid content: %w", envName, err)
+			}
+			return validatedEditor, true, nil
 		}
-		return validatedEditor, nil
+		return "", false, nil
 	}
 
-	if editor := os.Getenv("VISUAL"); editor != "" {
-		validatedEditor, err := validateEditorCommand(editor)
-		if err != nil {
-			return "", fmt.Errorf("VISUAL environment variable contains invalid content: %w", err)
-		}
-		return validatedEditor, nil
+	// Check EDITOR first, then VISUAL
+	if editor, found, err := checkEnvEditor("EDITOR"); found {
+		return editor, err
+	}
+	if editor, found, err := checkEnvEditor("VISUAL"); found {
+		return editor, err
 	}
 
 	// Fall back to platform-specific defaults
+	return getPlatformDefaultEditor(), nil
+}
+
+// getPlatformDefaultEditor returns the platform-specific default editor.
+// Used as fallback when EDITOR/VISUAL are not set or contain invalid content.
+func getPlatformDefaultEditor() string {
 	switch runtime.GOOS {
 	case "darwin":
-		return "open", nil
+		return "open"
 	case "windows":
-		return "notepad", nil
+		return "notepad"
 	default: // linux and others
 		// Try common editors in order of preference
 		editors := []string{"code", "nano", "vim", "vi"}
 		for _, editor := range editors {
 			if _, err := exec.LookPath(editor); err == nil {
-				return editor, nil
+				return editor
 			}
 		}
-		return "nano", nil // Default fallback
+		return "nano" // Default fallback
 	}
 }
 
 // getDefaultEditor returns the default editor for the current platform.
 // It checks environment variables (EDITOR, VISUAL) first, then falls back
 // to platform-specific defaults (open on macOS, notepad on Windows, code/nano/vim/vi on Linux).
+// If EDITOR/VISUAL contains malicious content, logs a warning and returns platform default.
 func getDefaultEditor() string {
-	return getDefaultEditorCommon()
+	editor, err := getDefaultEditorSafe()
+	if err != nil {
+		printWarning("Invalid editor configuration: %v. Using platform default.", err)
+		return getPlatformDefaultEditor()
+	}
+	return editor
 }
 
 // parseCommand parses a command string into command and arguments.
