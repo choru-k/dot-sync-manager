@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
 	"github.com/choru-k/dot-sync-manager/internal/symlink"
@@ -105,6 +104,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
+	// Create symlink manager once for all operations
+	mgr, err := symlink.NewManager(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create symlink manager: %w", err)
+	}
+
 	targetPath, err := prepareTargetPath(cfg, filePath)
 	if err != nil {
 		return fmt.Errorf("failed to prepare target path: %w", err)
@@ -115,12 +120,12 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return previewAdd(filePath, targetPath, cfg)
 	}
 
-	backupPath, backupCreated, err := executeAddTransaction(cfg, filePath, targetPath)
+	backupPath, backupCreated, err := executeAddTransaction(mgr, cfg, filePath, targetPath)
 	if err != nil {
 		return fmt.Errorf("failed to execute add transaction: %w", err)
 	}
 
-	if err := updateAndSaveConfig(cfg, targetPath, filePath, backupPath, backupCreated); err != nil {
+	if err := updateAndSaveConfig(mgr, cfg, targetPath, filePath, backupPath, backupCreated); err != nil {
 		return fmt.Errorf("failed to update configuration: %w", err)
 	}
 
@@ -249,12 +254,7 @@ Hint: Only add files from outside the repository`, absPath)
 	return targetPath, nil
 }
 
-func executeAddTransaction(cfg *config.SyncConfig, filePath, targetPath string) (string, bool, error) {
-	// Create symlink manager for backup and symlink operations
-	mgr, err := symlink.NewManager(cfg)
-	if err != nil {
-		return "", false, fmt.Errorf("failed to create symlink manager: %w", err)
-	}
+func executeAddTransaction(mgr *symlink.Manager, cfg *config.SyncConfig, filePath, targetPath string) (string, bool, error) {
 
 	// Backup existing file using Manager
 	backupPath, err := mgr.BackupExisting(filePath)
@@ -277,7 +277,7 @@ func executeAddTransaction(cfg *config.SyncConfig, filePath, targetPath string) 
 	}
 
 	// Use CreateFileSecurely for atomic file creation to prevent TOCTOU attacks
-	if err := util.CreateFileSecurely(targetPath, sourceData, 0644); err != nil {
+	if err := util.CreateFileSecurely(targetPath, sourceData, filePerms); err != nil {
 		fmt.Printf("⚠️  Failed to create file in dotfiles. Backup of original file retained at: %s\n", backupPath)
 		return backupPath, backupCreated, fmt.Errorf("failed to create file in dotfiles: %w", err)
 	}
@@ -329,13 +329,7 @@ func executeAddTransaction(cfg *config.SyncConfig, filePath, targetPath string) 
 	return backupPath, backupCreated, nil
 }
 
-func updateAndSaveConfig(cfg *config.SyncConfig, targetPath, filePath, backupPath string, backupCreated bool) error {
-	// Create symlink manager for mapping operations
-	mgr, err := symlink.NewManager(cfg)
-	if err != nil {
-		return fmt.Errorf("failed to create symlink manager: %w", err)
-	}
-
+func updateAndSaveConfig(mgr *symlink.Manager, cfg *config.SyncConfig, targetPath, filePath, backupPath string, backupCreated bool) error {
 	sourceRelative, err := filepath.Rel(cfg.Git.RepoPath, targetPath)
 	if err != nil {
 		return fmt.Errorf("failed to compute mapping path: %w", err)
@@ -512,9 +506,8 @@ func previewAdd(filePath, targetPath string, cfg *config.SyncConfig) error {
 	}
 	// Manager encodes full path with underscores and adds timestamp
 	encodedPath := strings.ReplaceAll(filePath, string(filepath.Separator), "_")
-	timestamp := time.Now().Format("20060102_150405.000000")
 	backupPath := filepath.Join(homeDir, ".dsm", "backups", "symlink",
-		fmt.Sprintf("backup_%s_%s", timestamp, encodedPath))
+		fmt.Sprintf("backup_<timestamp>_%s", encodedPath))
 
 	// Calculate relative path for config mapping
 	relPath, err := filepath.Rel(cfg.Git.RepoPath, targetPath)

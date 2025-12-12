@@ -28,6 +28,7 @@ func init() {
 	rootCmd.AddCommand(linksCmd)
 }
 
+// runLinks is the entry point for the links command, routing to list or verify subcommands
 func runLinks(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 && args[0] == "verify" {
 		return verifyLinks(cmd)
@@ -35,6 +36,7 @@ func runLinks(cmd *cobra.Command, args []string) error {
 	return listLinks(cmd)
 }
 
+// listLinks displays all symlink mappings with their current status
 func listLinks(cmd *cobra.Command) error {
 	// Load config
 	cfg, err := getConfig()
@@ -79,6 +81,7 @@ func listLinks(cmd *cobra.Command) error {
 	return nil
 }
 
+// verifyLinks checks all symlink mappings and reports any issues
 func verifyLinks(cmd *cobra.Command) error {
 	// Load config
 	cfg, err := getConfig()
