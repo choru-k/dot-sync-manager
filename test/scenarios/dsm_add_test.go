@@ -237,7 +237,8 @@ func TestScenario_DsmAddErrorHandling(t *testing.T) {
 		t.Logf("Second add output: %s", string(output))
 
 		// Verify file still exists in repository
-		inRepo := filepath.Join(targetDir, ".duplicate")
+		// Note: dsm add strips the leading dot when storing in repo
+		inRepo := filepath.Join(targetDir, "duplicate")
 		_, err = os.Stat(inRepo)
 		require.NoError(t, err, "File should still exist in repository")
 	})

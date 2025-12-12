@@ -48,6 +48,29 @@ func getMachineNameFromOS() string {
 	return "unknown-machine"
 }
 
+// isTestMode returns true if the application is running in test mode.
+// Test mode is enabled when:
+// - DSM_TEST_MODE is set to "true" or "1"
+// - CI environment variable is set to a truthy value (not empty, "false", or "0")
+// Setting DSM_TEST_MODE=false explicitly disables test mode.
+func isTestMode() bool {
+	testMode := os.Getenv("DSM_TEST_MODE")
+	// DSM_TEST_MODE takes precedence - explicit "false" or "0" disables test mode
+	if testMode == "false" || testMode == "0" {
+		return false
+	}
+	// DSM_TEST_MODE set to any other value enables test mode
+	if testMode != "" {
+		return true
+	}
+	// CI environment variable (only if not explicitly false)
+	ciMode := os.Getenv("CI")
+	if ciMode != "" && ciMode != "false" && ciMode != "0" {
+		return true
+	}
+	return false
+}
+
 // Print helper functions for consistent output formatting
 func printSuccess(format string, args ...interface{}) {
 	if noEmoji {
@@ -189,7 +212,7 @@ func validateEditorCommand(editor string) (string, error) {
 
 	// In test mode, return the editor command as is to prevent actual editor execution
 	// but allow the test to validate the command was called
-	if os.Getenv("DSM_TEST_MODE") != "" || os.Getenv("CI") != "" {
+	if isTestMode() {
 		return "true", nil
 	}
 
@@ -215,34 +238,46 @@ func getDefaultEditorForFile(filePath string) string {
 // getDefaultEditorCommon contains the common editor selection logic
 // shared between getDefaultEditor and getDefaultEditorForFile.
 func getDefaultEditorCommon() string {
+	editor, _ := getDefaultEditorSafe()
+	return editor
+}
+
+// getDefaultEditorSafe returns the default editor and an error if EDITOR/VISUAL
+// environment variables contain potentially dangerous content.
+// This is useful when explicit rejection of malicious editors is preferred over silent fallback.
+func getDefaultEditorSafe() (string, error) {
 	// Check environment variables first
 	if editor := os.Getenv("EDITOR"); editor != "" {
-		if validatedEditor, err := validateEditorCommand(editor); err == nil {
-			return validatedEditor
+		validatedEditor, err := validateEditorCommand(editor)
+		if err != nil {
+			return "", fmt.Errorf("EDITOR environment variable contains invalid content: %w", err)
 		}
+		return validatedEditor, nil
 	}
 
 	if editor := os.Getenv("VISUAL"); editor != "" {
-		if validatedEditor, err := validateEditorCommand(editor); err == nil {
-			return validatedEditor
+		validatedEditor, err := validateEditorCommand(editor)
+		if err != nil {
+			return "", fmt.Errorf("VISUAL environment variable contains invalid content: %w", err)
 		}
+		return validatedEditor, nil
 	}
 
 	// Fall back to platform-specific defaults
 	switch runtime.GOOS {
 	case "darwin":
-		return "open"
+		return "open", nil
 	case "windows":
-		return "notepad"
+		return "notepad", nil
 	default: // linux and others
 		// Try common editors in order of preference
 		editors := []string{"code", "nano", "vim", "vi"}
 		for _, editor := range editors {
 			if _, err := exec.LookPath(editor); err == nil {
-				return editor
+				return editor, nil
 			}
 		}
-		return "nano" // Default fallback
+		return "nano", nil // Default fallback
 	}
 }
 

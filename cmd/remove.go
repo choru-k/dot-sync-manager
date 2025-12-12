@@ -172,7 +172,7 @@ func findTrackedFile(cfg *config.SyncConfig, symlinkPath string) (string, string
 
 func confirmRemoval(symlinkPath, trackedFile, mappingKey string) bool {
 	// Check if we're in test mode and skip confirmation
-	if os.Getenv("DSM_TEST_MODE") != "" || os.Getenv("CI") != "" {
+	if isTestMode() {
 		fmt.Println("🧪 Test mode: Auto-confirming removal")
 		return true
 	}

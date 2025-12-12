@@ -89,6 +89,9 @@ func runStart(cmd *cobra.Command, args []string) error {
 	if startLogFile != "" {
 		flagArgs = append(flagArgs, "--log-file", startLogFile)
 	}
+	if daemonExeName != "" {
+		flagArgs = append(flagArgs, "--daemon-exe-name", daemonExeName)
+	}
 
 	if foreground {
 		if startLogFile != "" {
