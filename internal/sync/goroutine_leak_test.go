@@ -218,10 +218,12 @@ func TestSyncService_ConcurrentStartStopGoroutineLeaks(t *testing.T) {
 	}()
 
 	// Wait for the goroutine to complete
+	// Note: StatusManager's acceptConnections has a 1-second Accept timeout,
+	// plus up to 2 seconds for shutdown wait. Use 5 seconds to be safe.
 	select {
 	case <-done:
 		// Operation completed
-	case <-time.After(1 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("Concurrent start/stop operation timed out")
 	}
 

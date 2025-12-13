@@ -92,12 +92,13 @@ func (h *ScenarioHarness) MakeSourceFile(name, content string) string {
 	return filePath
 }
 
-// RequireEventuallySynced waits for a file to be synced with validation
-func (h *ScenarioHarness) RequireEventuallySynced(filename string, validate func(string) bool) {
-	h.T.Helper()
+// RequireEventuallySynced waits for a file to be synced with validation.
+// The t parameter should be the current test context (subtest's t, not parent's).
+func (h *ScenarioHarness) RequireEventuallySynced(t *testing.T, filename string, validate func(string) bool) {
+	t.Helper()
 	targetFile := filepath.Join(h.TargetDir, filename)
 
-	require.Eventually(h.T, func() bool {
+	require.Eventually(t, func() bool {
 		content, err := os.ReadFile(targetFile)
 		if err != nil {
 			return false
@@ -106,25 +107,28 @@ func (h *ScenarioHarness) RequireEventuallySynced(filename string, validate func
 	}, 10*time.Second, 200*time.Millisecond, "File should be synced and pass validation")
 }
 
-// RequireFileExists checks that a file exists in the target directory
-func (h *ScenarioHarness) RequireFileExists(filename string) {
-	h.T.Helper()
+// RequireFileExists checks that a file exists in the target directory.
+// The t parameter should be the current test context (subtest's t, not parent's).
+func (h *ScenarioHarness) RequireFileExists(t *testing.T, filename string) {
+	t.Helper()
 	targetFile := filepath.Join(h.TargetDir, filename)
-	require.FileExists(h.T, targetFile, "Target file should exist: %s", filename)
+	require.FileExists(t, targetFile, "Target file should exist: %s", filename)
 }
 
-// RequireFileNotExists checks that a file does not exist in the target directory
-func (h *ScenarioHarness) RequireFileNotExists(filename string) {
-	h.T.Helper()
+// RequireFileNotExists checks that a file does not exist in the target directory.
+// The t parameter should be the current test context (subtest's t, not parent's).
+func (h *ScenarioHarness) RequireFileNotExists(t *testing.T, filename string) {
+	t.Helper()
 	targetFile := filepath.Join(h.TargetDir, filename)
-	require.NoFileExists(h.T, targetFile, "Target file should not exist: %s", filename)
+	require.NoFileExists(t, targetFile, "Target file should not exist: %s", filename)
 }
 
-// ReadTargetFile reads the content of a file in the target directory
-func (h *ScenarioHarness) ReadTargetFile(filename string) string {
-	h.T.Helper()
+// ReadTargetFile reads the content of a file in the target directory.
+// The t parameter should be the current test context (subtest's t, not parent's).
+func (h *ScenarioHarness) ReadTargetFile(t *testing.T, filename string) string {
+	t.Helper()
 	targetFile := filepath.Join(h.TargetDir, filename)
 	content, err := os.ReadFile(targetFile)
-	require.NoError(h.T, err, "Should be able to read target file: %s", filename)
+	require.NoError(t, err, "Should be able to read target file: %s", filename)
 	return string(content)
 }

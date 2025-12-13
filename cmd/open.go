@@ -70,7 +70,7 @@ func runOpen(cmd *cobra.Command, args []string) error {
 	}
 
 	// Check if we're in a test environment and should avoid launching real file managers
-	if os.Getenv("DSM_TEST_MODE") != "" || os.Getenv("CI") != "" {
+	if isTestMode() {
 		fmt.Printf("🧪 Test mode: Skipping actual directory opening\n")
 		return nil
 	}
@@ -81,8 +81,11 @@ func runOpen(cmd *cobra.Command, args []string) error {
 
 	switch {
 	case openEditor:
-		// Use centralized editor selection logic
-		editor := getDefaultEditor()
+		// Use centralized editor selection logic with security validation
+		editor, err := getDefaultEditorSafe()
+		if err != nil {
+			return fmt.Errorf("failed to get editor: %w", err)
+		}
 		openCmd, openArgs = parseCommand(editor)
 		// Append the target path to editor arguments
 		openArgs = append(openArgs, targetPath)

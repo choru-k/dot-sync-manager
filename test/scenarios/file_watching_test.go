@@ -37,7 +37,7 @@ MODE=watch-test
 		harness.Sync()
 
 		// Wait for the file to be synced using harness
-		harness.RequireEventuallySynced("watchtest", func(content string) bool {
+		harness.RequireEventuallySynced(t, "watchtest", func(content string) bool {
 			return strings.Contains(content, "MODE=watch-test")
 		})
 	})
@@ -57,13 +57,13 @@ CHANGE_TYPE=modification
 		harness.Sync()
 
 		// Wait for the modification to be synced using harness
-		harness.RequireEventuallySynced("watchtest_modified", func(content string) bool {
+		harness.RequireEventuallySynced(t, "watchtest_modified", func(content string) bool {
 			return strings.Contains(content, "MODE=modified") &&
 				strings.Contains(content, "CHANGE_TYPE=modification")
 		})
 
 		// Verify the modification was detected using harness
-		contentStr := harness.ReadTargetFile("watchtest_modified")
+		contentStr := harness.ReadTargetFile(t, "watchtest_modified")
 		assert.Contains(t, contentStr, "CHANGE_TYPE=modification", "Modification should be synced")
 
 		t.Logf("File modification verified: %s", contentStr)
@@ -81,7 +81,7 @@ MODE=deletion-test
 		harness.Sync()
 
 		// Verify file exists before deletion
-		harness.RequireFileExists("watchtest_delete")
+		harness.RequireFileExists(t, "watchtest_delete")
 
 		// Delete the file
 		err := os.Remove(testFile)
@@ -95,7 +95,7 @@ MODE=deletion-test
 		time.Sleep(2 * time.Second)
 
 		// File should still exist (DSM doesn't handle deletions)
-		harness.RequireFileExists("watchtest_delete")
+		harness.RequireFileExists(t, "watchtest_delete")
 
 		t.Logf("File deletion test completed - DSM does not currently support deletion in watch mode")
 	})
@@ -127,16 +127,16 @@ MODE=multi-test
 
 		// Wait for all files to be synced using harness
 		for _, filename := range testFiles {
-			harness.RequireEventuallySynced(filename, func(content string) bool {
+			harness.RequireEventuallySynced(t, filename, func(content string) bool {
 				return strings.Contains(content, "MODE=multi-test")
 			})
 		}
 
 		// Verify all files were processed using harness
 		for _, filename := range testFiles {
-			harness.RequireFileExists(filename)
+			harness.RequireFileExists(t, filename)
 
-			contentStr := harness.ReadTargetFile(filename)
+			contentStr := harness.ReadTargetFile(t, filename)
 			assert.Contains(t, contentStr, "MODE=multi-test", "Multi-test file should have correct content")
 			t.Logf("Verified multi-test file: %s", filename)
 		}
@@ -176,7 +176,7 @@ MODE=debounce-test
 		t.Skip("File watching debouncing not reliable in container environment - known limitation")
 
 		// Verify final state using harness
-		contentStr := harness.ReadTargetFile("debouncetest")
+		contentStr := harness.ReadTargetFile(t, "debouncetest")
 		t.Logf("Debouncing test completed. Final content:\n%s", contentStr)
 
 		// At minimum, verify it contains the debounce test marker
