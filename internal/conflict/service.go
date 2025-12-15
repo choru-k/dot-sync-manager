@@ -1,14 +1,19 @@
 package conflict
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
+	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
 	"github.com/choru-k/dot-sync-manager/internal/gitmanager"
 )
+
+// timestampFormat is the format used by gitmanager for conflict directories.
+const timestampFormat = "20060102T150405Z0700"
 
 // NewService creates a new conflict service.
 func NewService(gitMgr *gitmanager.GitManager, cfg *config.SyncConfig) *Service {
@@ -22,49 +27,115 @@ func NewService(gitMgr *gitmanager.GitManager, cfg *config.SyncConfig) *Service 
 	}
 }
 
-// GetConflicts returns all active conflicts.
-func (s *Service) GetConflicts() []ConflictInfo {
-	conflicts := []ConflictInfo{}
+// GetConflicts returns all active conflicts by reading gitmanager's format.
+// Files are stored as [path].remote, [path].local, [path].base in timestamp directories.
+func (s *Service) GetConflicts() ([]ConflictInfo, error) {
+	var conflicts []ConflictInfo
 
-	// Read conflict directory
+	// Read conflict directory for timestamp subdirectories
 	entries, err := os.ReadDir(s.conflictDir)
 	if os.IsNotExist(err) {
-		return conflicts
+		return conflicts, nil
 	}
 	if err != nil {
-		return conflicts
+		return nil, fmt.Errorf("failed to read conflict directory: %w", err)
 	}
+
+	// Track unique files across all timestamp directories
+	fileSet := make(map[string]ConflictInfo)
 
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
 		}
 
-		// Read metadata.json for each conflict
-		metadataPath := filepath.Join(s.conflictDir, entry.Name(), "metadata.json")
-		data, err := os.ReadFile(metadataPath)
+		// Parse timestamp from directory name
+		detectedAt, err := time.Parse(timestampFormat, entry.Name())
 		if err != nil {
+			// Not a valid timestamp directory, skip
 			continue
 		}
 
-		var info ConflictInfo
-		if err := json.Unmarshal(data, &info); err != nil {
-			continue
+		timestampDir := filepath.Join(s.conflictDir, entry.Name())
+		files, err := os.ReadDir(timestampDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read timestamp directory %s: %w", entry.Name(), err)
 		}
 
+		// Find unique files by looking for .remote suffix
+		for _, f := range files {
+			if f.IsDir() {
+				continue
+			}
+
+			name := f.Name()
+			if !strings.HasSuffix(name, ".remote") {
+				continue
+			}
+
+			// Extract the original filename
+			originalFile := strings.TrimSuffix(name, ".remote")
+
+			// Check if base file exists
+			basePath := filepath.Join(timestampDir, originalFile+".base")
+			_, baseErr := os.Stat(basePath)
+			hasBase := baseErr == nil
+
+			// Check if local is deleted marker
+			localPath := filepath.Join(timestampDir, originalFile+".local")
+			localContent, localErr := os.ReadFile(localPath)
+			isDeleted := localErr == nil && strings.HasPrefix(string(localContent), "<<local deleted")
+
+			// Get modification times from files
+			var localMod, remoteMod time.Time
+			if localInfo, err := os.Stat(localPath); err == nil {
+				localMod = localInfo.ModTime()
+			}
+			remotePath := filepath.Join(timestampDir, originalFile+".remote")
+			if remoteInfo, err := os.Stat(remotePath); err == nil {
+				remoteMod = remoteInfo.ModTime()
+			}
+
+			info := ConflictInfo{
+				File:       originalFile,
+				DetectedAt: detectedAt,
+				LocalMod:   localMod,
+				RemoteMod:  remoteMod,
+				HasBase:    hasBase,
+				IsDeleted:  isDeleted,
+			}
+
+			// Keep the most recent conflict for each file
+			if existing, ok := fileSet[originalFile]; ok {
+				if detectedAt.After(existing.DetectedAt) {
+					fileSet[originalFile] = info
+				}
+			} else {
+				fileSet[originalFile] = info
+			}
+		}
+	}
+
+	// Convert map to slice
+	for _, info := range fileSet {
 		conflicts = append(conflicts, info)
 	}
 
-	return conflicts
+	// Sort by file name for consistent output
+	sort.Slice(conflicts, func(i, j int) bool {
+		return conflicts[i].File < conflicts[j].File
+	})
+
+	return conflicts, nil
 }
 
 // HasConflicts returns true if there are any active conflicts.
 func (s *Service) HasConflicts() bool {
-	entries, err := os.ReadDir(s.conflictDir)
+	conflicts, err := s.GetConflicts()
 	if err != nil {
 		return false
 	}
-	return len(entries) > 0
+	return len(conflicts) > 0
 }
 
 // GetConflictDir returns the conflict directory path.
@@ -73,34 +144,76 @@ func (s *Service) GetConflictDir() string {
 }
 
 // GetConflictDetails returns the full content of conflicting versions.
+// It finds the latest timestamp directory containing the requested file.
 func (s *Service) GetConflictDetails(file string) (*ConflictDetails, error) {
-	conflictPath := filepath.Join(s.conflictDir, file)
+	// Find the latest timestamp directory containing this file
+	entries, err := os.ReadDir(s.conflictDir)
+	if os.IsNotExist(err) {
+		return nil, fmt.Errorf("conflict not found: %s", file)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to read conflict directory: %w", err)
+	}
 
-	// Check if conflict exists
-	if _, err := os.Stat(conflictPath); os.IsNotExist(err) {
+	var latestDir string
+	var latestTime time.Time
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		detectedAt, err := time.Parse(timestampFormat, entry.Name())
+		if err != nil {
+			continue
+		}
+
+		// Check if this directory contains the file
+		remotePath := filepath.Join(s.conflictDir, entry.Name(), file+".remote")
+		if _, err := os.Stat(remotePath); os.IsNotExist(err) {
+			continue
+		}
+
+		if latestDir == "" || detectedAt.After(latestTime) {
+			latestDir = filepath.Join(s.conflictDir, entry.Name())
+			latestTime = detectedAt
+		}
+	}
+
+	if latestDir == "" {
 		return nil, fmt.Errorf("conflict not found: %s", file)
 	}
 
 	details := &ConflictDetails{
 		File:       file,
-		LocalPath:  filepath.Join(conflictPath, "local"),
-		RemotePath: filepath.Join(conflictPath, "remote"),
-		BasePath:   filepath.Join(conflictPath, "base"),
+		LocalPath:  filepath.Join(latestDir, file+".local"),
+		RemotePath: filepath.Join(latestDir, file+".remote"),
+		BasePath:   filepath.Join(latestDir, file+".base"),
 	}
 
-	// Read local version
-	if data, err := os.ReadFile(details.LocalPath); err == nil {
-		details.LocalContent = data
+	// Read local version (required)
+	localData, err := os.ReadFile(details.LocalPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read local conflict content: %w", err)
 	}
+	details.LocalContent = localData
 
-	// Read remote version
-	if data, err := os.ReadFile(details.RemotePath); err == nil {
-		details.RemoteContent = data
+	// Read remote version (required)
+	remoteData, err := os.ReadFile(details.RemotePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read remote conflict content: %w", err)
 	}
+	details.RemoteContent = remoteData
 
 	// Read base version (optional)
-	if data, err := os.ReadFile(details.BasePath); err == nil {
-		details.BaseContent = data
+	baseData, err := os.ReadFile(details.BasePath)
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("failed to read base conflict content: %w", err)
+		}
+		// Base file doesn't exist, that's OK
+	} else {
+		details.BaseContent = baseData
 	}
 
 	return details, nil
@@ -108,12 +221,15 @@ func (s *Service) GetConflictDetails(file string) (*ConflictDetails, error) {
 
 // CheckForConflicts scans for conflicts and fires events if notifier is set.
 // Returns the list of detected conflicts.
-func (s *Service) CheckForConflicts() []ConflictInfo {
-	conflicts := s.GetConflicts()
+func (s *Service) CheckForConflicts() ([]ConflictInfo, error) {
+	conflicts, err := s.GetConflicts()
+	if err != nil {
+		return nil, err
+	}
 
 	if len(conflicts) > 0 {
 		s.notifyConflictDetected(conflicts)
 	}
 
-	return conflicts
+	return conflicts, nil
 }

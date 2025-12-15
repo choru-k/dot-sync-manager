@@ -1,13 +1,18 @@
 package conflict
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/choru-k/dot-sync-manager/internal/config"
+)
+
+// Test file permission constants per Rule 18.
+const (
+	eventTestDirPerms  = 0755
+	eventTestFilePerms = 0644
 )
 
 // mockNotifier implements ConflictNotifier for testing
@@ -119,22 +124,20 @@ func TestService_NotifyConflictResolved(t *testing.T) {
 
 func TestService_CheckForConflicts_FiresEvent(t *testing.T) {
 	repoDir := t.TempDir()
-	conflictDir := filepath.Join(repoDir, ".dsm", "conflicts", ".bashrc")
-	if err := os.MkdirAll(conflictDir, 0755); err != nil {
+
+	// Create gitmanager-style conflict directory with timestamp
+	timestamp := time.Now().Format("20060102T150405Z0700")
+	conflictDir := filepath.Join(repoDir, ".dsm", "conflicts", timestamp)
+	if err := os.MkdirAll(conflictDir, eventTestDirPerms); err != nil {
 		t.Fatalf("Failed to create conflict directory: %v", err)
 	}
 
-	// Create metadata
-	info := ConflictInfo{
-		File:       ".bashrc",
-		DetectedAt: time.Now(),
+	// Create conflict files with suffix naming
+	if err := os.WriteFile(filepath.Join(conflictDir, ".bashrc.local"), []byte("local content"), eventTestFilePerms); err != nil {
+		t.Fatalf("Failed to write local file: %v", err)
 	}
-	data, err := json.Marshal(info)
-	if err != nil {
-		t.Fatalf("Failed to marshal conflict info: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(conflictDir, "metadata.json"), data, 0644); err != nil {
-		t.Fatalf("Failed to write metadata: %v", err)
+	if err := os.WriteFile(filepath.Join(conflictDir, ".bashrc.remote"), []byte("remote content"), eventTestFilePerms); err != nil {
+		t.Fatalf("Failed to write remote file: %v", err)
 	}
 
 	cfg, err := config.DefaultConfig()
@@ -147,7 +150,10 @@ func TestService_CheckForConflicts_FiresEvent(t *testing.T) {
 	notifier := &mockNotifier{}
 	svc.SetNotifier(notifier)
 
-	conflicts := svc.CheckForConflicts()
+	conflicts, err := svc.CheckForConflicts()
+	if err != nil {
+		t.Fatalf("CheckForConflicts failed: %v", err)
+	}
 
 	if len(conflicts) != 1 {
 		t.Fatalf("Expected 1 conflict, got %d", len(conflicts))
@@ -171,7 +177,10 @@ func TestService_CheckForConflicts_NoEventWhenEmpty(t *testing.T) {
 	notifier := &mockNotifier{}
 	svc.SetNotifier(notifier)
 
-	conflicts := svc.CheckForConflicts()
+	conflicts, err := svc.CheckForConflicts()
+	if err != nil {
+		t.Fatalf("CheckForConflicts failed: %v", err)
+	}
 
 	if len(conflicts) != 0 {
 		t.Errorf("Expected 0 conflicts, got %d", len(conflicts))

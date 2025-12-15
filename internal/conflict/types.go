@@ -19,11 +19,11 @@ type Service struct {
 // ConflictInfo represents metadata about a conflict.
 type ConflictInfo struct {
 	File       string    `json:"file"`
-	DetectedAt time.Time `json:"detectedAt"`
-	LocalMod   time.Time `json:"localMod"`
-	RemoteMod  time.Time `json:"remoteMod"`
-	HasBase    bool      `json:"hasBase"`
-	IsDeleted  bool      `json:"isDeleted"`
+	DetectedAt time.Time `json:"detected_at"`
+	LocalMod   time.Time `json:"local_mod"`
+	RemoteMod  time.Time `json:"remote_mod"`
+	HasBase    bool      `json:"has_base"`
+	IsDeleted  bool      `json:"is_deleted"`
 }
 
 // ConflictDetails contains the full content of conflicting versions.
