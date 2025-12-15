@@ -89,7 +89,7 @@ func (s *Service) GetConflicts() ([]ConflictInfo, error) {
 			// Check if local is deleted marker
 			localPath := filepath.Join(timestampDir, originalFile+".local")
 			localContent, localErr := os.ReadFile(localPath)
-			isDeleted := localErr == nil && strings.HasPrefix(string(localContent), "<<local deleted")
+			isDeleted := localErr == nil && string(localContent) == "<<local deleted file>>\n"
 
 			// Get modification times from files
 			var localMod, remoteMod time.Time

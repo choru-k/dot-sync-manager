@@ -9,12 +9,6 @@ import (
 	"github.com/choru-k/dot-sync-manager/internal/config"
 )
 
-// Test file permission constants per Rule 18.
-const (
-	eventTestDirPerms  = 0755
-	eventTestFilePerms = 0644
-)
-
 // mockNotifier implements ConflictNotifier for testing
 type mockNotifier struct {
 	detectedCalls    [][]ConflictInfo
@@ -128,15 +122,15 @@ func TestService_CheckForConflicts_FiresEvent(t *testing.T) {
 	// Create gitmanager-style conflict directory with timestamp
 	timestamp := time.Now().Format("20060102T150405Z0700")
 	conflictDir := filepath.Join(repoDir, ".dsm", "conflicts", timestamp)
-	if err := os.MkdirAll(conflictDir, eventTestDirPerms); err != nil {
+	if err := os.MkdirAll(conflictDir, testDirPerms); err != nil {
 		t.Fatalf("Failed to create conflict directory: %v", err)
 	}
 
 	// Create conflict files with suffix naming
-	if err := os.WriteFile(filepath.Join(conflictDir, ".bashrc.local"), []byte("local content"), eventTestFilePerms); err != nil {
+	if err := os.WriteFile(filepath.Join(conflictDir, ".bashrc.local"), []byte("local content"), testFilePerms); err != nil {
 		t.Fatalf("Failed to write local file: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(conflictDir, ".bashrc.remote"), []byte("remote content"), eventTestFilePerms); err != nil {
+	if err := os.WriteFile(filepath.Join(conflictDir, ".bashrc.remote"), []byte("remote content"), testFilePerms); err != nil {
 		t.Fatalf("Failed to write remote file: %v", err)
 	}
 
