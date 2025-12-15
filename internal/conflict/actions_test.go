@@ -14,7 +14,7 @@ func TestActions_UseLocal(t *testing.T) {
 	targetDir := t.TempDir()
 
 	// Create conflict in timestamp-based format
-	timestamp := time.Now().Format("20060102T150405Z0700")
+	timestamp := time.Now().Format(timestampFormat)
 	conflictDir := filepath.Join(repoDir, ".dsm", "conflicts", timestamp)
 	if err := os.MkdirAll(conflictDir, testDirPerms); err != nil {
 		t.Fatalf("Failed to create conflict directory: %v", err)
@@ -93,7 +93,7 @@ func TestActions_UseLocal_FallbackToHomeDir(t *testing.T) {
 	repoDir := t.TempDir()
 
 	// Create conflict in timestamp-based format
-	timestamp := time.Now().Format("20060102T150405Z0700")
+	timestamp := time.Now().Format(timestampFormat)
 	conflictDir := filepath.Join(repoDir, ".dsm", "conflicts", timestamp)
 	if err := os.MkdirAll(conflictDir, testDirPerms); err != nil {
 		t.Fatalf("Failed to create conflict directory: %v", err)
@@ -147,7 +147,7 @@ func TestActions_UseRemote(t *testing.T) {
 	targetDir := t.TempDir()
 
 	// Create conflict in timestamp-based format
-	timestamp := time.Now().Format("20060102T150405Z0700")
+	timestamp := time.Now().Format(timestampFormat)
 	conflictDir := filepath.Join(repoDir, ".dsm", "conflicts", timestamp)
 	if err := os.MkdirAll(conflictDir, testDirPerms); err != nil {
 		t.Fatalf("Failed to create conflict directory: %v", err)
@@ -226,7 +226,7 @@ func TestActions_MarkResolved_Single(t *testing.T) {
 	repoDir := t.TempDir()
 
 	// Create conflict in timestamp-based format
-	timestamp := time.Now().Format("20060102T150405Z0700")
+	timestamp := time.Now().Format(timestampFormat)
 	conflictDir := filepath.Join(repoDir, ".dsm", "conflicts", timestamp)
 	if err := os.MkdirAll(conflictDir, testDirPerms); err != nil {
 		t.Fatalf("Failed to create conflict directory: %v", err)
@@ -289,7 +289,7 @@ func TestActions_MarkAllResolved(t *testing.T) {
 	repoDir := t.TempDir()
 
 	// Create two conflicts in same timestamp directory
-	timestamp := time.Now().Format("20060102T150405Z0700")
+	timestamp := time.Now().Format(timestampFormat)
 	conflictDir := filepath.Join(repoDir, ".dsm", "conflicts", timestamp)
 	if err := os.MkdirAll(conflictDir, testDirPerms); err != nil {
 		t.Fatalf("Failed to create conflict directory: %v", err)

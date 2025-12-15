@@ -10,6 +10,9 @@ import (
 	"time"
 )
 
+// defaultDirPerms is the default permission mode for directories created during conflict resolution.
+const defaultDirPerms = 0755
+
 // UseLocal resolves a conflict by using the local version.
 // Copies the local file to the target location and marks as resolved.
 func (s *Service) UseLocal(file string) error {
@@ -98,6 +101,7 @@ func (s *Service) UseRemote(file string) error {
 
 // MarkResolved marks specific conflicts as resolved without copying files.
 // Useful when user has manually resolved conflicts.
+// Non-existent conflicts are silently skipped (idempotent behavior).
 func (s *Service) MarkResolved(files []string) error {
 	var errs []error
 
@@ -211,7 +215,7 @@ func (s *Service) getTargetPath(file string) (string, error) {
 	// Fall back to home directory
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("cannot determine target path for: %s", file)
+		return "", fmt.Errorf("cannot determine target path for %s: %w", file, err)
 	}
 	return filepath.Join(home, file), nil
 }
@@ -249,7 +253,7 @@ func (s *Service) removeConflictArtifacts(timestampDir, file string) error {
 // copyFile copies src to dst, creating directories as needed.
 func copyFile(src, dst string) error {
 	// Ensure destination directory exists
-	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dst), defaultDirPerms); err != nil {
 		return err
 	}
 
@@ -263,17 +267,25 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = dstFile.Close() }()
 
-	_, err = io.Copy(dstFile, srcFile)
-	return err
+	_, copyErr := io.Copy(dstFile, srcFile)
+	closeErr := dstFile.Close()
+
+	// Check copy error first, then close error (close can fail on flush)
+	if copyErr != nil {
+		return copyErr
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	return nil
 }
 
 // openInFileManager opens a directory in the system file manager.
 func openInFileManager(path string) error {
 	// Ensure directory exists
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		if err := os.MkdirAll(path, 0755); err != nil {
+		if err := os.MkdirAll(path, defaultDirPerms); err != nil {
 			return fmt.Errorf("failed to create directory: %w", err)
 		}
 	}
