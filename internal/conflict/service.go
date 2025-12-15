@@ -105,3 +105,15 @@ func (s *Service) GetConflictDetails(file string) (*ConflictDetails, error) {
 
 	return details, nil
 }
+
+// CheckForConflicts scans for conflicts and fires events if notifier is set.
+// Returns the list of detected conflicts.
+func (s *Service) CheckForConflicts() []ConflictInfo {
+	conflicts := s.GetConflicts()
+
+	if len(conflicts) > 0 {
+		s.notifyConflictDetected(conflicts)
+	}
+
+	return conflicts
+}
