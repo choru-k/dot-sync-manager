@@ -1,7 +1,8 @@
 package conflict
 
-// SetNotifier sets the conflict notifier for the service.
-// Pass nil to disable notifications.
+// SetNotifier registers a notifier to receive conflict events.
+// Pass nil to disable notifications. Should be called during initialization
+// before any calls to CheckForConflicts.
 func (s *Service) SetNotifier(notifier ConflictNotifier) {
 	s.notifier = notifier
 }

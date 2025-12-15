@@ -16,6 +16,8 @@ import (
 const timestampFormat = "20060102T150405Z0700"
 
 // NewService creates a new conflict service.
+// The gitMgr parameter may be nil if git operations are not needed.
+// The cfg.Git.RepoPath must be non-empty and absolute.
 func NewService(gitMgr *gitmanager.GitManager, cfg *config.SyncConfig) *Service {
 	repoPath := cfg.Git.RepoPath
 	conflictDir := filepath.Join(repoPath, ".dsm", "conflicts")
@@ -27,8 +29,11 @@ func NewService(gitMgr *gitmanager.GitManager, cfg *config.SyncConfig) *Service 
 	}
 }
 
-// GetConflicts returns all active conflicts by reading gitmanager's format.
-// Files are stored as [path].remote, [path].local, [path].base in timestamp directories.
+// GetConflicts returns all active conflicts by scanning gitmanager's conflict directory.
+// Conflicts are stored in timestamp-named subdirectories (.dsm/conflicts/<timestamp>/)
+// with files named [path].local, [path].remote, and optionally [path].base.
+// When multiple timestamps exist for the same file, only the most recent is returned.
+// Returns empty slice (not error) if no conflicts exist or directory doesn't exist.
 func (s *Service) GetConflicts() ([]ConflictInfo, error) {
 	var conflicts []ConflictInfo
 
@@ -130,6 +135,7 @@ func (s *Service) GetConflicts() ([]ConflictInfo, error) {
 }
 
 // HasConflicts returns true if there are any active conflicts.
+// Returns false on error (fails closed to avoid blocking operations).
 func (s *Service) HasConflicts() bool {
 	conflicts, err := s.GetConflicts()
 	if err != nil {
@@ -138,13 +144,16 @@ func (s *Service) HasConflicts() bool {
 	return len(conflicts) > 0
 }
 
-// GetConflictDir returns the conflict directory path.
+// GetConflictDir returns the path to the conflict directory (.dsm/conflicts).
+// This is where gitmanager stores conflict artifacts during sync operations.
 func (s *Service) GetConflictDir() string {
 	return s.conflictDir
 }
 
-// GetConflictDetails returns the full content of conflicting versions.
+// GetConflictDetails returns the full content of conflicting versions for a file.
+// The file parameter is the original filename (e.g., ".bashrc").
 // It finds the latest timestamp directory containing the requested file.
+// Returns error if the conflict doesn't exist or files cannot be read.
 func (s *Service) GetConflictDetails(file string) (*ConflictDetails, error) {
 	// Find the latest timestamp directory containing this file
 	entries, err := os.ReadDir(s.conflictDir)
@@ -219,7 +228,8 @@ func (s *Service) GetConflictDetails(file string) (*ConflictDetails, error) {
 	return details, nil
 }
 
-// CheckForConflicts scans for conflicts and fires events if notifier is set.
+// CheckForConflicts scans for conflicts and fires events if a notifier is set.
+// Calls OnConflictDetected with the full list when conflicts exist.
 // Returns the list of detected conflicts.
 func (s *Service) CheckForConflicts() ([]ConflictInfo, error) {
 	conflicts, err := s.GetConflicts()
