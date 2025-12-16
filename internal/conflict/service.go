@@ -150,18 +150,15 @@ func (s *Service) GetConflictDir() string {
 	return s.conflictDir
 }
 
-// GetConflictDetails returns the full content of conflicting versions for a file.
-// The file parameter is the original filename (e.g., ".bashrc").
-// It finds the latest timestamp directory containing the requested file.
-// Returns error if the conflict doesn't exist or files cannot be read.
-func (s *Service) GetConflictDetails(file string) (*ConflictDetails, error) {
-	// Find the latest timestamp directory containing this file
+// findLatestConflictDir finds the latest timestamp directory containing the specified file.
+// Returns the full path to the timestamp directory, or an error if not found.
+func (s *Service) findLatestConflictDir(file string) (string, error) {
 	entries, err := os.ReadDir(s.conflictDir)
 	if os.IsNotExist(err) {
-		return nil, fmt.Errorf("conflict not found: %s", file)
+		return "", fmt.Errorf("conflict not found: %s", file)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to read conflict directory: %w", err)
+		return "", fmt.Errorf("failed to read conflict directory: %w", err)
 	}
 
 	var latestDir string
@@ -190,7 +187,20 @@ func (s *Service) GetConflictDetails(file string) (*ConflictDetails, error) {
 	}
 
 	if latestDir == "" {
-		return nil, fmt.Errorf("conflict not found: %s", file)
+		return "", fmt.Errorf("conflict not found: %s", file)
+	}
+
+	return latestDir, nil
+}
+
+// GetConflictDetails returns the full content of conflicting versions for a file.
+// The file parameter is the original filename (e.g., ".bashrc").
+// It finds the latest timestamp directory containing the requested file.
+// Returns error if the conflict doesn't exist or files cannot be read.
+func (s *Service) GetConflictDetails(file string) (*ConflictDetails, error) {
+	latestDir, err := s.findLatestConflictDir(file)
+	if err != nil {
+		return nil, err
 	}
 
 	details := &ConflictDetails{
