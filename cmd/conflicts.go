@@ -1,33 +1,33 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
-	"sort"
-	"strings"
+	"text/tabwriter"
 
+	"github.com/choru-k/dot-sync-manager/internal/conflict"
 	"github.com/spf13/cobra"
 )
 
 // conflictsCmd represents the conflicts command
 var conflictsCmd = &cobra.Command{
 	Use:   "conflicts",
-	Short: "Show detailed conflict information",
-	Long: `Show detailed information about any merge conflicts in the dotfiles repository.
-This command provides in-depth analysis of conflicts and helps with resolution.
+	Short: "List all active conflicts",
+	Long: `Display all active file conflicts that need resolution.
+
+Use --json for machine-readable output.
 
 Examples:
   dsm conflicts
-  dsm conflicts --verbose  # Show detailed conflict information`,
+  dsm conflicts --json`,
 	RunE: runConflicts,
 }
 
-var conflictsVerbose bool
+var conflictsJSON bool
 
 func init() {
 	rootCmd.AddCommand(conflictsCmd)
-	conflictsCmd.Flags().BoolVar(&conflictsVerbose, "verbose", false, "Show detailed conflict information")
+	conflictsCmd.Flags().BoolVar(&conflictsJSON, "json", false, "Output in JSON format")
 }
 
 func runConflicts(cmd *cobra.Command, args []string) error {
@@ -41,138 +41,72 @@ func runConflicts(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	fmt.Println("🔍 Checking for merge conflicts...")
-	fmt.Printf("📁 Repository: %s\n", cfg.Git.RepoPath)
-
-	// Check for conflict artifacts in .dsm/conflicts directory
-	conflictDir := filepath.Join(cfg.Git.RepoPath, ".dsm", "conflicts")
-	isConflictDir, err := checkDirectoryExists(conflictDir)
+	// Create conflict service. A git manager is not needed for read-only
+	// conflict checking, so nil is passed.
+	svc := conflict.NewService(nil, cfg)
+	conflicts, err := svc.CheckForConflicts()
 	if err != nil {
-		return err
-	}
-	if !isConflictDir {
-		fmt.Println("✅ No conflict artifacts found")
-		return nil
+		return fmt.Errorf("failed to check for conflicts: %w", err)
 	}
 
-	// List conflict directories
-	entries, err := os.ReadDir(conflictDir)
+	if conflictsJSON {
+		return outputConflictsJSON(cmd, conflicts)
+	}
+
+	return outputConflictsTable(cmd, conflicts)
+}
+
+// conflictsJSONOutput represents the JSON output structure for conflicts command.
+type conflictsJSONOutput struct {
+	Count     int                     `json:"count"`
+	Conflicts []conflict.ConflictInfo `json:"conflicts"`
+}
+
+func outputConflictsJSON(cmd *cobra.Command, conflicts []conflict.ConflictInfo) error {
+	output := conflictsJSONOutput{
+		Count:     len(conflicts),
+		Conflicts: conflicts,
+	}
+
+	// Ensure empty array instead of null
+	if output.Conflicts == nil {
+		output.Conflicts = []conflict.ConflictInfo{}
+	}
+
+	data, err := json.MarshalIndent(output, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to read conflict directory: %w", err)
+		return fmt.Errorf("failed to marshal JSON: %w", err)
 	}
 
-	if len(entries) == 0 {
-		fmt.Println("✅ No conflict artifacts found")
-		return nil
-	}
-
-	// Sort entries by name (timestamp)
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Name() < entries[j].Name()
-	})
-
-	fmt.Printf("❌ Found %d conflict artifact(s):\n\n", len(entries))
-
-	for i, entry := range entries {
-		conflictPath := filepath.Join(conflictDir, entry.Name())
-		fmt.Printf("Conflict %d/%d: %s\n", i+1, len(entries), entry.Name())
-		fmt.Println(strings.Repeat("-", 40))
-
-		if conflictsVerbose {
-			// Show details about conflict artifacts
-			if err := showConflictDetails(conflictPath); err != nil {
-				fmt.Printf("⚠️  Could not show details: %v\n", err)
-			}
-		} else {
-			fmt.Printf("💡 Run 'dsm conflicts --verbose' for detailed information\n")
-		}
-
-		fmt.Println()
-	}
-
-	// Show resolution guidance
-	fmt.Println("📋 Resolution steps:")
-	fmt.Println("1. Open the conflict directory to see artifact files")
-	fmt.Println("2. Review .local, .remote, and .base files")
-	fmt.Println("3. Manually resolve conflicts in the actual files")
-	fmt.Println("4. Stage the resolved files: git add <file>")
-	fmt.Println("5. Commit the resolution: git commit")
-	fmt.Println("6. Run 'dsm resolve' to mark conflicts as resolved")
-	fmt.Println()
-	fmt.Printf("💡 Conflict artifacts directory: %s\n", conflictDir)
-
-	// Check if daemon is running (it should be paused during conflicts)
-	if isDaemonRunning() {
-		fmt.Println("⚠️  Warning: Daemon is still running")
-		fmt.Println("   Consider running 'dsm stop' while resolving conflicts")
-	} else {
-		fmt.Println("✅ Daemon is not running (good for conflict resolution)")
-	}
-
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), string(data))
 	return nil
 }
 
-func showConflictDetails(conflictPath string) error {
-	// Check if the path exists and whether it's a file or directory
-	stat, err := os.Stat(conflictPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("conflict path does not exist: %s", conflictPath)
-		}
-		return fmt.Errorf("failed to access conflict path: %w", err)
+func outputConflictsTable(cmd *cobra.Command, conflicts []conflict.ConflictInfo) error {
+	if len(conflicts) == 0 {
+		_, _ = fmt.Fprintln(cmd.OutOrStdout(), "No active conflicts.")
+		return nil
 	}
 
-	// Defensive check: ensure stat is not nil before calling IsDir()
-	if stat == nil {
-		return fmt.Errorf("stat is nil for path: %s", conflictPath)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Found %d conflict(s):\n\n", len(conflicts))
+
+	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(w, "FILE\tDETECTED\tHAS BASE")
+
+	for _, c := range conflicts {
+		hasBase := "No"
+		if c.HasBase {
+			hasBase = "Yes"
+		}
+		detected := c.DetectedAt.Format("2006-01-02 15:04")
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\n", c.File, detected, hasBase)
 	}
 
-	if stat.IsDir() {
-		// Handle directory case (conflict artifacts directory)
-		fmt.Printf("Conflict directory: %s\n", conflictPath)
-
-		entries, err := os.ReadDir(conflictPath)
-		if err != nil {
-			return fmt.Errorf("failed to read conflict directory: %w", err)
-		}
-
-		if len(entries) == 0 {
-			fmt.Println("   (empty)")
-			return nil
-		}
-
-		fmt.Println("   Artifact files:")
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				fullPath := filepath.Join(conflictPath, entry.Name())
-				if info, err := os.Stat(fullPath); err == nil {
-					fmt.Printf("   • %s (%d bytes)\n", entry.Name(), info.Size())
-				} else {
-					fmt.Printf("   • %s (error getting size)\n", entry.Name())
-				}
-			}
-		}
-	} else {
-		// Handle file case (individual conflict file)
-		fmt.Printf("Conflict file: %s\n", conflictPath)
-		fmt.Printf("   Size: %d bytes\n", stat.Size())
-
-		// Show first few lines of conflict file content
-		content, err := os.ReadFile(conflictPath)
-		if err != nil {
-			fmt.Printf("   (error reading file content: %v)\n", err)
-		} else {
-			lines := strings.Split(string(content), "\n")
-			fmt.Println("   Content preview:")
-			for i, line := range lines {
-				if i >= 10 { // Show only first 10 lines
-					fmt.Printf("   ... (%d more lines)\n", len(lines)-10)
-					break
-				}
-				fmt.Printf("   %s\n", line)
-			}
-		}
+	if err := w.Flush(); err != nil {
+		return fmt.Errorf("failed to flush output: %w", err)
 	}
 
+	_, _ = fmt.Fprintln(cmd.OutOrStdout())
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Use 'dsm resolve' to resolve conflicts.")
 	return nil
 }
