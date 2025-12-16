@@ -50,7 +50,9 @@ type ConflictDetails struct {
 
 // ConflictNotifier receives notifications about conflict lifecycle events.
 // Implementations should handle events quickly to avoid blocking the conflict service.
-// Methods may be called from the same goroutine that calls CheckForConflicts.
+//
+// Thread Safety: When used with Detector, methods may be called from background
+// goroutines. Implementations must be safe for concurrent use in this case.
 type ConflictNotifier interface {
 	// OnConflictDetected is called when CheckForConflicts finds active conflicts.
 	// The conflicts slice contains all currently active conflicts.
