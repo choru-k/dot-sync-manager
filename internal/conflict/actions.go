@@ -7,17 +7,19 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"time"
 )
 
 // defaultDirPerms is the default permission mode for directories created during conflict resolution.
 const defaultDirPerms = 0755
 
+// defaultFilePerms is the default permission mode for files created during conflict resolution.
+const defaultFilePerms = 0644
+
 // UseLocal resolves a conflict by using the local version.
 // Copies the local file to the target location and marks as resolved.
 func (s *Service) UseLocal(file string) error {
 	// Find timestamp dir containing this conflict
-	timestampDir, err := s.findConflictDir(file)
+	timestampDir, err := s.findLatestConflictDir(file)
 	if err != nil {
 		return err
 	}
@@ -60,7 +62,7 @@ func (s *Service) UseLocal(file string) error {
 // Copies the remote file to the target location and marks as resolved.
 func (s *Service) UseRemote(file string) error {
 	// Find timestamp dir containing this conflict
-	timestampDir, err := s.findConflictDir(file)
+	timestampDir, err := s.findLatestConflictDir(file)
 	if err != nil {
 		return err
 	}
@@ -106,7 +108,7 @@ func (s *Service) MarkResolved(files []string) error {
 	var errs []error
 
 	for _, file := range files {
-		timestampDir, err := s.findConflictDir(file)
+		timestampDir, err := s.findLatestConflictDir(file)
 		if err != nil {
 			// If conflict doesn't exist, skip it (already resolved)
 			continue
@@ -159,48 +161,6 @@ func (s *Service) OpenFolder() error {
 func (s *Service) OpenBackupFolder() error {
 	backupDir := filepath.Join(filepath.Dir(s.conflictDir), "backups")
 	return openInFileManager(backupDir)
-}
-
-// findConflictDir finds the latest timestamp directory containing file.
-func (s *Service) findConflictDir(file string) (string, error) {
-	entries, err := os.ReadDir(s.conflictDir)
-	if os.IsNotExist(err) {
-		return "", fmt.Errorf("conflict not found: %s", file)
-	}
-	if err != nil {
-		return "", fmt.Errorf("failed to read conflict directory: %w", err)
-	}
-
-	var latestDir string
-	var latestTime time.Time
-
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		detectedAt, err := time.Parse(timestampFormat, entry.Name())
-		if err != nil {
-			continue
-		}
-
-		// Check if this directory contains the file
-		remotePath := filepath.Join(s.conflictDir, entry.Name(), file+".remote")
-		if _, err := os.Stat(remotePath); os.IsNotExist(err) {
-			continue
-		}
-
-		if latestDir == "" || detectedAt.After(latestTime) {
-			latestDir = filepath.Join(s.conflictDir, entry.Name())
-			latestTime = detectedAt
-		}
-	}
-
-	if latestDir == "" {
-		return "", fmt.Errorf("conflict not found: %s", file)
-	}
-
-	return latestDir, nil
 }
 
 // getTargetPath returns the target file path for a repo file.
@@ -263,7 +223,7 @@ func copyFile(src, dst string) error {
 	}
 	defer func() { _ = srcFile.Close() }()
 
-	dstFile, err := os.Create(dst)
+	dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, defaultFilePerms)
 	if err != nil {
 		return err
 	}
