@@ -45,7 +45,8 @@ func runResolve(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Create conflict service
+	// Create conflict service. Passing nil for git manager is safe here
+	// because the file-based resolution methods don't require git operations.
 	svc := conflict.NewService(nil, cfg)
 	conflicts, err := svc.CheckForConflicts()
 	if err != nil {
@@ -124,27 +125,37 @@ func resolveSpecificFile(cmd *cobra.Command, svc *conflict.Service, file string)
 
 func resolveAllWithLocal(cmd *cobra.Command, svc *conflict.Service, conflicts []conflict.ConflictInfo) error {
 	var resolved int
+	var hasErrors bool
 	for _, c := range conflicts {
 		if err := svc.UseLocal(c.File); err != nil {
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to resolve %s: %v\n", c.File, err)
+			hasErrors = true
 			continue
 		}
 		resolved++
 	}
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Resolved %d conflict(s) with local versions.\n", resolved)
+	if hasErrors {
+		return fmt.Errorf("one or more files failed to resolve")
+	}
 	return nil
 }
 
 func resolveAllWithRemote(cmd *cobra.Command, svc *conflict.Service, conflicts []conflict.ConflictInfo) error {
 	var resolved int
+	var hasErrors bool
 	for _, c := range conflicts {
 		if err := svc.UseRemote(c.File); err != nil {
 			_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "Warning: failed to resolve %s: %v\n", c.File, err)
+			hasErrors = true
 			continue
 		}
 		resolved++
 	}
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Resolved %d conflict(s) with remote versions.\n", resolved)
+	if hasErrors {
+		return fmt.Errorf("one or more files failed to resolve")
+	}
 	return nil
 }
 

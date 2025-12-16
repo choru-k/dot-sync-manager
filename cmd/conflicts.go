@@ -41,7 +41,8 @@ func runConflicts(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load configuration: %w", err)
 	}
 
-	// Create conflict service
+	// Create conflict service. A git manager is not needed for read-only
+	// conflict checking, so nil is passed.
 	svc := conflict.NewService(nil, cfg)
 	conflicts, err := svc.CheckForConflicts()
 	if err != nil {
