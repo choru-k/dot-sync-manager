@@ -19,6 +19,13 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
+// ConflictChecker is the interface for conflict checking functionality.
+// This interface breaks the import cycle between sync and conflict packages.
+type ConflictChecker interface {
+	// HasConflicts returns true if there are any active conflicts.
+	HasConflicts() bool
+}
+
 // Constants for sync service configuration
 const (
 	DefaultDebounceDelay = 30 * time.Second
@@ -135,6 +142,14 @@ type SyncService struct {
 	onSyncStart    func()
 	onSyncComplete func(files []string, err error)
 	onError        func(error)
+
+	// Pause state for conflict handling
+	isPaused bool
+	pausedMu sync.RWMutex
+
+	// Conflict service integration
+	// TODO(B.5): Use conflictService in performSync() to skip sync when conflicts exist
+	conflictService ConflictChecker
 }
 
 // Config holds configuration for the sync service
@@ -634,6 +649,11 @@ func (s *SyncService) performSync() {
 		return
 	}
 
+	// Skip sync while paused (e.g., during conflict resolution)
+	if s.IsPaused() {
+		return
+	}
+
 	s.performManualSync()
 }
 
@@ -758,6 +778,43 @@ func (s *SyncService) notifyError(err error) {
 // IsRunning returns whether the service is currently running
 func (s *SyncService) IsRunning() bool {
 	return atomic.LoadInt32(&s.state) == int32(StateRunning)
+}
+
+// IsPaused returns whether sync is currently paused.
+// When paused, auto-sync operations are skipped but the service remains running.
+func (s *SyncService) IsPaused() bool {
+	s.pausedMu.RLock()
+	defer s.pausedMu.RUnlock()
+	return s.isPaused
+}
+
+// Pause pauses auto-sync operations.
+// This is typically called when conflicts are detected to prevent
+// concurrent modifications during conflict resolution.
+func (s *SyncService) Pause() {
+	s.pausedMu.Lock()
+	defer s.pausedMu.Unlock()
+	s.isPaused = true
+}
+
+// Resume resumes auto-sync operations after being paused.
+// Safe to call when not paused (no-op).
+func (s *SyncService) Resume() {
+	s.pausedMu.Lock()
+	defer s.pausedMu.Unlock()
+	s.isPaused = false
+}
+
+// GetConflictService returns the conflict service used by this sync service.
+// Returns nil if no conflict service was set via SetConflictService.
+func (s *SyncService) GetConflictService() ConflictChecker {
+	return s.conflictService
+}
+
+// SetConflictService sets the conflict service for conflict detection during sync.
+// This should be called before Start() if conflict detection is desired.
+func (s *SyncService) SetConflictService(conflictSvc ConflictChecker) {
+	s.conflictService = conflictSvc
 }
 
 // GetConfig returns the current configuration for the sync service.

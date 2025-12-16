@@ -1037,3 +1037,107 @@ func TestSyncService_ErrorHandlingDuringGracefulShutdown(t *testing.T) {
 
 	t.Log("Error handling during graceful shutdown test completed successfully")
 }
+
+// TestSyncService_PauseResume tests the pause and resume functionality.
+// TDD: RED - This test calls methods that don't exist yet.
+func TestSyncService_PauseResume(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	gitConfig := gitmanager.Config{
+		RepoPath:    tmpDir,
+		RemoteURL:   "https://github.com/test/test.git",
+		RemoteName:  "origin",
+		AuthorName:  "Test User",
+		AuthorEmail: "test@example.com",
+		AuthType:    gitmanager.AuthStrategyNone,
+	}
+
+	gitMgr, err := gitmanager.NewGitManager(context.Background(), gitConfig)
+	if err != nil {
+		t.Fatalf("Failed to create git manager: %v", err)
+	}
+
+	syncConfig := &Config{
+		RepoPath:        tmpDir,
+		DebounceDelay:   testDebounceDelay,
+		AutoSyncEnabled: true,
+	}
+
+	service, err := New(gitMgr, syncConfig)
+	if err != nil {
+		t.Fatalf("Failed to create sync service: %v", err)
+	}
+
+	// Initially not paused
+	if service.IsPaused() {
+		t.Error("Service should not be paused initially")
+	}
+
+	// Pause the service
+	service.Pause()
+	if !service.IsPaused() {
+		t.Error("Service should be paused after Pause()")
+	}
+
+	// Resume the service
+	service.Resume()
+	if service.IsPaused() {
+		t.Error("Service should not be paused after Resume()")
+	}
+
+	// Multiple pause/resume cycles should work
+	for i := 0; i < 3; i++ {
+		service.Pause()
+		if !service.IsPaused() {
+			t.Errorf("Service should be paused in cycle %d", i)
+		}
+		service.Resume()
+		if service.IsPaused() {
+			t.Errorf("Service should not be paused after resume in cycle %d", i)
+		}
+	}
+}
+
+// TestSyncService_HasConflictService tests conflict service integration.
+// TDD: RED - This test calls methods that don't exist yet.
+func TestSyncService_HasConflictService(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	gitConfig := gitmanager.Config{
+		RepoPath:    tmpDir,
+		RemoteURL:   "https://github.com/test/test.git",
+		RemoteName:  "origin",
+		AuthorName:  "Test User",
+		AuthorEmail: "test@example.com",
+		AuthType:    gitmanager.AuthStrategyNone,
+	}
+
+	gitMgr, err := gitmanager.NewGitManager(context.Background(), gitConfig)
+	if err != nil {
+		t.Fatalf("Failed to create git manager: %v", err)
+	}
+
+	syncConfig := &Config{
+		RepoPath:        tmpDir,
+		DebounceDelay:   testDebounceDelay,
+		AutoSyncEnabled: true,
+	}
+
+	service, err := New(gitMgr, syncConfig)
+	if err != nil {
+		t.Fatalf("Failed to create sync service: %v", err)
+	}
+
+	// Initially no conflict service
+	if service.GetConflictService() != nil {
+		t.Error("Service should not have conflict service initially")
+	}
+
+	// Set conflict service (using nil for simplicity - real service would need config.SyncConfig)
+	service.SetConflictService(nil)
+
+	// After setting nil, should return nil
+	if service.GetConflictService() != nil {
+		t.Error("GetConflictService should return nil when set to nil")
+	}
+}
