@@ -28,3 +28,36 @@ type RecentChange struct {
 	Action    string `json:"action"`    // added, modified, deleted
 	Timestamp string `json:"timestamp"` // relative time string
 }
+
+// ConfigResponse represents config for GUI display.
+// This is a flattened, frontend-friendly structure.
+type ConfigResponse struct {
+	MachineName      string            `json:"machineName"`
+	RepoPath         string            `json:"repoPath"`
+	TargetDir        string            `json:"targetDir"`
+	SyncInterval     int               `json:"syncInterval"`  // seconds
+	DebounceDelay    int               `json:"debounceDelay"` // milliseconds
+	AutoSync         bool              `json:"autoSync"`
+	AutoCommit       bool              `json:"autoCommit"`
+	AutoPush         bool              `json:"autoPush"`
+	AutoPull         bool              `json:"autoPull"`
+	ConflictStrategy string            `json:"conflictStrategy"` // local, remote, manual
+	Mappings         map[string]string `json:"mappings"`
+	ConfigPath       string            `json:"configPath"`
+	SyncignorePath   string            `json:"syncignorePath"`
+}
+
+// UpdateConfigRequest for partial config updates from GUI.
+// Pointer fields allow distinguishing between "not provided" and "set to zero/empty".
+// Note: TargetDir is not included as it's a derived value from mappings.
+type UpdateConfigRequest struct {
+	MachineName      *string `json:"machineName,omitempty"`
+	RepoPath         *string `json:"repoPath,omitempty"`
+	SyncInterval     *int    `json:"syncInterval,omitempty"`
+	DebounceDelay    *int    `json:"debounceDelay,omitempty"`
+	AutoSync         *bool   `json:"autoSync,omitempty"`
+	AutoCommit       *bool   `json:"autoCommit,omitempty"`
+	AutoPush         *bool   `json:"autoPush,omitempty"`
+	AutoPull         *bool   `json:"autoPull,omitempty"`
+	ConflictStrategy *string `json:"conflictStrategy,omitempty"`
+}
